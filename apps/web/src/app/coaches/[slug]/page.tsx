@@ -5,6 +5,7 @@ import {
   Award,
   Calendar,
   Globe,
+  Lock,
   MapPin,
   MessageSquare,
   Star,
@@ -16,7 +17,36 @@ import {
   CheckCircle2,
   Clock
 } from 'lucide-react';
+import Link from 'next/link';
+import { createServerClient } from '@supabase/ssr';
+import { cookies } from 'next/headers';
 import { adminDb } from '@/lib/api';
+import ExploreHeader from '@/components/ExploreHeader';
+
+// ─── Auth helper (does not throw) ─────────────────────────────────────────────
+async function getIsLoggedIn(): Promise<boolean> {
+  try {
+    const cookieStore = await cookies();
+    if (
+      !process.env.NEXT_PUBLIC_SUPABASE_URL ||
+      !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    ) return false;
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+      {
+        cookies: {
+          getAll() { return cookieStore.getAll(); },
+          setAll() {},
+        },
+      }
+    );
+    const { data: { user } } = await supabase.auth.getUser();
+    return !!user;
+  } catch {
+    return false;
+  }
+}
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -66,6 +96,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 export default async function PublicCoachProfilePage({ params }: PageProps) {
   const { slug } = await params;
   const db = adminDb();
+  const isLoggedIn = await getIsLoggedIn();
 
   // 1. Fetch coach data from public schema
   const { data: coachData, error } = await db
@@ -125,6 +156,9 @@ export default async function PublicCoachProfilePage({ params }: PageProps) {
 
   return (
     <div className="min-h-screen bg-[#060814] text-slate-100 font-sans">
+      {/* Public nav header */}
+      <ExploreHeader />
+
       {/* Dynamic Ambient Background Glow */}
       <div className="fixed top-0 left-1/4 w-[500px] h-[500px] bg-indigo-500/10 rounded-full blur-[120px] pointer-events-none" />
       <div className="fixed bottom-0 right-1/4 w-[400px] h-[400px] bg-emerald-500/5 rounded-full blur-[100px] pointer-events-none" />
@@ -218,39 +252,106 @@ export default async function PublicCoachProfilePage({ params }: PageProps) {
               </div>
             )}
 
-            {/* Available Batches */}
+            {/* Active Schedules & Batches — auth-gated for guests */}
             <div className="glass-panel p-6 sm:p-7 rounded-2xl space-y-4">
               <h2 className="text-lg font-bold text-slate-100 flex items-center gap-2">
-                <Calendar className="w-5 h-5 text-indigo-400" /> Available Classes & Batches
+                <Calendar className="w-5 h-5 text-indigo-400" /> Active Schedules &amp; Batches
               </h2>
-              {activeBatches.length === 0 ? (
-                <p className="text-slate-500 text-xs py-4 text-center">No open public schedules currently available.</p>
+
+              {isLoggedIn ? (
+                // ── Logged-in: show full batch details ──────────────────────
+                activeBatches.length === 0 ? (
+                  <p className="text-slate-500 text-xs py-4 text-center">
+                    No open public schedules currently available.
+                  </p>
+                ) : (
+                  <div className="space-y-3.5">
+                    {activeBatches.map((b: any) => (
+                      <div
+                        key={b.id}
+                        className="p-4 rounded-xl bg-slate-950/20 border border-white/5 hover:border-indigo-500/20 transition-all flex flex-col sm:flex-row justify-between sm:items-center gap-3"
+                      >
+                        <div>
+                          <p className="text-slate-200 text-sm font-bold">{b.name}</p>
+                          <p className="text-slate-400 text-xs mt-0.5">{b.class?.name || 'Class slot'}</p>
+                          <div className="flex gap-1.5 mt-2">
+                            {b.days_of_week.map((d: number) => (
+                              <span
+                                key={d}
+                                className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-500/10 border border-indigo-500/20 text-indigo-400"
+                              >
+                                {DAY_LABELS[d]}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-4 text-right">
+                          <div className="text-left sm:text-right">
+                            <p className="text-slate-400 text-[10px] uppercase font-bold flex items-center sm:justify-end gap-1">
+                              <Clock className="w-3 h-3" /> Timings
+                            </p>
+                            <p className="text-slate-200 text-xs mt-0.5 font-medium">
+                              {formatTime(b.start_time)} &ndash; {formatTime(b.end_time)}
+                            </p>
+                          </div>
+                          <button className="px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition-all">
+                            Quick Enroll
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )
               ) : (
-                <div className="space-y-3.5">
-                  {activeBatches.map((b: any) => (
-                    <div key={b.id} className="p-4 rounded-xl bg-slate-950/20 border border-white/5 hover:border-indigo-500/20 transition-all flex flex-col sm:flex-row justify-between sm:items-center gap-3">
-                      <div>
-                        <p className="text-slate-200 text-sm font-bold">{b.name}</p>
-                        <p className="text-slate-400 text-xs mt-0.5">{b.class?.name || 'Class slot'}</p>
-                        <div className="flex gap-1.5 mt-2">
-                          {b.days_of_week.map((d: number) => (
-                            <span key={d} className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-500/10 border border-indigo-500/20 text-indigo-400">
-                              {DAY_LABELS[d]}
-                            </span>
-                          ))}
+                // ── Guest: blurred preview + lock overlay ───────────────────
+                <div className="relative rounded-2xl overflow-hidden">
+                  {/* Blurred dummy preview rows */}
+                  <div className="blur-sm pointer-events-none space-y-3 select-none" aria-hidden="true">
+                    {[1, 2].map(i => (
+                      <div
+                        key={i}
+                        className="p-4 rounded-xl bg-slate-950/20 border border-white/5 flex justify-between items-center"
+                      >
+                        <div className="space-y-2">
+                          <div className="h-3 w-32 bg-slate-700/60 rounded" />
+                          <div className="h-2 w-20 bg-slate-800/60 rounded" />
+                          <div className="flex gap-1.5">
+                            {['Mon', 'Wed', 'Fri'].map(d => (
+                              <span
+                                key={d}
+                                className="px-1.5 py-0.5 rounded text-[10px] bg-indigo-500/10 border border-indigo-500/20 text-indigo-400"
+                              >
+                                {d}
+                              </span>
+                            ))}
+                          </div>
                         </div>
+                        <div className="h-3 w-24 bg-slate-700/60 rounded" />
                       </div>
-                      <div className="flex items-center gap-4 text-right">
-                        <div className="text-left sm:text-right">
-                          <p className="text-slate-400 text-[10px] uppercase font-bold flex items-center sm:justify-end gap-1"><Clock className="w-3 h-3" /> Timings</p>
-                          <p className="text-slate-200 text-xs mt-0.5 font-medium">{formatTime(b.start_time)} – {formatTime(b.end_time)}</p>
-                        </div>
-                        <button className="px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition-all">
-                          Quick Enroll
-                        </button>
-                      </div>
+                    ))}
+                  </div>
+
+                  {/* Lock overlay */}
+                  <div className="absolute inset-0 backdrop-blur-[2px] bg-slate-950/70 flex flex-col items-center justify-center gap-4 rounded-2xl z-10 px-6 py-8">
+                    <div className="w-12 h-12 rounded-full bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center">
+                      <Lock className="w-5 h-5 text-indigo-400" />
                     </div>
-                  ))}
+                    <div className="text-center">
+                      <p className="text-white font-bold text-sm">
+                        Active Schedules &amp; Batches
+                      </p>
+                      <p className="text-slate-400 text-xs mt-1.5 max-w-xs">
+                        Login or register an account to view active schedules,
+                        batch timings, fees, and slot availabilities.
+                      </p>
+                    </div>
+                    <Link
+                      href={`/auth/login?redirect=/coaches/${slug}`}
+                      className="btn-premium px-6 py-2.5 rounded-xl text-sm font-semibold"
+                    >
+                      Login / Register
+                    </Link>
+                  </div>
                 </div>
               )}
             </div>
