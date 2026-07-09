@@ -6,13 +6,43 @@
 import { NextResponse } from 'next/server';
 import { adminDb, ok, err, created } from '@/lib/api';
 
+// Replace a coach's category/tag tagging in one shot. Mirrors the helper in
+// apps/web/src/app/api/v1/coaches/route.ts (kept local to avoid a cross-route
+// import between two independent onboarding entry points).
+async function syncCoachCategories(
+  db: ReturnType<typeof adminDb>,
+  coachId: string,
+  subcategoryIds: string[],
+  primarySubcategoryId: string,
+  tagIds: string[]
+) {
+  if (subcategoryIds.length > 0) {
+    const { error } = await db.from('coach_categories').insert(
+      subcategoryIds.map(subcategoryId => ({
+        coach_id: coachId,
+        subcategory_id: subcategoryId,
+        is_primary: subcategoryId === primarySubcategoryId,
+      }))
+    );
+    if (error) throw error;
+  }
+
+  if (tagIds.length > 0) {
+    const { error } = await db.from('coach_tags').insert(
+      tagIds.map(tagId => ({ coach_id: coachId, tag_id: tagId }))
+    );
+    if (error) throw error;
+  }
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
     const {
       email, password, firstName, lastName, phone, role, tenantId, avatarUrl,
       // Coach fields
-      primarySkill, experienceYears, serviceTypes, classTypes, languagesKnown,
+      primarySubcategoryId, subcategoryIds, tagIds, ageGroups, skillLevels,
+      experienceYears, serviceTypes, classTypes, languagesKnown,
       qualification, certificationsSummary, joiningDate, bio,
       country, state, city, area, address, specialization,
       gender, dateOfBirth,
@@ -26,8 +56,15 @@ export async function POST(req: Request) {
 
     if (role === 'coach') {
       // ── Coach registration ─────────────────────────────────
-      if (!email || !password || !firstName || !lastName || !tenantId || !primarySkill || experienceYears === undefined || !joiningDate) {
+      if (!email || !password || !firstName || !lastName || !tenantId || !primarySubcategoryId || experienceYears === undefined || !joiningDate) {
         return err('Missing required coach onboarding fields.', 422);
+      }
+
+      const resolvedSubcategoryIds: string[] = Array.isArray(subcategoryIds) && subcategoryIds.length > 0
+        ? [...subcategoryIds]
+        : [primarySubcategoryId];
+      if (!resolvedSubcategoryIds.includes(primarySubcategoryId)) {
+        resolvedSubcategoryIds.push(primarySubcategoryId);
       }
 
       // Fetch the global Coach role ID
@@ -89,7 +126,6 @@ export async function POST(req: Request) {
       const { error: coachErr } = await db.from('coaches').insert({
         id: userId,
         tenant_id: tenantId,
-        primary_skill: primarySkill,
         experience_years: Number(experienceYears),
         service_types: serviceTypes || ['Offline'],
         class_types: classTypes || ['Group Classes'],
@@ -103,8 +139,9 @@ export async function POST(req: Request) {
         city: city || null,
         area: area || null,
         address: address || null,
-        designation: primarySkill,
         specialization: specialization || null,
+        age_groups: ageGroups || [],
+        skill_levels: skillLevels || [],
         gender: gender || null,
         date_of_birth: dateOfBirth ? new Date(dateOfBirth).toISOString().split('T')[0] : null,
         account_status: 'Onboarding',
@@ -121,6 +158,16 @@ export async function POST(req: Request) {
         await db.from('users').delete().eq('id', userId);
         await db.auth.admin.deleteUser(userId);
         throw coachErr;
+      }
+
+      // Tag the coach with its category/subcategory/tag selections
+      try {
+        await syncCoachCategories(db, userId, resolvedSubcategoryIds, primarySubcategoryId, tagIds ?? []);
+      } catch (tagErr) {
+        await db.from('coaches').delete().eq('id', userId);
+        await db.from('users').delete().eq('id', userId);
+        await db.auth.admin.deleteUser(userId);
+        throw tagErr;
       }
 
       // Insert financial settings for coach

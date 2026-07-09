@@ -60,7 +60,7 @@ interface CoachAssignment {
     email: string;
     avatar_url: string | null;
     coach_profile: {
-      expertise: string | null;
+      coach_categories: { is_primary: boolean; subcategory: { name: string } | null }[] | null;
       availability_slots?: string | null;
       hourly_rate?: number;
     } | null;
@@ -74,7 +74,7 @@ interface AvailableCoach {
   email: string;
   avatar_url: string | null;
   coach_profile: {
-    expertise: string | null;
+    coach_categories: { is_primary: boolean; subcategory: { name: string } | null }[] | null;
     availability_slots?: string | null;
     hourly_rate?: number;
   } | null;
@@ -264,7 +264,7 @@ export default function BatchesPage() {
         .from('users')
         .select(
           `id, first_name, last_name, email, avatar_url,
-           coach_profile:coaches(expertise:primary_skill)`,
+           coach_profile:coaches(coach_categories(is_primary, subcategory:subcategories(name)))`,
         )
         .eq('role', 'coach')
         .eq('is_active', true)
@@ -284,7 +284,7 @@ export default function BatchesPage() {
         .select(
           `id, batch_id, status, assigned_days,
            coach:coach_id(id, first_name, last_name, email, avatar_url,
-             coach_profile:coaches(expertise:primary_skill))`,
+             coach_profile:coaches(coach_categories(is_primary, subcategory:subcategories(name))))`,
         )
         .in('batch_id', batchIds);
       if (error) throw error;
@@ -1383,9 +1383,9 @@ export default function BatchesPage() {
                                   {a.coach.first_name} {a.coach.last_name}
                                 </p>
                                 <p className="text-[10px] text-slate-500 truncate">{a.coach.email}</p>
-                                {a.coach.coach_profile?.expertise && (
+                                {a.coach.coach_profile?.coach_categories?.find(cc => cc.is_primary)?.subcategory?.name && (
                                   <p className="text-[9px] text-indigo-400 mt-0.5 truncate">
-                                    {a.coach.coach_profile.expertise}
+                                    {a.coach.coach_profile.coach_categories.find(cc => cc.is_primary)?.subcategory?.name}
                                   </p>
                                 )}
                               </div>

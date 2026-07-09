@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import { createBrowserClient } from '@/lib/supabase';
 import CustomSelect from '../../admin/components/CustomSelect';
+import { useCategoryTaxonomy } from '@/lib/useCategoryTaxonomy';
+import { CategoryPicker, CategorySelection } from '@/components/CategoryPicker';
 import {
   AlertCircle,
   Calendar,
@@ -138,7 +140,15 @@ export default function StudentDashboard() {
   const [coachDocs, setCoachDocs] = useState<any[]>([]);
 
   // Onboarding Form States
-  const [primarySkill, setPrimarySkill] = useState('Badminton Coach');
+  const { categories: coachCategories } = useCategoryTaxonomy();
+  const [categorySelection, setCategorySelection] = useState<CategorySelection>({
+    categoryId: null,
+    subcategoryIds: [],
+    primarySubcategoryId: null,
+    tagIds: [],
+    ageGroups: [],
+    skillLevels: [],
+  });
   const [experienceYears, setExperienceYears] = useState('2');
   const [bio, setBio] = useState('');
   const [qualification, setQualification] = useState('');
@@ -374,7 +384,7 @@ export default function StudentDashboard() {
     try {
       const { data: cProfile } = await supabase
         .from('coaches')
-        .select('*')
+        .select('*, coach_categories(is_primary, subcategory:subcategories(name))')
         .eq('id', uid)
         .maybeSingle();
 
@@ -415,7 +425,7 @@ export default function StudentDashboard() {
     try {
       const { data: cData } = await supabase
         .from('coaches')
-        .select('id, primary_skill, experience_years, service_types, class_types, languages_known, bio, public_profile_slug, avg_rating, users(first_name, last_name, avatar_url)')
+        .select('id, experience_years, service_types, class_types, languages_known, bio, public_profile_slug, avg_rating, users(first_name, last_name, avatar_url), coach_categories(is_primary, subcategory:subcategories(name))')
         .eq('account_status', 'Active');
       setCoachesList(cData || []);
     } catch (err) {
@@ -475,6 +485,9 @@ export default function StudentDashboard() {
       if (!govIdFile) {
         throw new Error('Please upload a Government ID verification file.');
       }
+      if (!categorySelection.primarySubcategoryId) {
+        throw new Error('Please select your coaching category and at least one specialty.');
+      }
 
       // 2. Upload Government ID
       console.log('[Coach Apply] Uploading Government ID...');
@@ -511,7 +524,6 @@ export default function StudentDashboard() {
         .insert({
           id: userId,
           tenant_id: tenantId,
-          primary_skill: primarySkill,
           experience_years: parseInt(experienceYears) || 0,
           service_types: serviceTypes,
           class_types: classTypes,
@@ -519,12 +531,31 @@ export default function StudentDashboard() {
           qualification: qualification || null,
           certifications_summary: certifications || null,
           bio: bio,
+          age_groups: categorySelection.ageGroups,
+          skill_levels: categorySelection.skillLevels,
           account_status: 'Pending Verification',
           public_profile_slug: profileSlug,
           avg_rating: 0.00
         });
 
       if (profileErr) throw profileErr;
+
+      // 4b. Tag the coach with its category/subcategory/tag selections
+      const resolvedSubcategoryIds = categorySelection.subcategoryIds.length > 0
+        ? categorySelection.subcategoryIds
+        : [categorySelection.primarySubcategoryId];
+      await supabase.from('coach_categories').insert(
+        resolvedSubcategoryIds.map(subcategoryId => ({
+          coach_id: userId,
+          subcategory_id: subcategoryId,
+          is_primary: subcategoryId === categorySelection.primarySubcategoryId,
+        }))
+      );
+      if (categorySelection.tagIds.length > 0) {
+        await supabase.from('coach_tags').insert(
+          categorySelection.tagIds.map(tagId => ({ coach_id: userId, tag_id: tagId }))
+        );
+      }
 
       // 5. Insert documents info
       console.log('[Coach Apply] Inserting document indices...');
@@ -1236,7 +1267,7 @@ export default function StudentDashboard() {
                       </h3>
                       <div className="flex items-center gap-2 mt-1">
                         <span className="px-2 py-0.5 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 font-extrabold text-[8px] uppercase tracking-wider">
-                          {coach.primary_skill}
+                          {coach.coach_categories?.find((cc: any) => cc.is_primary)?.subcategory?.name ?? 'Coach'}
                         </span>
                         <span className="text-[10px] text-slate-500 font-semibold">
                           {coach.experience_years} Years Exp.
@@ -1306,7 +1337,7 @@ export default function StudentDashboard() {
                     <h4 className="text-[10px] text-slate-500 font-extrabold uppercase tracking-widest">Submitted Application</h4>
                     <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/5 space-y-1.5 text-xs">
                       <p className="text-slate-300"><strong>Application Status:</strong> {coachProfile.account_status}</p>
-                      <p className="text-slate-300"><strong>Skill Domain:</strong> {coachProfile.primary_skill}</p>
+                      <p className="text-slate-300"><strong>Skill Domain:</strong> {coachProfile.coach_categories?.find((cc: any) => cc.is_primary)?.subcategory?.name ?? '—'}</p>
                       <p className="text-slate-300"><strong>Experience Profile:</strong> {coachProfile.experience_years} Years</p>
                       <p className="text-slate-300"><strong>Application Date:</strong> {new Date(coachProfile.created_at).toLocaleDateString()}</p>
                     </div>
@@ -1364,32 +1395,19 @@ export default function StudentDashboard() {
                   <h3 className="text-sm font-semibold text-slate-200">1. Professional Coaching Information</h3>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Primary Skill select */}
-                  <div>
-                    <label className="text-[10px] text-slate-400 font-bold block mb-1.5 uppercase tracking-wide">
-                      Coaching Speciality Domain *
-                    </label>
-                    <select
-                      value={primarySkill}
-                      onChange={(e) => setPrimarySkill(e.target.value)}
-                      className="w-full h-10 px-3.5 rounded-xl glass-input text-xs"
-                    >
-                      <option value="Yoga Coach">Yoga Coach</option>
-                      <option value="Fitness Coach">Fitness Coach</option>
-                      <option value="Badminton Coach">Badminton Coach</option>
-                      <option value="Football Coach">Football Coach</option>
-                      <option value="Gymnastics Coach">Gymnastics Coach</option>
-                      <option value="Cricket Coach">Cricket Coach</option>
-                      <option value="Tennis Instructor">Tennis Instructor</option>
-                      <option value="Basketball Coach">Basketball Coach</option>
-                      <option value="Table Tennis Coach">Table Tennis Coach</option>
-                      <option value="Swimming Coach">Swimming Coach</option>
-                      <option value="Zumba Trainer">Zumba Trainer</option>
-                      <option value="Dance Trainer">Dance Trainer</option>
-                    </select>
-                  </div>
+                <div>
+                  <label className="text-[10px] text-slate-400 font-bold block mb-1.5 uppercase tracking-wide">
+                    Coaching Speciality Domain *
+                  </label>
+                  <CategoryPicker
+                    categories={coachCategories}
+                    value={categorySelection}
+                    onChange={setCategorySelection}
+                    theme="dark"
+                  />
+                </div>
 
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {/* Experience Years */}
                   <div>
                     <label className="text-[10px] text-slate-400 font-bold block mb-1.5 uppercase tracking-wide">

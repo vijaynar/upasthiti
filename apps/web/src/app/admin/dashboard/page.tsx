@@ -103,7 +103,7 @@ interface CoachStat {
   avatar_url: string | null;
   is_active: boolean;
   coach_profile: {
-    expertise: string | null;
+    coach_categories: { is_primary: boolean; subcategory: { name: string } | null }[] | null;
     availability_slots?: string | null;
     hourly_rate?: number;
   } | null;
@@ -796,7 +796,7 @@ export default function AdminDashboard() {
           .from('users')
           .select(`
             id, first_name, last_name, avatar_url, is_active,
-            coach_profile:coaches(expertise:primary_skill),
+            coach_profile:coaches(coach_categories(is_primary, subcategory:subcategories(name))),
             batch_assignments:coach_batch_assignments!coach_batch_assignments_coach_id_fkey(id, status, batch_id)
           `)
           .eq('tenant_id', tenantId)

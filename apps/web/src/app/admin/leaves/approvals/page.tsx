@@ -36,7 +36,7 @@ interface LeaveRequest {
   admin_comment: string | null;
   coaches: {
     id: string;
-    primary_skill: string;
+    coach_categories: { is_primary: boolean; subcategory: { name: string } | null }[] | null;
     users: {
       id: string;
       first_name: string;
@@ -109,7 +109,7 @@ export default function LeaveApprovalsPage() {
           admin_comment,
           coaches (
             id,
-            primary_skill,
+            coach_categories(is_primary, subcategory:subcategories(name)),
             users (
               id,
               first_name,
@@ -541,7 +541,7 @@ export default function LeaveApprovalsPage() {
                               </div>
                               <div>
                                 <div className="text-slate-900 dark:text-white font-bold text-xs">{coachName}</div>
-                                <div className="text-[10px] text-slate-500 font-semibold">{r.coaches?.primary_skill || 'Coach'}</div>
+                                <div className="text-[10px] text-slate-500 font-semibold">{r.coaches?.coach_categories?.find(cc => cc.is_primary)?.subcategory?.name || 'Coach'}</div>
                               </div>
                             </div>
                           </td>
@@ -629,7 +629,7 @@ export default function LeaveApprovalsPage() {
                     <h4 className="text-slate-900 dark:text-white font-bold text-sm">
                       {selectedRequest.coaches?.users?.first_name || 'Unknown'} {selectedRequest.coaches?.users?.last_name || 'Coach'}
                     </h4>
-                    <p className="text-[10px] text-slate-400 font-semibold">{selectedRequest.coaches?.primary_skill || 'Coach'}</p>
+                    <p className="text-[10px] text-slate-400 font-semibold">{selectedRequest.coaches?.coach_categories?.find(cc => cc.is_primary)?.subcategory?.name || 'Coach'}</p>
                     <p className="text-[9px] text-slate-500 font-mono mt-0.5">{selectedRequest.coaches?.users?.email}</p>
                   </div>
                 </div>

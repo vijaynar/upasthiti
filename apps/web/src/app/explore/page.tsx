@@ -2,76 +2,35 @@ import Link from 'next/link';
 import { Search, MapPin, Star, ArrowRight, ChevronRight } from 'lucide-react';
 import { adminDb } from '@/lib/api';
 
-// ─── Category data ────────────────────────────────────────────────────────────
+// ─── Category card colour palette (cycled by position — categories themselves
+// come from the DB, see getCategories()) ───────────────────────────────────────
 
-const CATEGORIES = [
-  {
-    emoji: '🏃',
-    label: 'Sports',
-    key: 'sports',
-    bg: 'from-indigo-500/15 to-indigo-600/5',
-    border: 'border-indigo-500/20',
-    text: 'text-indigo-300',
-  },
-  {
-    emoji: '📚',
-    label: 'Education',
-    key: 'education',
-    bg: 'from-purple-500/15 to-purple-600/5',
-    border: 'border-purple-500/20',
-    text: 'text-purple-300',
-  },
-  {
-    emoji: '🎵',
-    label: 'Music',
-    key: 'music',
-    bg: 'from-pink-500/15 to-pink-600/5',
-    border: 'border-pink-500/20',
-    text: 'text-pink-300',
-  },
-  {
-    emoji: '💃',
-    label: 'Dance',
-    key: 'dance',
-    bg: 'from-rose-500/15 to-rose-600/5',
-    border: 'border-rose-500/20',
-    text: 'text-rose-300',
-  },
-  {
-    emoji: '🏋️',
-    label: 'Fitness',
-    key: 'fitness',
-    bg: 'from-emerald-500/15 to-emerald-600/5',
-    border: 'border-emerald-500/20',
-    text: 'text-emerald-300',
-  },
-  {
-    emoji: '🎨',
-    label: 'Art',
-    key: 'art',
-    bg: 'from-amber-500/15 to-amber-600/5',
-    border: 'border-amber-500/20',
-    text: 'text-amber-300',
-  },
-  {
-    emoji: '🌐',
-    label: 'Language',
-    key: 'language',
-    bg: 'from-cyan-500/15 to-cyan-600/5',
-    border: 'border-cyan-500/20',
-    text: 'text-cyan-300',
-  },
-  {
-    emoji: '⋯',
-    label: 'More',
-    key: 'all',
-    bg: 'from-slate-500/15 to-slate-600/5',
-    border: 'border-slate-500/20',
-    text: 'text-slate-300',
-  },
+const CATEGORY_COLORS = [
+  { bg: 'from-indigo-500/15 to-indigo-600/5',  border: 'border-indigo-500/20',  text: 'text-indigo-300' },
+  { bg: 'from-purple-500/15 to-purple-600/5',  border: 'border-purple-500/20',  text: 'text-purple-300' },
+  { bg: 'from-pink-500/15 to-pink-600/5',      border: 'border-pink-500/20',    text: 'text-pink-300' },
+  { bg: 'from-rose-500/15 to-rose-600/5',      border: 'border-rose-500/20',    text: 'text-rose-300' },
+  { bg: 'from-emerald-500/15 to-emerald-600/5', border: 'border-emerald-500/20', text: 'text-emerald-300' },
+  { bg: 'from-amber-500/15 to-amber-600/5',    border: 'border-amber-500/20',   text: 'text-amber-300' },
+  { bg: 'from-cyan-500/15 to-cyan-600/5',      border: 'border-cyan-500/20',    text: 'text-cyan-300' },
+  { bg: 'from-slate-500/15 to-slate-600/5',    border: 'border-slate-500/20',   text: 'text-slate-300' },
 ];
 
 // ─── Data fetching ────────────────────────────────────────────────────────────
+
+async function getCategories() {
+  try {
+    const db = adminDb();
+    const { data } = await db
+      .from('categories')
+      .select('id, name, slug, icon')
+      .eq('is_active', true)
+      .order('display_order');
+    return data ?? [];
+  } catch {
+    return [];
+  }
+}
 
 async function getTopCoaches() {
   try {
@@ -79,14 +38,18 @@ async function getTopCoaches() {
     const { data } = await db
       .from('coaches')
       .select(
-        `id, public_profile_slug, primary_skill, city, area, state,
+        `id, public_profile_slug, city, area, state,
          avg_rating, experience_years, service_types,
-         user_data:users(first_name, last_name, avatar_url)`
+         user_data:users(first_name, last_name, avatar_url),
+         coach_categories(is_primary, subcategory:subcategories(name))`
       )
       .not('public_profile_slug', 'is', null)
       .order('avg_rating', { ascending: false, nullsFirst: false })
       .limit(8);
-    return data ?? [];
+    return (data ?? []).map((c: any) => ({
+      ...c,
+      primarySubcategoryName: (c.coach_categories ?? []).find((cc: any) => cc.is_primary)?.subcategory?.name ?? null,
+    }));
   } catch {
     return [];
   }
@@ -95,7 +58,7 @@ async function getTopCoaches() {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default async function ExploreLandingPage() {
-  const topCoaches = await getTopCoaches();
+  const [topCoaches, categories] = await Promise.all([getTopCoaches(), getCategories()]);
 
   return (
     <div className="text-slate-100">
@@ -172,17 +135,20 @@ export default async function ExploreLandingPage() {
             View all <ArrowRight className="w-3 h-3" />
           </Link>
         </div>
-        <div className="grid grid-cols-4 sm:grid-cols-8 gap-3">
-          {CATEGORIES.map(cat => (
-            <Link
-              key={cat.key}
-              href={`/explore/coaches?category=${cat.key}`}
-              className={`flex flex-col items-center gap-2 p-3 sm:p-4 rounded-2xl bg-gradient-to-b ${cat.bg} ${cat.border} border ${cat.text} hover:scale-105 transition-all duration-200 text-center`}
-            >
-              <span className="text-2xl">{cat.emoji}</span>
-              <span className="text-xs font-semibold">{cat.label}</span>
-            </Link>
-          ))}
+        <div className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-11 gap-3">
+          {categories.map((cat, i) => {
+            const color = CATEGORY_COLORS[i % CATEGORY_COLORS.length];
+            return (
+              <Link
+                key={cat.id}
+                href={`/explore/coaches?categoryId=${cat.id}`}
+                className={`flex flex-col items-center gap-2 p-3 sm:p-4 rounded-2xl bg-gradient-to-b ${color.bg} ${color.border} border ${color.text} hover:scale-105 transition-all duration-200 text-center`}
+              >
+                <span className="text-2xl">{cat.icon}</span>
+                <span className="text-xs font-semibold">{cat.name}</span>
+              </Link>
+            );
+          })}
         </div>
       </section>
 
@@ -251,7 +217,7 @@ export default async function ExploreLandingPage() {
                     </div>
                     {/* Skill badge */}
                     <div className="absolute bottom-2 left-2 px-2 py-0.5 rounded-full bg-indigo-600/80 backdrop-blur-sm text-[10px] font-semibold text-white">
-                      {coach.primary_skill}
+                      {coach.primarySubcategoryName ?? 'Coach'}
                     </div>
                   </div>
 

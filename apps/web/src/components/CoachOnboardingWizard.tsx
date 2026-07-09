@@ -2,24 +2,14 @@
 
 import { useState, useEffect } from 'react';
 import { createBrowserClient } from '@/lib/supabase';
-import { 
-  Building2, Eye, EyeOff, Globe, Lock, Mail, Sparkles, User, 
-  Check, CheckCircle2, ChevronLeft, ChevronRight, X, Phone, 
+import {
+  Building2, Eye, EyeOff, Globe, Lock, Mail, Sparkles, User,
+  Check, CheckCircle2, ChevronLeft, ChevronRight, X, Phone,
   ShieldCheck, FileText, MapPin, AlertCircle, Camera, ArrowLeft, ArrowRight,
   Upload, Trash2, ShieldAlert, IndianRupee, Landmark, Calendar, Award
 } from 'lucide-react';
-
-const COACH_TYPES = [
-  'Badminton', 'Tennis', 'Table Tennis', 'Squash', 'Swimming', 
-  'Football', 'Cricket', 'Basketball', 'Athletics', 'Gymnastics',
-  'Yoga Coach', 'Fitness Coach', 'Skating Coach', 'Running Coach', 
-  'Zumba Trainer', 'Dance Trainer', 'Other Custom Coach'
-];
-
-const SPECIALIZATIONS_ONBOARD = [
-  'Singles', 'Doubles', 'Mixed Doubles', 'Coaching', 'Physical Training', 
-  'Tactics', 'Advanced Techniques', 'Beginner Basics'
-];
+import { useCategoryTaxonomy } from '@/lib/useCategoryTaxonomy';
+import { CategoryPicker, CategorySelection } from '@/components/CategoryPicker';
 
 const SERVICE_TYPES_ONBOARD = [
   { value: 'Offline', label: 'Offline Coaching' },
@@ -83,8 +73,16 @@ export function CoachOnboardingWizard({
   const [emailTouched, setEmailTouched] = useState(false);
 
   // --- Step 2: Professional Profile ---
-  const [primarySkill, setPrimarySkill] = useState('Badminton');
-  const [specialization, setSpecialization] = useState('Singles');
+  const { categories } = useCategoryTaxonomy();
+  const [categorySelection, setCategorySelection] = useState<CategorySelection>({
+    categoryId: null,
+    subcategoryIds: [],
+    primarySubcategoryId: null,
+    tagIds: [],
+    ageGroups: [],
+    skillLevels: [],
+  });
+  const [specialization, setSpecialization] = useState('');
   const [experienceYears, setExperienceYears] = useState('6');
   const [qualification, setQualification] = useState('B.P.Ed, NIS Certified');
   const [languagesKnown, setLanguagesKnown] = useState<string[]>(['English', 'Hindi']);
@@ -145,14 +143,13 @@ export function CoachOnboardingWizard({
                        stateName.trim() !== '' && 
                        cityName.trim() !== '';
 
-  const isStep2Valid = primarySkill.trim() !== '' && 
-                       specialization.trim() !== '' && 
-                       experienceYears.trim() !== '' && 
-                       Number(experienceYears) >= 0 && 
-                       qualification.trim() !== '' && 
-                       serviceTypes.length > 0 && 
-                       classTypes.length > 0 && 
-                       bio.trim().length > 0 && 
+  const isStep2Valid = categorySelection.primarySubcategoryId !== null &&
+                       experienceYears.trim() !== '' &&
+                       Number(experienceYears) >= 0 &&
+                       qualification.trim() !== '' &&
+                       serviceTypes.length > 0 &&
+                       classTypes.length > 0 &&
+                       bio.trim().length > 0 &&
                        bio.length <= 500;
 
   const isStep3Valid = true; // Documents step validation (optional, can submit empty if not strict)
@@ -210,8 +207,20 @@ export function CoachOnboardingWizard({
     setDob(randDOB);
     setAvatarPreview(`https://api.dicebear.com/7.x/adventurer/svg?seed=${randFirst}${randomId}`);
 
-    setPrimarySkill(COACH_TYPES[Math.floor(Math.random() * 8)]);
-    setSpecialization(SPECIALIZATIONS_ONBOARD[Math.floor(Math.random() * SPECIALIZATIONS_ONBOARD.length)]);
+    if (categories.length > 0) {
+      const cat = categories[Math.floor(Math.random() * categories.length)];
+      const sub = cat.subcategories.length > 0
+        ? cat.subcategories[Math.floor(Math.random() * cat.subcategories.length)]
+        : null;
+      setCategorySelection({
+        categoryId: cat.id,
+        subcategoryIds: sub ? [sub.id] : [],
+        primarySubcategoryId: sub?.id ?? null,
+        tagIds: [],
+        ageGroups: ['Kids', 'Adults'],
+        skillLevels: ['Beginner', 'Intermediate'],
+      });
+    }
     setExperienceYears(Math.floor(2 + Math.random() * 12).toString());
     setQualification('B.P.Ed, Certified Instructor');
     setBio('Passionate coaching specialist focused on standard fitness, skill refinement, and consistent training modules.');
@@ -255,7 +264,11 @@ export function CoachOnboardingWizard({
           lastName,
           phone: phone ? `+91${phone}` : null,
           avatarUrl: null,
-          primarySkill,
+          primarySubcategoryId: categorySelection.primarySubcategoryId,
+          subcategoryIds: categorySelection.subcategoryIds,
+          tagIds: categorySelection.tagIds,
+          ageGroups: categorySelection.ageGroups,
+          skillLevels: categorySelection.skillLevels,
           experienceYears: Number(experienceYears),
           serviceTypes,
           classTypes,
@@ -306,7 +319,11 @@ export function CoachOnboardingWizard({
             firstName,
             lastName,
             phone: phone ? `+91${phone}` : null,
-            primarySkill,
+            primarySubcategoryId: categorySelection.primarySubcategoryId,
+            subcategoryIds: categorySelection.subcategoryIds,
+            tagIds: categorySelection.tagIds,
+            ageGroups: categorySelection.ageGroups,
+            skillLevels: categorySelection.skillLevels,
             experienceYears: Number(experienceYears),
             serviceTypes,
             classTypes,
@@ -769,31 +786,13 @@ export function CoachOnboardingWizard({
                 <h3 className={`text-sm font-bold ${isDark ? 'text-slate-100' : 'text-slate-900'}`}>Professional Profile</h3>
                 <span className="text-[10px] font-semibold text-red-500">* Required fields</span>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-medium mb-1">Primary Skill / Subject <span className="text-red-500 ml-1">*</span></label>
-                  <select
-                    value={primarySkill}
-                    onChange={(e) => setPrimarySkill(e.target.value)}
-                    className={`rounded-xl px-3 py-2 text-xs w-full outline-none focus:ring-1 focus:ring-indigo-500 border ${
-                      isDark ? 'glass-input border-white/10 bg-[#060814] text-slate-200' : 'border-slate-200 bg-white text-slate-800'
-                    }`}
-                  >
-                    {COACH_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium mb-1">Specialization <span className="text-red-500 ml-1">*</span></label>
-                  <select
-                    value={specialization}
-                    onChange={(e) => setSpecialization(e.target.value)}
-                    className={`rounded-xl px-3 py-2 text-xs w-full outline-none focus:ring-1 focus:ring-indigo-500 border ${
-                      isDark ? 'glass-input border-white/10 bg-[#060814] text-slate-200' : 'border-slate-200 bg-white text-slate-800'
-                    }`}
-                  >
-                    {SPECIALIZATIONS_ONBOARD.map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                </div>
+              <div className={`p-4 border rounded-2xl ${isDark ? 'border-white/5 bg-white/[0.01]' : 'border-slate-100 bg-slate-50/20'}`}>
+                <CategoryPicker
+                  categories={categories}
+                  value={categorySelection}
+                  onChange={setCategorySelection}
+                  theme={theme}
+                />
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -823,6 +822,21 @@ export function CoachOnboardingWizard({
                     }`}
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium mb-1">
+                  Specialization Notes <span className={`font-normal text-[10px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>(Optional)</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Singles, Advanced Techniques, Exam-focused prep"
+                  value={specialization}
+                  onChange={(e) => setSpecialization(e.target.value)}
+                  className={`rounded-xl px-3 py-2 text-xs w-full outline-none focus:ring-1 focus:ring-indigo-500 border ${
+                    isDark ? 'glass-input border-white/10 bg-[#060814]/40 text-slate-200' : 'border-slate-200 bg-white text-slate-800'
+                  }`}
+                />
               </div>
 
               <div className="space-y-1">
@@ -1166,9 +1180,16 @@ export function CoachOnboardingWizard({
                 </button>
                 <h4 className="text-[10px] font-bold text-indigo-500 uppercase tracking-wider mb-3">Professional Credentials</h4>
                 <div className="grid grid-cols-2 gap-y-2 text-xs">
-                  <div>
-                    <span className="text-slate-500 block text-[9px]">Skill Domain</span>
-                    <span className="font-semibold">{primarySkill} ({specialization})</span>
+                  <div className="col-span-2">
+                    <span className="text-slate-500 block text-[9px]">Category &amp; Specialties</span>
+                    <span className="font-semibold">
+                      {categories.find(c => c.id === categorySelection.categoryId)?.name ?? '—'}
+                      {' · '}
+                      {(categories.find(c => c.id === categorySelection.categoryId)?.subcategories ?? [])
+                        .filter(s => categorySelection.subcategoryIds.includes(s.id))
+                        .map(s => s.id === categorySelection.primarySubcategoryId ? `${s.name} (Primary)` : s.name)
+                        .join(', ') || '—'}
+                    </span>
                   </div>
                   <div>
                     <span className="text-slate-500 block text-[9px]">Experience / Qualification</span>

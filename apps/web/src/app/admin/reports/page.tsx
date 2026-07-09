@@ -71,7 +71,7 @@ interface CoachStat {
   avatar_url: string | null;
   is_active: boolean;
   coach_profile: {
-    expertise: string | null;
+    coach_categories: { is_primary: boolean; subcategory: { name: string } | null }[] | null;
     availability_slots?: string | null;
     hourly_rate?: number;
   } | null;
@@ -460,7 +460,7 @@ function AdminReportsContent() {
         .from('users')
         .select(`
           id, first_name, last_name, avatar_url, is_active,
-          coach_profile:coaches(expertise:primary_skill, hourly_rate, availability_slots),
+          coach_profile:coaches(coach_categories(is_primary, subcategory:subcategories(name)), hourly_rate, availability_slots),
           batch_assignments:coach_batch_assignments!coach_batch_assignments_coach_id_fkey(id, status, batch_id)
         `)
         .eq('tenant_id', tId)
@@ -503,7 +503,7 @@ function AdminReportsContent() {
             avatar_url: c.avatar_url,
             is_active: c.is_active,
             coach_profile: {
-              expertise: c.coach_profile?.expertise || null,
+              coach_categories: c.coach_profile?.coach_categories || null,
               availability_slots: c.coach_profile?.availability_slots || null,
               hourly_rate: hourlyRate
             },
@@ -1678,7 +1678,7 @@ function AdminReportsContent() {
                                 </div>
                               </td>
                               <td className="p-3 text-slate-400 max-w-[140px]">
-                                <span className="truncate block">{coach.coach_profile?.expertise || '—'}</span>
+                                <span className="truncate block">{coach.coach_profile?.coach_categories?.find(cc => cc.is_primary)?.subcategory?.name || '—'}</span>
                               </td>
                               <td className="p-3 max-w-[160px]">
                                 {coach.coach_profile?.availability_slots

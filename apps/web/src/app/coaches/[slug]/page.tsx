@@ -61,11 +61,11 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const { data: coach } = await db
     .from('coaches')
     .select(`
-      primary_skill,
       experience_years,
       city,
       area,
-      users (first_name, last_name, bio)
+      users (first_name, last_name, bio),
+      coach_categories(is_primary, subcategory:subcategories(name))
     `)
     .eq('public_profile_slug', slug)
     .single();
@@ -78,7 +78,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
   const u = coach.users as any;
   const name = `${u?.first_name ?? ''} ${u?.last_name ?? ''}`.trim();
-  const skill = coach.primary_skill;
+  const skill = (coach.coach_categories as any[] | null)?.find(cc => cc.is_primary)?.subcategory?.name ?? 'Coaching';
   const location = [coach.area, coach.city].filter(Boolean).join(', ') || 'India';
 
   return {
@@ -102,10 +102,11 @@ export default async function PublicCoachProfilePage({ params }: PageProps) {
   const { data: coachData, error } = await db
     .from('coaches')
     .select(`
-      id, primary_skill, experience_years, service_types, class_types, languages_known,
+      id, experience_years, service_types, class_types, languages_known,
       qualification, certifications_summary, bio, country, state, city, area,
       avg_rating, satisfaction_score, achievements, gallery_urls,
-      user:users(first_name, last_name, email, phone, avatar_url)
+      user:users(first_name, last_name, email, phone, avatar_url),
+      coach_categories(is_primary, subcategory:subcategories(name, slug, category:categories(name, slug, icon)))
     `)
     .eq('public_profile_slug', slug)
     .single();
@@ -116,6 +117,8 @@ export default async function PublicCoachProfilePage({ params }: PageProps) {
 
   const coach = coachData as any;
   const u = coach.user;
+  const primarySkill = (coach.coach_categories ?? []).find((cc: any) => cc.is_primary)?.subcategory?.name ?? 'Coaching';
+  const allSpecialties = (coach.coach_categories ?? []).map((cc: any) => cc.subcategory?.name).filter(Boolean);
 
   // 2. Fetch approved batch assignments mapped to this coach
   const { data: assignments } = await db
@@ -186,7 +189,7 @@ export default async function PublicCoachProfilePage({ params }: PageProps) {
           <div className="flex-1 space-y-3.5">
             <div className="flex flex-col sm:flex-row sm:items-center justify-center md:justify-start gap-2.5">
               <span className="px-3 py-1 rounded-full text-xs font-semibold bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 self-center sm:self-auto">
-                {coach.primary_skill}
+                {primarySkill}
               </span>
               <div className="flex items-center justify-center gap-1 text-xs text-amber-400">
                 <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
@@ -215,6 +218,11 @@ export default async function PublicCoachProfilePage({ params }: PageProps) {
                   {type === 'Online' ? <Wifi className="w-3.5 h-3.5 text-emerald-400" /> : <Globe className="w-3.5 h-3.5 text-indigo-400" />} {type}
                 </span>
               ))}
+              {allSpecialties.filter((name: string) => name !== primarySkill).map((name: string) => (
+                <span key={name} className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs bg-slate-900 border border-white/5 text-slate-300">
+                  {name}
+                </span>
+              ))}
             </div>
           </div>
         </div>
@@ -231,7 +239,7 @@ export default async function PublicCoachProfilePage({ params }: PageProps) {
                 <Users className="w-5 h-5 text-indigo-400" /> Professional Bio
               </h2>
               <p className="text-slate-300 text-sm sm:text-base leading-relaxed">
-                {coach.bio ?? `Coach ${u?.first_name} is a highly dedicated professional specializing in ${coach.primary_skill}. With a solid commitment to sports discipline, physical growth, and tailored instructional methodologies, students achieve outstanding growth trajectories.`}
+                {coach.bio ?? `Coach ${u?.first_name} is a highly dedicated professional specializing in ${primarySkill}. With a solid commitment to sports discipline, physical growth, and tailored instructional methodologies, students achieve outstanding growth trajectories.`}
               </p>
             </div>
 

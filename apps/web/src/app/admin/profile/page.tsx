@@ -29,6 +29,30 @@ import {
   Edit3,
 } from 'lucide-react';
 import { createBrowserClient } from '@supabase/ssr';
+import { useCategoryTaxonomy } from '@/lib/useCategoryTaxonomy';
+import { CategoryPicker, CategorySelection } from '@/components/CategoryPicker';
+
+const EMPTY_CATEGORY_SELECTION: CategorySelection = {
+  categoryId: null,
+  subcategoryIds: [],
+  primarySubcategoryId: null,
+  tagIds: [],
+  ageGroups: [],
+  skillLevels: [],
+};
+
+function buildCategorySelection(coachRow: any): CategorySelection {
+  const rows = coachRow?.coach_categories ?? [];
+  const primary = rows.find((r: any) => r.is_primary) ?? rows[0];
+  return {
+    categoryId: primary?.subcategory?.category?.id ?? null,
+    subcategoryIds: rows.map((r: any) => r.subcategory?.id).filter(Boolean),
+    primarySubcategoryId: primary?.subcategory?.id ?? null,
+    tagIds: (coachRow?.coach_tags ?? []).map((t: any) => t.tag_id),
+    ageGroups: coachRow?.age_groups ?? [],
+    skillLevels: coachRow?.skill_levels ?? [],
+  };
+}
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -54,7 +78,6 @@ interface UserProfile {
 }
 
 interface CoachProfile {
-  expertise: string | null;
   experience_years: number | null;
   availability_slots: string | null;
   hourly_rate: number | null;
@@ -80,7 +103,6 @@ interface CoachProfile {
   state: string | null;
   city: string | null;
   area: string | null;
-  primary_skill: string | null;
   service_types: string[] | null;
   class_types: string[] | null;
   languages_known: string[] | null;
@@ -147,7 +169,6 @@ export default function CoachProfilePage() {
 
   const [user, setUser] = useState<UserProfile | null>(null);
   const [coach, setCoach] = useState<CoachProfile>({
-    expertise: '',
     experience_years: 0,
     availability_slots: '',
     hourly_rate: null,
@@ -172,7 +193,6 @@ export default function CoachProfilePage() {
     state: '',
     city: '',
     area: '',
-    primary_skill: '',
     service_types: [],
     class_types: [],
     languages_known: [],
@@ -213,7 +233,9 @@ export default function CoachProfilePage() {
   const [editState, setEditState] = useState('');
   const [editCity, setEditCity] = useState('');
   const [editArea, setEditArea] = useState('');
-  const [editPrimarySkill, setEditPrimarySkill] = useState('');
+  const { categories: taxonomyCategories } = useCategoryTaxonomy();
+  const [categorySelection, setCategorySelection] = useState<CategorySelection>(EMPTY_CATEGORY_SELECTION);
+  const [savedCategorySelection, setSavedCategorySelection] = useState<CategorySelection>(EMPTY_CATEGORY_SELECTION);
   const [editServiceTypes, setEditServiceTypes] = useState<string[]>([]);
   const [editClassTypes, setEditClassTypes] = useState<string[]>([]);
   const [editLanguagesKnown, setEditLanguagesKnown] = useState<string[]>([]);
@@ -283,12 +305,14 @@ export default function CoachProfilePage() {
           supabase
             .from('coaches')
             .select(`
-              expertise:primary_skill, primary_skill, experience_years,
+              experience_years,
               employee_id, designation, department, specialization, employee_type, working_days,
               gender, date_of_birth, address, emergency_contact_name, emergency_contact_relationship,
               emergency_contact_phone, emergency_contact_address, joining_date, bio, qualification,
               avg_rating, state, city, area, service_types, class_types, languages_known,
-              account_status
+              account_status, age_groups, skill_levels,
+              coach_categories(is_primary, subcategory:subcategories(id, name, slug, category:categories(id, name, slug, icon))),
+              coach_tags(tag_id)
             `)
             .eq('id', userId)
             .single(),
@@ -348,7 +372,9 @@ export default function CoachProfilePage() {
           setEditState(cd.state ?? '');
           setEditCity(cd.city ?? '');
           setEditArea(cd.area ?? '');
-          setEditPrimarySkill(cd.primary_skill ?? cd.expertise ?? '');
+          const selection = buildCategorySelection(coachRes.data);
+          setCategorySelection(selection);
+          setSavedCategorySelection(selection);
           setEditServiceTypes(cd.service_types ?? []);
           setEditClassTypes(cd.class_types ?? []);
           setEditLanguagesKnown(cd.languages_known ?? []);
@@ -467,8 +493,11 @@ export default function CoachProfilePage() {
         emergencyContactPhone: editEmergencyContactPhone,
         emergencyContactAddress: editEmergencyContactAddress,
         bio: editBio,
-        expertise: editPrimarySkill, // Map primary skill to expertise
-        primarySkill: editPrimarySkill,
+        primarySubcategoryId: categorySelection.primarySubcategoryId,
+        subcategoryIds: categorySelection.subcategoryIds,
+        tagIds: categorySelection.tagIds,
+        ageGroups: categorySelection.ageGroups,
+        skillLevels: categorySelection.skillLevels,
         qualification: editQualification,
         state: editState,
         city: editCity,
@@ -502,10 +531,10 @@ export default function CoachProfilePage() {
         notification_preferences: putBody.notificationPreferences,
       } : null);
 
+      setSavedCategorySelection(categorySelection);
+
       setCoach((prev) => ({
         ...prev,
-        expertise: editPrimarySkill,
-        primary_skill: editPrimarySkill,
         employee_id: editEmployeeId,
         specialization: editSpecialization,
         experience_years: editExperienceYears ? Number(editExperienceYears) : 0,
@@ -577,7 +606,7 @@ export default function CoachProfilePage() {
     setEditState(coach.state ?? '');
     setEditCity(coach.city ?? '');
     setEditArea(coach.area ?? '');
-    setEditPrimarySkill(coach.primary_skill ?? coach.expertise ?? '');
+    setCategorySelection(savedCategorySelection);
     setEditServiceTypes(coach.service_types ?? []);
     setEditClassTypes(coach.class_types ?? []);
     setEditLanguagesKnown(coach.languages_known ?? []);
@@ -898,7 +927,9 @@ export default function CoachProfilePage() {
                 </span>
               </div>
               <p className="text-sm font-medium" style={{ color: 'var(--foreground-muted)' }}>
-                {coach.primary_skill || coach.expertise || 'Coach'}
+                {taxonomyCategories
+                  .find(c => c.id === savedCategorySelection.categoryId)
+                  ?.subcategories.find(s => s.id === savedCategorySelection.primarySubcategoryId)?.name || 'Coach'}
               </p>
               <p className="text-xs text-indigo-600 dark:text-indigo-400 font-semibold mt-1">
                 Unique Id: {coach.employee_id || 'Generating...'}
@@ -1259,7 +1290,9 @@ export default function CoachProfilePage() {
                   <div className="flex flex-row items-start py-1 first:pt-0">
                     <span className="font-medium w-28 sm:w-36 shrink-0" style={{ color: 'var(--foreground-muted)' }}>Primary Skill</span>
                     <span className="font-normal break-words min-w-0 flex-1" style={{ color: 'var(--foreground)' }}>
-                      {coach.primary_skill || coach.expertise || '—'}
+                      {taxonomyCategories
+                        .find(c => c.id === savedCategorySelection.categoryId)
+                        ?.subcategories.find(s => s.id === savedCategorySelection.primarySubcategoryId)?.name || '—'}
                     </span>
                   </div>
                   <div className="flex flex-row items-start py-1">
@@ -1326,13 +1359,12 @@ export default function CoachProfilePage() {
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-                  <div>
-                    <label className="block text-slate-500 dark:text-slate-400 font-bold mb-1.5">Primary Skill <span className="text-red-500">*</span></label>
-                    <input
-                      type="text"
-                      value={editPrimarySkill}
-                      onChange={(e) => setEditPrimarySkill(e.target.value)}
-                      className="glass-input w-full rounded-xl px-3 py-2 focus:outline-none"
+                  <div className="md:col-span-2">
+                    <CategoryPicker
+                      categories={taxonomyCategories}
+                      value={categorySelection}
+                      onChange={setCategorySelection}
+                      theme="dark"
                     />
                   </div>
                   <div>

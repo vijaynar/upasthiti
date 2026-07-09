@@ -21,7 +21,7 @@ export async function GET(req: Request) {
       .select(`
         id, status, assigned_days, created_at,
         coach:coach_id(id, first_name, last_name, email, phone, avatar_url,
-          coach_profile:coaches(expertise:primary_skill)
+          coach_profile:coaches(coach_categories(is_primary, subcategory:subcategories(name)))
         ),
         batch:batch_id(id, name, start_time, end_time, days_of_week,
           class:classes(name)

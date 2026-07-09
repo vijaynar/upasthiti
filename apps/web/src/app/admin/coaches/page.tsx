@@ -60,7 +60,6 @@ interface CoachItem {
   avatar_url: string | null;
   is_active: boolean;
   coach_profile: {
-    primary_skill: string;
     experience_years: number;
     service_types: string[];
     class_types: string[];
@@ -82,6 +81,10 @@ interface CoachItem {
     conversion_rate: number;
     satisfaction_score: number;
     created_at: string;
+    coach_categories: {
+      is_primary: boolean;
+      subcategory: { name: string; slug: string; category: { name: string; slug: string; icon: string | null } | null } | null;
+    }[];
   } | null;
   batch_assignments: {
     id: string;
@@ -536,7 +539,7 @@ export default function CoachesPage() {
       c.first_name.toLowerCase().includes(q) ||
       c.last_name.toLowerCase().includes(q) ||
       c.email.toLowerCase().includes(q) ||
-      (c.coach_profile?.primary_skill ?? '').toLowerCase().includes(q)
+      (c.coach_profile?.coach_categories ?? []).some(cc => (cc.subcategory?.name ?? '').toLowerCase().includes(q))
     );
   });
 
@@ -671,7 +674,9 @@ export default function CoachesPage() {
                         </td>
                         <td className="px-4 py-3.5">
                           <div className="flex flex-col gap-1">
-                            <span className="text-slate-200 text-xs font-medium">{coach.coach_profile?.primary_skill}</span>
+                            <span className="text-slate-200 text-xs font-medium">
+                              {coach.coach_profile?.coach_categories?.find(cc => cc.is_primary)?.subcategory?.name ?? '—'}
+                            </span>
                             <span className="text-slate-500 text-[10px]">{coach.coach_profile?.experience_years} Years Experience</span>
                           </div>
                         </td>

@@ -11,14 +11,16 @@ import {
   SlidersHorizontal,
   Loader2,
   ArrowLeft,
+  Check,
 } from 'lucide-react';
+import { useCategoryTaxonomy, Tag } from '@/lib/useCategoryTaxonomy';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Coach {
   id: string;
   public_profile_slug: string;
-  primary_skill: string;
+  primarySubcategoryName: string | null;
   bio: string | null;
   city: string | null;
   area: string | null;
@@ -27,6 +29,8 @@ interface Coach {
   experience_years: number | null;
   service_types: string[];
   class_types: string[];
+  age_groups: string[];
+  skill_levels: string[];
   user_data: {
     first_name: string;
     last_name: string;
@@ -36,23 +40,6 @@ interface Coach {
 
 // ─── Filter options ───────────────────────────────────────────────────────────
 
-const CATEGORIES = [
-  { key: 'all',         label: 'All Categories'  },
-  { key: 'sports',      label: '🏃 Sports'        },
-  { key: 'cricket',     label: '🏏 Cricket'       },
-  { key: 'swimming',    label: '🏊 Swimming'      },
-  { key: 'football',    label: '⚽ Football'      },
-  { key: 'basketball',  label: '🏀 Basketball'    },
-  { key: 'education',   label: '📚 Education'     },
-  { key: 'mathematics', label: '🔢 Mathematics'   },
-  { key: 'music',       label: '🎵 Music'         },
-  { key: 'dance',       label: '💃 Dance'         },
-  { key: 'fitness',     label: '🏋️ Fitness'       },
-  { key: 'yoga',        label: '🧘 Yoga'          },
-  { key: 'art',         label: '🎨 Art'           },
-  { key: 'language',    label: '🌐 Language'      },
-];
-
 const RATING_OPTIONS = [
   { label: 'Any Rating',  value: 0   },
   { label: '4.0 & above', value: 4.0 },
@@ -60,12 +47,22 @@ const RATING_OPTIONS = [
   { label: '4.8 & above', value: 4.8 },
 ];
 
+const AGE_GROUPS = ['Kids', 'Teens', 'Adults'];
+const SKILL_LEVELS = ['Beginner', 'Intermediate', 'Advanced'];
+const TAG_TYPE_LABELS: Record<Tag['tag_type'], string> = {
+  board: 'Board',
+  subject: 'Subjects',
+  stream: 'Stream',
+  exam: 'Exams',
+};
+
 const LIMIT = 12;
 
 // ─── Main content (needs Suspense boundary for useSearchParams) ───────────────
 
 function CoachSearchContent() {
   const searchParams = useSearchParams();
+  const { categories } = useCategoryTaxonomy();
 
   const [coaches,     setCoaches]     = useState<Coach[]>([]);
   const [total,       setTotal]       = useState(0);
@@ -74,21 +71,32 @@ function CoachSearchContent() {
   const [showFilters, setShowFilters] = useState(false);
 
   // Initialise filters from URL query params
-  const [search,    setSearch]    = useState(searchParams.get('search')    ?? '');
-  const [city,      setCity]      = useState(searchParams.get('city')      ?? '');
-  const [category,  setCategory]  = useState(searchParams.get('category') ?? 'all');
-  const [minRating, setMinRating] = useState(
+  const [search,        setSearch]        = useState(searchParams.get('search')        ?? '');
+  const [city,          setCity]          = useState(searchParams.get('city')          ?? '');
+  const [categoryId,    setCategoryId]    = useState(searchParams.get('categoryId')    ?? '');
+  const [subcategoryId, setSubcategoryId] = useState(searchParams.get('subcategoryId') ?? '');
+  const [tagIds,        setTagIds]        = useState<string[]>([]);
+  const [ageGroup,      setAgeGroup]      = useState('');
+  const [skillLevel,    setSkillLevel]    = useState('');
+  const [minRating,     setMinRating]     = useState(
     parseFloat(searchParams.get('minRating') ?? '0')
   );
+
+  const activeCategory = categories.find(c => c.id === categoryId) ?? null;
+  const activeSubcategory = activeCategory?.subcategories.find(s => s.id === subcategoryId) ?? null;
 
   const fetchCoaches = useCallback(async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
-      if (search)                      params.set('search',    search);
-      if (city)                        params.set('city',      city);
-      if (category && category !== 'all') params.set('category', category);
-      if (minRating > 0)               params.set('minRating', String(minRating));
+      if (search)        params.set('search',        search);
+      if (city)          params.set('city',          city);
+      if (subcategoryId) params.set('subcategoryId', subcategoryId);
+      else if (categoryId) params.set('categoryId',  categoryId);
+      if (tagIds.length > 0) params.set('tagIds',     tagIds.join(','));
+      if (ageGroup)       params.set('ageGroup',      ageGroup);
+      if (skillLevel)     params.set('skillLevel',    skillLevel);
+      if (minRating > 0)  params.set('minRating',     String(minRating));
       params.set('page',  String(page));
       params.set('limit', String(LIMIT));
 
@@ -103,7 +111,7 @@ function CoachSearchContent() {
     } finally {
       setLoading(false);
     }
-  }, [search, city, category, minRating, page]);
+  }, [search, city, categoryId, subcategoryId, tagIds, ageGroup, skillLevel, minRating, page]);
 
   useEffect(() => { fetchCoaches(); }, [fetchCoaches]);
 
@@ -111,10 +119,38 @@ function CoachSearchContent() {
   const clearFilters = () => {
     setSearch('');
     setCity('');
-    setCategory('all');
+    setCategoryId('');
+    setSubcategoryId('');
+    setTagIds([]);
+    setAgeGroup('');
+    setSkillLevel('');
     setMinRating(0);
     setPage(1);
   };
+
+  const selectCategory = (id: string) => {
+    setCategoryId(id === categoryId ? '' : id);
+    setSubcategoryId('');
+    setTagIds([]);
+    setPage(1);
+  };
+
+  const selectSubcategory = (id: string) => {
+    setSubcategoryId(id === subcategoryId ? '' : id);
+    setTagIds([]);
+    setPage(1);
+  };
+
+  const toggleTag = (id: string) => {
+    setTagIds(prev => prev.includes(id) ? prev.filter(t => t !== id) : [...prev, id]);
+    setPage(1);
+  };
+
+  const tagsByType = new Map<Tag['tag_type'], Tag[]>();
+  for (const tag of activeSubcategory?.tags ?? []) {
+    if (!tagsByType.has(tag.tag_type)) tagsByType.set(tag.tag_type, []);
+    tagsByType.get(tag.tag_type)!.push(tag);
+  }
 
   const totalPages = Math.ceil(total / LIMIT);
 
@@ -181,17 +217,115 @@ function CoachSearchContent() {
                 Category
               </h3>
               <div className="space-y-0.5 max-h-64 overflow-y-auto no-scrollbar">
-                {CATEGORIES.map(cat => (
+                {categories.map(cat => (
                   <button
-                    key={cat.key}
-                    onClick={() => { setCategory(cat.key); setPage(1); }}
+                    key={cat.id}
+                    onClick={() => selectCategory(cat.id)}
                     className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                      category === cat.key
+                      categoryId === cat.id
                         ? 'bg-indigo-600 text-white'
                         : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.05]'
                     }`}
                   >
-                    {cat.label}
+                    {cat.icon ? `${cat.icon} ` : ''}{cat.name} ({cat.coachCount})
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Subcategory (only once a category is picked) */}
+            {activeCategory && (
+              <div>
+                <h3 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-3">
+                  Specialty
+                </h3>
+                <div className="flex flex-wrap gap-1.5">
+                  {activeCategory.subcategories.map(sub => (
+                    <button
+                      key={sub.id}
+                      onClick={() => selectSubcategory(sub.id)}
+                      className={`px-2.5 py-1 rounded-lg border text-[10px] font-semibold transition-all flex items-center gap-1 ${
+                        subcategoryId === sub.id
+                          ? 'bg-indigo-600 border-indigo-600 text-white'
+                          : 'bg-white/[0.03] border-white/10 text-slate-400 hover:bg-white/[0.08]'
+                      }`}
+                    >
+                      {subcategoryId === sub.id && <Check className="w-3 h-3 stroke-[3]" />}
+                      {sub.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Tags (Board / Subject / Stream / Exam) — Academic subcategories only */}
+            {activeSubcategory && ['board', 'subject', 'stream', 'exam'].map(type => {
+              const typeTags = tagsByType.get(type as Tag['tag_type']);
+              if (!typeTags || typeTags.length === 0) return null;
+              return (
+                <div key={type}>
+                  <h3 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-3">
+                    {TAG_TYPE_LABELS[type as Tag['tag_type']]}
+                  </h3>
+                  <div className="flex flex-wrap gap-1.5">
+                    {typeTags.map(tag => (
+                      <button
+                        key={tag.id}
+                        onClick={() => toggleTag(tag.id)}
+                        className={`px-2.5 py-1 rounded-lg border text-[10px] font-semibold transition-all flex items-center gap-1 ${
+                          tagIds.includes(tag.id)
+                            ? 'bg-indigo-600 border-indigo-600 text-white'
+                            : 'bg-white/[0.03] border-white/10 text-slate-400 hover:bg-white/[0.08]'
+                        }`}
+                      >
+                        {tagIds.includes(tag.id) && <Check className="w-3 h-3 stroke-[3]" />}
+                        {tag.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* Age Group */}
+            <div>
+              <h3 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-3">
+                Age Group
+              </h3>
+              <div className="flex flex-wrap gap-1.5">
+                {AGE_GROUPS.map(ag => (
+                  <button
+                    key={ag}
+                    onClick={() => { setAgeGroup(ageGroup === ag ? '' : ag); setPage(1); }}
+                    className={`px-2.5 py-1 rounded-lg border text-[10px] font-semibold transition-all ${
+                      ageGroup === ag
+                        ? 'bg-indigo-600 border-indigo-600 text-white'
+                        : 'bg-white/[0.03] border-white/10 text-slate-400 hover:bg-white/[0.08]'
+                    }`}
+                  >
+                    {ag}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Skill Level */}
+            <div>
+              <h3 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-3">
+                Skill Level
+              </h3>
+              <div className="flex flex-wrap gap-1.5">
+                {SKILL_LEVELS.map(sl => (
+                  <button
+                    key={sl}
+                    onClick={() => { setSkillLevel(skillLevel === sl ? '' : sl); setPage(1); }}
+                    className={`px-2.5 py-1 rounded-lg border text-[10px] font-semibold transition-all ${
+                      skillLevel === sl
+                        ? 'bg-indigo-600 border-indigo-600 text-white'
+                        : 'bg-white/[0.03] border-white/10 text-slate-400 hover:bg-white/[0.08]'
+                    }`}
+                  >
+                    {sl}
                   </button>
                 ))}
               </div>
@@ -223,7 +357,7 @@ function CoachSearchContent() {
             </div>
 
             {/* Clear filters */}
-            {(category !== 'all' || minRating > 0 || city || search) && (
+            {(categoryId || subcategoryId || tagIds.length > 0 || ageGroup || skillLevel || minRating > 0 || city || search) && (
               <button
                 onClick={clearFilters}
                 className="w-full text-center text-xs text-red-400 hover:text-red-300 py-1 transition-colors"
@@ -307,7 +441,7 @@ function CoachSearchContent() {
                           </span>
                         </div>
                         <div className="absolute bottom-2 left-2 px-2 py-0.5 rounded-full bg-indigo-600/80 backdrop-blur-sm text-[10px] font-semibold text-white">
-                          {coach.primary_skill}
+                          {coach.primarySubcategoryName ?? 'Coach'}
                         </div>
                       </div>
 

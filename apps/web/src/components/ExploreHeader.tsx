@@ -60,7 +60,7 @@ export default async function ExploreHeader() {
                 ABHYAS
               </div>
               <div className="text-[8px] text-indigo-400 font-semibold tracking-widest mt-0.5">
-                SMART ACADEMY
+                SMART ACADEMY<br />MANAGEMENT
               </div>
             </div>
           </Link>

@@ -2,9 +2,18 @@
 // Run with: node scripts/sync-coach-status.mjs
 
 import { createClient } from '@supabase/supabase-js';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
 
-const SUPABASE_URL = 'https://dcdnfqxvksjznfyktqhg.supabase.co';
-const SERVICE_ROLE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRjZG5mcXh2a3Nqem5meWt0cWhnIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3OTQzNzM0NCwiZXhwIjoyMDk1MDEzMzQ0fQ.UjCN_loCKhNtn0dCPJSXCvmeQ3UAXr7bIchKdH2eWBs';
+process.loadEnvFile(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../apps/web/.env.local'));
+
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
+  console.error('❌ Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in apps/web/.env.local');
+  process.exit(1);
+}
 
 /**
  * Status lifecycle rules:

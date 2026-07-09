@@ -12,6 +12,37 @@ function generateSlug(firstName: string, lastName: string): string {
   return `${base}-${rand}`;
 }
 
+// Replace a coach's category/tag tagging in one shot (delete-then-reinsert —
+// simple and safe at this join-table size, avoids diffing old vs new sets).
+async function syncCoachCategories(
+  db: ReturnType<typeof adminDb>,
+  coachId: string,
+  subcategoryIds: string[],
+  primarySubcategoryId: string,
+  tagIds: string[]
+) {
+  await db.from('coach_categories').delete().eq('coach_id', coachId);
+  await db.from('coach_tags').delete().eq('coach_id', coachId);
+
+  if (subcategoryIds.length > 0) {
+    const { error } = await db.from('coach_categories').insert(
+      subcategoryIds.map(subcategoryId => ({
+        coach_id: coachId,
+        subcategory_id: subcategoryId,
+        is_primary: subcategoryId === primarySubcategoryId,
+      }))
+    );
+    if (error) throw error;
+  }
+
+  if (tagIds.length > 0) {
+    const { error } = await db.from('coach_tags').insert(
+      tagIds.map(tagId => ({ coach_id: coachId, tag_id: tagId }))
+    );
+    if (error) throw error;
+  }
+}
+
 export async function GET(req: Request) {
   try {
     const ctx = await getAuthContext();
@@ -29,10 +60,12 @@ export async function GET(req: Request) {
       .select(`
         id, email, first_name, last_name, phone, avatar_url, is_active, role,
         coach_profile:coaches!inner(
-          primary_skill, experience_years, service_types, class_types, languages_known,
+          experience_years, service_types, class_types, languages_known,
           qualification, certifications_summary, joining_date, bio, country, state, city,
           area, account_status, public_profile_slug, achievements, gallery_urls,
-          avg_rating, retention_rate, conversion_rate, satisfaction_score, created_at
+          avg_rating, retention_rate, conversion_rate, satisfaction_score, created_at,
+          age_groups, skill_levels,
+          coach_categories(is_primary, subcategory:subcategories(name, slug, category:categories(name, slug, icon)))
         ),
         batch_assignments:coach_batch_assignments!coach_batch_assignments_coach_id_fkey(
           id, status, batch_id,
@@ -66,17 +99,25 @@ export async function POST(req: Request) {
     if (!hasRole(ctx, 'admin', 'superadmin')) return err('Forbidden', 403);
 
     const body = await req.json();
-    const { 
+    const {
       email, password, firstName, lastName, phone, avatarUrl,
-      primarySkill, experienceYears, serviceTypes, classTypes, languagesKnown,
+      primarySubcategoryId, subcategoryIds, tagIds, ageGroups, skillLevels,
+      experienceYears, serviceTypes, classTypes, languagesKnown,
       qualification, certificationsSummary, joiningDate, bio,
       country, state, city, area, address, specialization,
       salaryType, fixedSalary, perClassRate, revenueSharePct,
       bankAccountNumber, bankIfscCode, bankName, upiId, panNumber, tenantId
     } = body;
 
-    if (!email || !password || !firstName || !lastName || !primarySkill || experienceYears === undefined) {
-      return err('email, password, firstName, lastName, primarySkill, and experienceYears are required', 422);
+    if (!email || !password || !firstName || !lastName || !primarySubcategoryId || experienceYears === undefined) {
+      return err('email, password, firstName, lastName, primarySubcategoryId, and experienceYears are required', 422);
+    }
+
+    const resolvedSubcategoryIds: string[] = Array.isArray(subcategoryIds) && subcategoryIds.length > 0
+      ? subcategoryIds
+      : [primarySubcategoryId];
+    if (!resolvedSubcategoryIds.includes(primarySubcategoryId)) {
+      resolvedSubcategoryIds.push(primarySubcategoryId);
     }
 
     const db = adminDb();
@@ -135,7 +176,6 @@ export async function POST(req: Request) {
       .insert({
         id: userId,
         tenant_id: effectiveTenantId,
-        primary_skill: primarySkill,
         experience_years: Number(experienceYears),
         service_types: serviceTypes ?? ['Offline'],
         class_types: classTypes ?? ['Group Classes'],
@@ -149,8 +189,9 @@ export async function POST(req: Request) {
         city: city ?? null,
         area: area ?? null,
         address: address ?? null,
-        designation: primarySkill,
         specialization: specialization ?? null,
+        age_groups: ageGroups ?? [],
+        skill_levels: skillLevels ?? [],
         account_status: 'Onboarding',
         public_profile_slug: slug,
         achievements: [],
@@ -166,6 +207,16 @@ export async function POST(req: Request) {
     if (coachErr) {
       await db.auth.admin.deleteUser(userId);
       throw coachErr;
+    }
+
+    // 3b. Tag the coach with its category/subcategory/tag selections
+    try {
+      await syncCoachCategories(db, userId, resolvedSubcategoryIds, primarySubcategoryId, tagIds ?? []);
+    } catch (tagErr) {
+      await db.from('coaches').delete().eq('id', userId);
+      await db.from('users').delete().eq('id', userId);
+      await db.auth.admin.deleteUser(userId);
+      throw tagErr;
     }
 
     // 4. Insert coach financial settings
@@ -313,11 +364,6 @@ export async function PUT(req: Request) {
 
     // Action: update coach profile fields
     const coachUpdate: Record<string, any> = {};
-    if (fields.primarySkill !== undefined) {
-      coachUpdate.primary_skill = fields.primarySkill;
-    } else if (fields.expertise !== undefined) {
-      coachUpdate.primary_skill = fields.expertise;
-    }
     if (fields.experienceYears !== undefined) coachUpdate.experience_years = Number(fields.experienceYears);
     if (fields.serviceTypes !== undefined) coachUpdate.service_types = fields.serviceTypes;
     if (fields.classTypes !== undefined) coachUpdate.class_types = fields.classTypes;
@@ -333,6 +379,19 @@ export async function PUT(req: Request) {
     if (fields.publicProfileSlug !== undefined) coachUpdate.public_profile_slug = fields.publicProfileSlug;
     if (fields.achievements !== undefined) coachUpdate.achievements = fields.achievements;
     if (fields.galleryUrls !== undefined) coachUpdate.gallery_urls = fields.galleryUrls;
+    if (fields.ageGroups !== undefined) coachUpdate.age_groups = fields.ageGroups;
+    if (fields.skillLevels !== undefined) coachUpdate.skill_levels = fields.skillLevels;
+
+    // Category/subcategory/tag tagging — replace the whole set when provided
+    if (fields.primarySubcategoryId) {
+      const resolvedSubcategoryIds: string[] = Array.isArray(fields.subcategoryIds) && fields.subcategoryIds.length > 0
+        ? [...fields.subcategoryIds]
+        : [fields.primarySubcategoryId];
+      if (!resolvedSubcategoryIds.includes(fields.primarySubcategoryId)) {
+        resolvedSubcategoryIds.push(fields.primarySubcategoryId);
+      }
+      await syncCoachCategories(db, coachId, resolvedSubcategoryIds, fields.primarySubcategoryId, fields.tagIds ?? []);
+    }
 
     // Redesigned profile new fields
     if (fields.accountStatus !== undefined) {
