@@ -1,6 +1,6 @@
-# Upasthiti — Developer Setup Guide
+# Abhyas — Developer Setup Guide
 
-> AI-powered attendance & student progress platform. Monorepo using **Turborepo + Next.js + Expo React Native + Supabase**.
+> Smart academy management + public coach/academy Discovery marketplace. Monorepo using **Turborepo + Next.js + Expo React Native + Supabase**.
 
 ---
 
@@ -21,8 +21,8 @@
 ### 1. Clone & Install Dependencies
 
 ```bash
-git clone https://github.com/your-org/upasthiti.git
-cd upasthiti
+git clone https://github.com/your-org/abhyas.git
+cd abhyas
 npm install
 ```
 
@@ -93,7 +93,7 @@ Visit **http://localhost:54323** in your browser to access the local Supabase St
 See [`docs/directory_structure.md`](./directory_structure.md) for the full annotated file tree.
 
 ```
-Upasthiti/
+Abhyas/
 ├── supabase/migrations/     ← SQL migrations (Phases 1)
 ├── packages/
 │   ├── database/            ← Shared Supabase clients + TypeScript DB types

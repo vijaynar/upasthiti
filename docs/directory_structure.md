@@ -1,11 +1,11 @@
-# Upasthiti — Monorepo Directory Structure
+# Abhyas — Monorepo Directory Structure
 
 > Covers **all 5 phases** of the MVP. Deferred modules (Health Tracker, Payment Queue, Insights, Notifications) are marked `[LATER]` and will NOT be created now.
 
 ---
 
 ```
-c:\src\Upasthiti\
+c:\src\Abhyas\
 │
 ├── 📄 package.json                        # Root workspace config (workspaces: apps/*, packages/*)
 ├── 📄 turbo.json                          # Turborepo pipeline: build, dev, lint caches

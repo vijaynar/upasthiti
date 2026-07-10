@@ -10,6 +10,8 @@ import {
 } from 'lucide-react';
 import { useCategoryTaxonomy } from '@/lib/useCategoryTaxonomy';
 import { CategoryPicker, CategorySelection } from '@/components/CategoryPicker';
+import { useServiceAreas } from '@/lib/useServiceAreas';
+import { ServiceAreaPicker, ServiceAreaSelection } from '@/components/ServiceAreaPicker';
 
 const SERVICE_TYPES_ONBOARD = [
   { value: 'Offline', label: 'Offline Coaching' },
@@ -91,6 +93,11 @@ export function CoachOnboardingWizard({
   const [classTypes, setClassTypes] = useState<string[]>(['Group Classes']);
   const [bio, setBio] = useState('Passionate sports coach with years of training experience.');
   const [certificationsSummary, setCertificationsSummary] = useState('');
+  const { areas: serviceAreas } = useServiceAreas();
+  const [serviceAreaSelection, setServiceAreaSelection] = useState<ServiceAreaSelection>({
+    areaIds: [],
+    communities: [],
+  });
 
   // Admin Only Payroll Configs
   const [salaryType, setSalaryType] = useState('Fixed Monthly');
@@ -226,6 +233,11 @@ export function CoachOnboardingWizard({
     setBio('Passionate coaching specialist focused on standard fitness, skill refinement, and consistent training modules.');
     setCertificationsSummary('National Coaching Federation Level 2, Certified Sports Physiologist.');
 
+    if (serviceAreas.length > 0) {
+      const shuffled = [...serviceAreas].sort(() => Math.random() - 0.5);
+      setServiceAreaSelection({ areaIds: shuffled.slice(0, 2).map(a => a.id), communities: [] });
+    }
+
     setAddressLine('Flat 402, 3rd Block, Lotus Apts');
     setBankName('State Bank of India');
     setBankAccountNumber(`3040506070${randomId}`);
@@ -247,8 +259,14 @@ export function CoachOnboardingWizard({
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // Plain async function, not a form submit handler — the final step's button
+  // is type="button" with an explicit onClick, so this only ever runs when the
+  // user actually clicks it. (Wiring this to a native <form onSubmit>, with a
+  // button that toggles type="button" -> type="submit" across the step 4 -> 5
+  // transition in the same DOM position, caused the whole form to submit the
+  // instant Step 5 rendered — the type flip was enough to trigger an implicit
+  // submit before the user clicked anything.)
+  const submitOnboarding = async () => {
     setError(null);
     setLoading(true);
 
@@ -269,6 +287,8 @@ export function CoachOnboardingWizard({
           tagIds: categorySelection.tagIds,
           ageGroups: categorySelection.ageGroups,
           skillLevels: categorySelection.skillLevels,
+          serviceAreaIds: serviceAreaSelection.areaIds,
+          serviceCommunityIds: serviceAreaSelection.communities.map(c => c.id),
           experienceYears: Number(experienceYears),
           serviceTypes,
           classTypes,
@@ -324,6 +344,8 @@ export function CoachOnboardingWizard({
             tagIds: categorySelection.tagIds,
             ageGroups: categorySelection.ageGroups,
             skillLevels: categorySelection.skillLevels,
+            serviceAreaIds: serviceAreaSelection.areaIds,
+            serviceCommunityIds: serviceAreaSelection.communities.map(c => c.id),
             experienceYears: Number(experienceYears),
             serviceTypes,
             classTypes,
@@ -539,7 +561,10 @@ export function CoachOnboardingWizard({
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="p-6 flex-1 flex flex-col justify-between space-y-6 min-h-[480px]">
+        {/* Not wired to a real submission flow — submitOnboarding runs only from
+            the Step 5 button's explicit onClick. onSubmit is just a safety net
+            against any stray native form submission (e.g. Enter key). */}
+        <form onSubmit={(e) => e.preventDefault()} className="p-6 flex-1 flex flex-col justify-between space-y-6 min-h-[480px]">
           
           {/* STEP 1: Personal Information */}
           {step === 1 && (
@@ -675,6 +700,42 @@ export function CoachOnboardingWizard({
                     }`}
                   />
                   <p className="text-[10px] text-slate-400 mt-1">Must be at least 18 years old</p>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="block text-xs font-medium">Languages Known</label>
+                <div className={`flex flex-wrap gap-1.5 p-2 border rounded-xl min-h-[44px] items-center ${
+                  isDark ? 'border-white/10 bg-white/[0.02]' : 'border-slate-200 bg-slate-50/50'
+                }`}>
+                  {languagesKnown.map(lang => (
+                    <span key={lang} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-semibold bg-indigo-500/10 border border-indigo-500/20 text-indigo-400">
+                      {lang}
+                      <button type="button" onClick={() => removeLanguage(lang)} className="hover:text-indigo-650"><X className="w-2.5 h-2.5" /></button>
+                    </span>
+                  ))}
+                  <input
+                    type="text"
+                    value={langInput}
+                    onChange={(e) => setLangInput(e.target.value)}
+                    onKeyDown={addLanguage}
+                    placeholder="Type + Enter to add"
+                    className="flex-1 min-w-[120px] bg-transparent outline-none border-none text-xs px-1 text-slate-600 dark:text-slate-300"
+                  />
+                </div>
+                <div className="flex flex-wrap gap-1.5 mt-1">
+                  {LANGUAGES_ONBOARD.filter(l => !languagesKnown.includes(l)).map(l => (
+                    <button
+                      key={l}
+                      type="button"
+                      onClick={() => setLanguagesKnown(prev => [...prev, l])}
+                      className={`px-2 py-0.5 rounded-md border text-[10px] font-medium transition-colors ${
+                        isDark ? 'border-white/10 bg-white/5 text-slate-400 hover:bg-white/10' : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'
+                      }`}
+                    >
+                      + {l}
+                    </button>
+                  ))}
                 </div>
               </div>
 
@@ -839,42 +900,6 @@ export function CoachOnboardingWizard({
                 />
               </div>
 
-              <div className="space-y-1">
-                <label className="block text-xs font-medium">Languages Known</label>
-                <div className={`flex flex-wrap gap-1.5 p-2 border rounded-xl min-h-[44px] items-center ${
-                  isDark ? 'border-white/10 bg-white/[0.02]' : 'border-slate-200 bg-slate-50/50'
-                }`}>
-                  {languagesKnown.map(lang => (
-                    <span key={lang} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-semibold bg-indigo-500/10 border border-indigo-500/20 text-indigo-400">
-                      {lang}
-                      <button type="button" onClick={() => removeLanguage(lang)} className="hover:text-indigo-650"><X className="w-2.5 h-2.5" /></button>
-                    </span>
-                  ))}
-                  <input
-                    type="text"
-                    value={langInput}
-                    onChange={(e) => setLangInput(e.target.value)}
-                    onKeyDown={addLanguage}
-                    placeholder="Type + Enter to add"
-                    className="flex-1 min-w-[120px] bg-transparent outline-none border-none text-xs px-1 text-slate-600 dark:text-slate-300"
-                  />
-                </div>
-                <div className="flex flex-wrap gap-1.5 mt-1">
-                  {LANGUAGES_ONBOARD.filter(l => !languagesKnown.includes(l)).map(l => (
-                    <button
-                      key={l}
-                      type="button"
-                      onClick={() => setLanguagesKnown(prev => [...prev, l])}
-                      className={`px-2 py-0.5 rounded-md border text-[10px] font-medium transition-colors ${
-                        isDark ? 'border-white/10 bg-white/5 text-slate-400 hover:bg-white/10' : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'
-                      }`}
-                    >
-                      + {l}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-medium mb-1.5">Service Types <span className={`font-normal text-[10px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>(Select all that apply)</span></label>
@@ -922,6 +947,16 @@ export function CoachOnboardingWizard({
                     })}
                   </div>
                 </div>
+              </div>
+
+              {/* Service Area / Community */}
+              <div className={`p-4 border rounded-2xl ${isDark ? 'border-white/5 bg-white/[0.01]' : 'border-slate-100 bg-slate-50/20'}`}>
+                <ServiceAreaPicker
+                  areas={serviceAreas}
+                  value={serviceAreaSelection}
+                  onChange={setServiceAreaSelection}
+                  theme={theme}
+                />
               </div>
 
               {/* Salary & Payroll (Admin Configure Only) */}
@@ -1203,6 +1238,17 @@ export function CoachOnboardingWizard({
                     <span className="text-slate-500 block text-[9px]">Service / Class Types</span>
                     <span className="font-semibold">{serviceTypes.join(', ')} · {classTypes.join(', ')}</span>
                   </div>
+                  {serviceAreaSelection.areaIds.length > 0 && (
+                    <div className="col-span-2">
+                      <span className="text-slate-500 block text-[9px]">Service Areas</span>
+                      <span className="font-semibold">
+                        {serviceAreas.filter(a => serviceAreaSelection.areaIds.includes(a.id)).map(a => a.name).join(', ')}
+                        {serviceAreaSelection.communities.length > 0 && (
+                          <> &middot; {serviceAreaSelection.communities.map(c => c.name).join(', ')}</>
+                        )}
+                      </span>
+                    </div>
+                  )}
                   {bio && (
                     <div className="col-span-2">
                       <span className="text-slate-500 block text-[9px]">Bio</span>
@@ -1251,6 +1297,7 @@ export function CoachOnboardingWizard({
 
             {step < 5 ? (
               <button
+                key="continue-btn"
                 type="button"
                 onClick={() => navigateToStep(step + 1)}
                 disabled={
@@ -1265,7 +1312,9 @@ export function CoachOnboardingWizard({
               </button>
             ) : (
               <button
-                type="submit"
+                key="submit-btn"
+                type="button"
+                onClick={submitOnboarding}
                 disabled={loading}
                 className="inline-flex items-center px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shadow-sm"
               >

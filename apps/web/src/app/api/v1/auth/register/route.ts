@@ -35,6 +35,29 @@ async function syncCoachCategories(
   }
 }
 
+// Tag a newly-created coach with its service area / community selections.
+// Mirrors the helper in apps/web/src/app/api/v1/coaches/route.ts.
+async function syncCoachServiceAreas(
+  db: ReturnType<typeof adminDb>,
+  coachId: string,
+  serviceAreaIds: string[],
+  serviceCommunityIds: string[]
+) {
+  if (serviceAreaIds.length > 0) {
+    const { error } = await db.from('coach_service_areas').insert(
+      serviceAreaIds.map(areaId => ({ coach_id: coachId, area_id: areaId }))
+    );
+    if (error) throw error;
+  }
+
+  if (serviceCommunityIds.length > 0) {
+    const { error } = await db.from('coach_service_communities').insert(
+      serviceCommunityIds.map(communityId => ({ coach_id: coachId, community_id: communityId }))
+    );
+    if (error) throw error;
+  }
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
@@ -42,6 +65,7 @@ export async function POST(req: Request) {
       email, password, firstName, lastName, phone, role, tenantId, avatarUrl,
       // Coach fields
       primarySubcategoryId, subcategoryIds, tagIds, ageGroups, skillLevels,
+      serviceAreaIds, serviceCommunityIds,
       experienceYears, serviceTypes, classTypes, languagesKnown,
       qualification, certificationsSummary, joiningDate, bio,
       country, state, city, area, address, specialization,
@@ -168,6 +192,16 @@ export async function POST(req: Request) {
         await db.from('users').delete().eq('id', userId);
         await db.auth.admin.deleteUser(userId);
         throw tagErr;
+      }
+
+      // Tag the coach with its service area / community selections
+      try {
+        await syncCoachServiceAreas(db, userId, serviceAreaIds ?? [], serviceCommunityIds ?? []);
+      } catch (areaErr) {
+        await db.from('coaches').delete().eq('id', userId);
+        await db.from('users').delete().eq('id', userId);
+        await db.auth.admin.deleteUser(userId);
+        throw areaErr;
       }
 
       // Insert financial settings for coach

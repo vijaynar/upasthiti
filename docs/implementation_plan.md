@@ -1,6 +1,8 @@
-# Implementation Plan: Upasthiti AI-Powered Attendance & Student Progress Platform
+# Implementation Plan: Abhyas AI-Powered Attendance & Student Progress Platform
 
-Upasthiti is an AI-powered student management and attendance platform. This document outlines a phased execution plan designed to build a unified **Web + iOS & Android Mobile** platform that costs **almost $0 to start** but scales seamlessly.
+> **Historical MVP plan.** This document captures the original Phase 1 build (attendance + academy ops only). The platform has since grown into a combined academy-management + public coach/academy Discovery marketplace — see `docs/feature_plan.md` for the current, complete scope.
+
+Abhyas is an AI-powered student management and attendance platform. This document outlines a phased execution plan designed to build a unified **Web + iOS & Android Mobile** platform that costs **almost $0 to start** but scales seamlessly.
 
 As per user instructions, **Health Tracker, Payment Queue, Insights, and Notifications** are deferred for later phases to focus strictly on building a robust, high-performance attendance tracking foundation.
 
@@ -88,7 +90,7 @@ We group the proposed file structures by phase to facilitate a structured step-b
 ### Component 1: Supabase Database Schema (Phase 1)
 We will deploy the core database tables and spatial indexing to Supabase. This establishes proper multi-tenant isolation from the very beginning.
 
-#### [NEW] [0001_initial_schema.sql](file:///c:/src/Upasthiti/supabase/migrations/0001_initial_schema.sql)
+#### [NEW] [0001_initial_schema.sql](file:///c:/src/Abhyas/supabase/migrations/0001_initial_schema.sql)
 Includes definitions for:
 *   `tenants` (Multi-tenant SaaS foundation)
 *   `users` (Core logins mapped to Supabase auth with roles: `'superadmin', 'admin', 'student', 'parent'`)
@@ -102,7 +104,7 @@ Includes definitions for:
 *   `tenant_settings` (Absence fine rule values, grace periods, currency settings)
 *   `fines` (Absence auto-penalties and manual fine entries, initially starting with `'unpaid', 'paid', 'waived'`)
 
-#### [NEW] [0002_face_matching_rpc.sql](file:///c:/src/Upasthiti/supabase/migrations/0002_face_matching_rpc.sql)
+#### [NEW] [0002_face_matching_rpc.sql](file:///c:/src/Abhyas/supabase/migrations/0002_face_matching_rpc.sql)
 Implements the stored procedure `match_face_embedding` using cosine distance calculation:
 ```sql
 CREATE OR REPLACE FUNCTION match_face_embedding (
@@ -133,22 +135,22 @@ $$;
 ### Component 2: Monorepo Setup (Phase 2)
 We will build a high-performance Turborepo structure to share code efficiently and maintain absolute type safety across the stack.
 
-#### [NEW] [package.json](file:///c:/src/Upasthiti/package.json) (Root Configuration)
+#### [NEW] [package.json](file:///c:/src/Abhyas/package.json) (Root Configuration)
 Configures workspaces for `apps/*` and `packages/*` and installs build systems (Turbo, Prettier, TypeScript).
 
-#### [NEW] [turbo.json](file:///c:/src/Upasthiti/turbo.json)
+#### [NEW] [turbo.json](file:///c:/src/Abhyas/turbo.json)
 Configures cache pipelines for building, linting, and starting developmental apps.
 
-#### [NEW] [packages/database/package.json](file:///c:/src/Upasthiti/packages/database/package.json) & [index.ts](file:///c:/src/Upasthiti/packages/database/index.ts)
+#### [NEW] [packages/database/package.json](file:///c:/src/Abhyas/packages/database/package.json) & [index.ts](file:///c:/src/Abhyas/packages/database/index.ts)
 Creates the shared Supabase client module. Supports serverless-optimized connection pooling.
 
-#### [NEW] [packages/common/package.json](file:///c:/src/Upasthiti/packages/common/package.json) & [index.ts](file:///c:/src/Upasthiti/packages/common/index.ts)
+#### [NEW] [packages/common/package.json](file:///c:/src/Abhyas/packages/common/package.json) & [index.ts](file:///c:/src/Abhyas/packages/common/index.ts)
 Declares TypeScript interfaces and schema validators (e.g., Zod schemas) for user profiles, attendance sheets, and fine tables.
 
-#### [NEW] [apps/web/package.json](file:///c:/src/Upasthiti/apps/web/package.json)
+#### [NEW] [apps/web/package.json](file:///c:/src/Abhyas/apps/web/package.json)
 Sets up the Next.js frontend and serverless API engine.
 
-#### [NEW] [apps/mobile/package.json](file:///c:/src/Upasthiti/apps/mobile/package.json)
+#### [NEW] [apps/mobile/package.json](file:///c:/src/Abhyas/apps/mobile/package.json)
 Initializes the React Native Expo app setup.
 
 ---
@@ -156,13 +158,13 @@ Initializes the React Native Expo app setup.
 ### Component 3: Next.js API Routes (Phase 3)
 Serverless routes will act as our core API backend under `/apps/web/src/app/api/v1/`.
 
-#### [NEW] [route.ts](file:///c:/src/Upasthiti/apps/web/src/app/api/v1/auth/signup/route.ts)
+#### [NEW] [route.ts](file:///c:/src/Abhyas/apps/web/src/app/api/v1/auth/signup/route.ts)
 Endpoint to securely onboard students or parents, hashing credentials and registering profiles within the administrative tenant's workspace.
 
-#### [NEW] [route.ts](file:///c:/src/Upasthiti/apps/web/src/app/api/v1/students/enroll-face/route.ts)
+#### [NEW] [route.ts](file:///c:/src/Abhyas/apps/web/src/app/api/v1/students/enroll-face/route.ts)
 Accepts a student's ID, a profile photo URL, and a 128-float face embedding array, storing the vector in `student_face_samples`.
 
-#### [NEW] [route.ts](file:///c:/src/Upasthiti/apps/web/src/app/api/v1/attendance/match-face/route.ts)
+#### [NEW] [route.ts](file:///c:/src/Abhyas/apps/web/src/app/api/v1/attendance/match-face/route.ts)
 Consumes an incoming 128-float facial vector, queries `match_face_embedding` via RPC, logs attendance as `present` or `late` (using class settings & timestamps), calculates any auto-fines if late/absent, and returns recognized student details.
 
 ---
@@ -170,16 +172,16 @@ Consumes an incoming 128-float facial vector, queries `match_face_embedding` via
 ### Component 4: Web Admin Portal & Ingestion (Phase 4)
 Builds the beautiful Next.js web application utilizing curated dark aesthetics, glassmorphism, responsive grid structures, and interactive tables.
 
-#### [NEW] [apps/web/src/app/layout.tsx](file:///c:/src/Upasthiti/apps/web/src/app/layout.tsx) & [global.css](file:///c:/src/Upasthiti/apps/web/src/app/global.css)
+#### [NEW] [apps/web/src/app/layout.tsx](file:///c:/src/Abhyas/apps/web/src/app/layout.tsx) & [global.css](file:///c:/src/Abhyas/apps/web/src/app/global.css)
 Declares global HTML layout, typography from Google Fonts, CSS tokens, and Tailwind customizations for high visual appeal.
 
-#### [NEW] [apps/web/src/app/admin/dashboard/page.tsx](file:///c:/src/Upasthiti/apps/web/src/app/admin/dashboard/page.tsx)
+#### [NEW] [apps/web/src/app/admin/dashboard/page.tsx](file:///c:/src/Abhyas/apps/web/src/app/admin/dashboard/page.tsx)
 The primary administrative center with live attendance charts and a live feed of scanned students.
 
-#### [NEW] [apps/web/src/app/admin/students/page.tsx](file:///c:/src/Upasthiti/apps/web/src/app/admin/students/page.tsx)
+#### [NEW] [apps/web/src/app/admin/students/page.tsx](file:///c:/src/Abhyas/apps/web/src/app/admin/students/page.tsx)
 Renders a roster of students, batches, face enrollment status, and direct buttons to trigger face scanning templates.
 
-#### [NEW] [apps/web/src/app/admin/enroll-face/page.tsx](file:///c:/src/Upasthiti/apps/web/src/app/admin/enroll-face/page.tsx)
+#### [NEW] [apps/web/src/app/admin/enroll-face/page.tsx](file:///c:/src/Abhyas/apps/web/src/app/admin/enroll-face/page.tsx)
 Accesses the web camera via browser APIs, detects face coordinates, loads a localized face-api.js model, calculates the 128-dimensional embedding vector, and pushes it to the backend.
 
 ---
@@ -187,10 +189,10 @@ Accesses the web camera via browser APIs, detects face coordinates, loads a loca
 ### Component 5: Mobile Attendance App (Phase 5)
 A premium Expo-powered mobile app with native fluid design and edge camera loops.
 
-#### [NEW] [apps/mobile/App.tsx](file:///c:/src/Upasthiti/apps/mobile/App.tsx)
+#### [NEW] [apps/mobile/App.tsx](file:///c:/src/Abhyas/apps/mobile/App.tsx)
 App entrypoint handling state navigation hubs.
 
-#### [NEW] [apps/mobile/src/screens/ScannerScreen.tsx](file:///c:/src/Upasthiti/apps/mobile/src/screens/ScannerScreen.tsx)
+#### [NEW] [apps/mobile/src/screens/ScannerScreen.tsx](file:///c:/src/Abhyas/apps/mobile/src/screens/ScannerScreen.tsx)
 Implements the high-performance on-device live video face scanning gate. Binds `expo-camera` with a localized lightweight TensorFlow model to extract vectors and send matches.
 
 ---

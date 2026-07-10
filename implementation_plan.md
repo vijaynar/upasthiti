@@ -27,13 +27,13 @@ We group the files to be created and modified under this workflow:
 
 ### 1. Unified Authentication Redesign
 
-#### [NEW] [callback/route.ts](file:///C:/src/Upasthiti/apps/web/src/app/auth/callback/route.ts)
+#### [NEW] [callback/route.ts](file:///C:/src/Abhyas/apps/web/src/app/auth/callback/route.ts)
 *   Create a Next.js App Router Route Handler to exchange the Supabase authorization `code` parameter.
 *   Once swapped for an active session, retrieve the database profile role and dynamically route:
     *   `student` or `parent` $\rightarrow$ `/student/dashboard`
     *   `admin` or `superadmin` $\rightarrow$ `/admin/dashboard`
 
-#### [MODIFY] [login/page.tsx](file:///C:/src/Upasthiti/apps/web/src/app/auth/login/page.tsx)
+#### [MODIFY] [login/page.tsx](file:///C:/src/Abhyas/apps/web/src/app/auth/login/page.tsx)
 *   Rebuild the screen to exactly match the provided design:
     *   Sleek glassmorphic card container over the premium neon radial mesh background.
     *   **Continue with Google** button linking to Supabase OAuth:
@@ -46,7 +46,7 @@ We group the files to be created and modified under this workflow:
 
 ### 2. Student Discovery & Dashboard Expansion
 
-#### [MODIFY] [dashboard/page.tsx](file:///C:/src/Upasthiti/apps/web/src/app/student/dashboard/page.tsx)
+#### [MODIFY] [dashboard/page.tsx](file:///C:/src/Abhyas/apps/web/src/app/student/dashboard/page.tsx)
 *   Reorganize the layout into an elegant tabbed panel:
     1.  `tabs = ['Dashboard', 'Available Batches', 'Meet Coaches', 'Become a Coach']`.
 *   **"Available Batches" view:**

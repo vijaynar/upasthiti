@@ -1,6 +1,11 @@
-# Feature Plan: Upasthiti AI-Powered Attendance & Student Progress Platform
+# Feature Plan: Abhyas — Smart Academy Management & Coach Discovery Platform
 
-Upasthiti is an AI-powered SaaS platform designed for coaching centers, schools, sports academies, tuition centers, and martial arts institutes. It starts as a high-precision attendance system and evolves into a holistic student progress, sports performance, and health-tracking ecosystem.
+Abhyas is a multi-tenant SaaS platform for coaching centers, schools, sports academies, tuition centers, and martial arts institutes. It combines two halves:
+
+1.  **Academy Operations** — AI-powered attendance (face-match check-ins), batch/class management, fines & payment verification, leave approvals, and student progress tracking for institutes already running on the platform.
+2.  **Public Discovery Marketplace** — a category/subcategory-driven directory (`/explore`) where students and parents browse and search coaches and academies by specialty, location (service area/community), rating, and price, and where coaches self-onboard with a structured taxonomy (Sports, Fitness, Martial Arts, Music, Academic/Tuition, and more) instead of free-text skill tags.
+
+What began as a single-purpose attendance system has grown into this combined "run your academy" + "get discovered" platform, and most new feature work now lands on the Discovery side.
 
 This document defines the functional features, user roles, interaction workflows, core modules, and detailed application screens.
 
@@ -8,7 +13,7 @@ This document defines the functional features, user roles, interaction workflows
 
 ## 1. User Roles & Capabilities
 
-Upasthiti supports a multi-tenant, multi-role structure. Each role is tailored to its specific user experience.
+Abhyas supports a multi-tenant, multi-role structure. Each role is tailored to its specific user experience.
 
 ### A. Superadmin (SaaS Platform Owner)
 *   **Tenant Administration:** Onboard new coaching centers, schools, or academies. Monitor subscription plans (trial, active, suspended).
@@ -52,7 +57,7 @@ Upasthiti supports a multi-tenant, multi-role structure. Each role is tailored t
 
 ```mermaid
 graph TD
-    Root["Upasthiti Features"]
+    Root["Abhyas Features"]
     
     Attendance["Attendance Management"]
     Fines["Rules & Financial Fines"]
@@ -164,13 +169,13 @@ Ensures stakeholders receive timely alerts and actionable digests directly where
 
 *   **Instant Notifications:** Triggered for critical events:
     *   **Instant WhatsApp Absence Alerts:** Pushed automatically to the registered WhatsApp numbers of parents and students within 5 minutes of a batch check-in deadline if the student is marked absent.
-        *   *Message Template:* `Dear Parent, Arjun was flagged ABSENT for batch "Pro Swimming" today (21-May at 09:00 AM). A default fine of ₹1,000 has been added to your ledger. Settle it or upload proof of payment: https://upasthiti.app/ledger/f-uuid`
+        *   *Message Template:* `Dear Parent, Arjun was flagged ABSENT for batch "Pro Swimming" today (21-May at 09:00 AM). A default fine of ₹1,000 has been added to your ledger. Settle it or upload proof of payment: https://abhyas.app/ledger/f-uuid`
     *   **System Action alerts:** Payment proof approvals/rejections, late arrivals, and newly configured fine alerts.
 *   **Scheduled Digests:**
     *   **Monthly WhatsApp Ledger Digests:** Automatically compiled at the end of every calendar month and pushed to the student's and parent's WhatsApp accounts.
         *   *Digest Template:*
             ```text
-            *Upasthiti Monthly Progress & Ledger Digest - May 2026*
+            *Abhyas Monthly Progress & Ledger Digest - May 2026*
             -------------------------------------------------
             Student: Arjun Sharma | Batch: Pro Swimming
             
@@ -183,7 +188,7 @@ Ensures stakeholders receive timely alerts and actionable digests directly where
             - Paid / Verified: ₹3,000
             - Outstanding Balance: ₹1,000 (1 Pending Verification)
             
-            🔗 Click here to view full health curves, medical history and clear outstanding dues: https://upasthiti.app/dashboard/s-uuid
+            🔗 Click here to view full health curves, medical history and clear outstanding dues: https://abhyas.app/dashboard/s-uuid
             ```
 *   **Delivery Channels:**
     *   *WhatsApp Gateway (Meta Business API / Twilio / Wati / Aisensy):* Delivers rich-text templates with interactive quick-reply CTA buttons (e.g., `[Pay Dues]` or `[Upload Receipt]`) to parents' and students' phones.
@@ -195,7 +200,7 @@ Ensures stakeholders receive timely alerts and actionable digests directly where
 ## 3. Core Workflows & User Journeys
 
 ### A. The Morning Attendance Scan (Admin Ingestion)
-1.  Admin opens the **Upasthiti Mobile App** and navigates to the **Batch Attendance Scanner**.
+1.  Admin opens the **Abhyas Mobile App** and navigates to the **Batch Attendance Scanner**.
 2.  Selects the batch "9:00 AM Pro Swimming".
 3.  Mounts the phone at the entry gate on a stand.
 4.  As students arrive, the camera detects their faces locally.
@@ -207,12 +212,12 @@ Ensures stakeholders receive timely alerts and actionable digests directly where
 1.  A student is marked absent for their 9:00 AM batch.
 2.  At 9:05 AM (after the grace period), the server-side rules engine triggers a notification.
 3.  The parent receives a mobile push notification: *"Alert: Arjun was absent for Swimming at 9:00 AM. A fine of ₹1,000 has been added to your ledger."*
-4.  Parent taps the notification to open the **Upasthiti Mobile App**.
+4.  Parent taps the notification to open the **Abhyas Mobile App**.
 5.  Parent reviews the alert, views the active fine ledger, and can tap **"Upload Medical Exemption"** or **"Pay Fine"** to settle it instantly.
 
 ### C. Manual Payment Verification Journey
 1.  A parent makes a manual UPI transfer of ₹1,000 to the academy's QR code displayed at the pool.
-2.  The parent opens the **Upasthiti Mobile App**, clicks on the Arjun's active fine, and taps **"Submit Payment Proof"**.
+2.  The parent opens the **Abhyas Mobile App**, clicks on the Arjun's active fine, and taps **"Submit Payment Proof"**.
 3.  The parent inputs the transaction reference number `UPI123456789`, attaches a screenshot of the payment confirmation screen from their phone gallery, and submits.
 4.  Arjun's fine status instantly changes to **`Pending Verification`**.
 5.  At the end of the day, the Academy Admin opens the **Admin Web Dashboard** and clicks on **"Payment Queue (1 Pending)"**.
@@ -234,7 +239,7 @@ Here are the detailed UI structures and interactive layouts for both the adminis
 *   **Mock Wireframe:**
 ```
 ========================================================================================
- [UPASTHITI ADMIN]             Active Batch: 09:00 AM Swimming Pro  [Tenant: Elite Academy]
+ [ABHYAS ADMIN]             Active Batch: 09:00 AM Swimming Pro  [Tenant: Elite Academy]
 ----------------------------------------------------------------------------------------
  [x] Dashboard       | [ Present Today ]  [ Absent Today  ]  [ Pending Fines]  [ Active Payments]
   [  248 / 300    ]  [   52 / 300    ]  [   ₹14,500    ]  [   3 Pending    ]
@@ -341,7 +346,7 @@ Here are the detailed UI structures and interactive layouts for both the adminis
 
 ## 5. Future AI Roadmap & Extensibility
 
-Upasthiti is designed to expand into a comprehensive SaaS sports and student intelligence suite:
+Abhyas is designed to expand into a comprehensive SaaS sports and student intelligence suite:
 
 *   **AI Coach & Conversational Chatbot:** An interactive assistant for students and parents to ask questions like, *"How can I improve my 50m freestyle time based on my recent progress?"* or *"What is my current pending fine balance?"*
 *   **Injury Prediction Engine:** Machine learning models that cross-reference vitals, flexibility scores, and rapid stamina drops with training volume to flag high injury risks before they occur.
