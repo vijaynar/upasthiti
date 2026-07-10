@@ -64,10 +64,18 @@ export function ServiceAreaPicker({ areas, value, onChange, theme = 'light' }: S
     setSearching(true);
     const timer = setTimeout(async () => {
       try {
+        const currentArea = areas.find(a => a.id === communityAreaId);
+        const center = currentArea?.lat != null && currentArea?.lng != null
+          ? { lat: currentArea.lat, lng: currentArea.lng }
+          : undefined;
+
         const [existingRes, predictions] = await Promise.all([
           fetch(`/api/v1/public/service-communities?areaId=${communityAreaId}&search=${encodeURIComponent(term)}`)
             .then(r => r.json()).catch(() => null),
-          placesAvailable ? getPredictions(term) : Promise.resolve([]),
+          // Centered on the selected area (not a fixed citywide point) with a
+          // hard 5km cutoff — see useGooglePlaces.ts for why this needs to be
+          // locationRestriction rather than the old locationBias.
+          placesAvailable ? getPredictions(term, center) : Promise.resolve([]),
         ]);
         if (cancelled) return;
 

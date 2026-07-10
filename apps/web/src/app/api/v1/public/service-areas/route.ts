@@ -11,7 +11,7 @@ export async function GET() {
 
     const { data, error } = await db
       .from('service_areas')
-      .select('id, name, slug, city, display_order')
+      .select('id, name, slug, city, display_order, lat, lng')
       .eq('is_active', true)
       .order('display_order');
 

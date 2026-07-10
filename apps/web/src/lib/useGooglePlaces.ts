@@ -1,13 +1,15 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 
-// Thin wrapper around the classic Google Places JS SDK (AutocompleteService +
-// PlacesService), loaded on demand only when NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
-// is configured. Deliberately not typed against @google.maps/js-api-loader —
-// this repo has no Google Maps dependency yet, so we treat `window.google`
-// as `any` and feature-detect everywhere. Without a key, `available` stays
-// false and callers should fall back to plain manual entry.
+// Thin wrapper around Places API (New) — plain REST, no Maps JS SDK / <script>
+// loader needed (the legacy AutocompleteService/PlacesService approach this
+// replaced required loading the whole Maps JS bundle just for two calls).
+// Only active when NEXT_PUBLIC_GOOGLE_MAPS_API_KEY is configured; the key
+// must have "Places API (New)" enabled in Google Cloud Console — that's a
+// distinct product from the legacy "Places API" and isn't enabled by default
+// even on an existing Maps key. Without a key, `available` stays false and
+// callers should fall back to plain manual entry.
 
 export interface PlacePrediction {
   placeId: string;
@@ -23,103 +25,162 @@ export interface PlaceDetails {
 }
 
 const API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
-let loadPromise: Promise<void> | null = null;
 
-function loadGoogleMapsScript(): Promise<void> {
-  if (!API_KEY) return Promise.reject(new Error('No Google Maps API key configured'));
-  if (typeof window !== 'undefined' && (window as any).google?.maps?.places) return Promise.resolve();
-  if (loadPromise) return loadPromise;
+// Places API (New) restricts results to specific Table A place types (unlike
+// the legacy API's single broad `types` collection). These are the closest
+// documented types to "residential complex" — verify against Google's current
+// type table if predictions come back empty/unexpected, since Google
+// occasionally revises it.
+const RESIDENTIAL_PRIMARY_TYPES = ['premise', 'establishment', 'point_of_interest'];
 
-  loadPromise = new Promise((resolve, reject) => {
-    const script = document.createElement('script');
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${API_KEY}&libraries=places`;
-    script.async = true;
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error('Failed to load Google Maps script'));
-    document.head.appendChild(script);
-  });
-  return loadPromise;
+// Hard cutoff radius around the caller-supplied center (the coach's actually
+// selected Tier 1 area, via service_areas.lat/lng) when none is given
+// explicitly by the caller.
+const DEFAULT_SEARCH_RADIUS_METERS = 5000;
+
+// A prediction that reads like a raw street address ("12, Main Road...")
+// rather than a named place — deprioritized, not excluded, since it's a
+// heuristic and can misfire on legitimately-numbered complex names.
+const LOOKS_LIKE_STREET_ADDRESS = /^\d+[\s,]/;
+
+function newSessionToken(): string {
+  return typeof crypto !== 'undefined' && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// COST GUARDRAILS — read before touching this file.
+//
+// 1. SESSION TOKENS ARE WHAT MAKE AUTOCOMPLETE FREE.
+//    Google only waives Autocomplete request charges when every keystroke's
+//    `places:autocomplete` call AND the one terminating Place Details call
+//    that follows it carry the *same* `sessionToken`. Get this wrong (new
+//    token per keystroke, mismatched token on the Details call, or omitting
+//    it from either call) and Autocomplete silently reverts to paid
+//    per-request billing (~$2.83/1,000 as of writing) — no error, no
+//    warning, just a bigger bill. `sessionTokenRef` here is the single
+//    source of truth: it's created once, reused for every prediction
+//    request during one search, sent again on the Details call for that
+//    same search, and ONLY rotated (a fresh token minted) immediately after
+//    that Details call succeeds. Do not generate a new token anywhere else.
+//
+// 2. PLACE DETAILS PRICING IS SET BY THE MOST EXPENSIVE FIELD YOU ASK FOR,
+//    NOT WHAT YOU ACTUALLY USE.
+//    The `X-Goog-FieldMask` on getPlaceDetails() below is deliberately
+//    exactly `id,displayName,formattedAddress,location` — the cheapest
+//    (Essentials-tier) field set. If you need another field, check its
+//    pricing SKU *before* adding it: `rating`/`userRatingCount` alone jumps
+//    the ENTIRE call to Pro tier; `reviews`, `regularOpeningHours`, or any
+//    "atmosphere" category field jumps it to Enterprise/Enterprise+Atmosphere.
+//    This applies per-call, not per-field — one convenience field bumps the
+//    price of everything else in that same request too. Never widen this
+//    field mask "just in case" or to match a field list used elsewhere.
+// ─────────────────────────────────────────────────────────────────────────
+
 export function useGooglePlaces() {
-  const [available, setAvailable] = useState(false);
-  const autocompleteServiceRef = useRef<any>(null);
-  const placesServiceRef = useRef<any>(null);
-  const sessionTokenRef = useRef<any>(null);
+  const [available] = useState(() => Boolean(API_KEY && API_KEY.trim()));
+  // One token per search session — see cost-guardrails comment above.
+  // getPredictions() reuses this on every keystroke; getPlaceDetails() reads
+  // it once more to close the session, then rotates it. Nothing else should
+  // read or write this ref.
+  const sessionTokenRef = useRef<string>(newSessionToken());
 
-  useEffect(() => {
-    if (!API_KEY) return;
-    let cancelled = false;
-    loadGoogleMapsScript()
-      .then(() => {
-        if (cancelled) return;
-        const google = (window as any).google;
-        autocompleteServiceRef.current = new google.maps.places.AutocompleteService();
-        // A dummy div is sufficient — PlacesService just needs any DOM node.
-        placesServiceRef.current = new google.maps.places.PlacesService(document.createElement('div'));
-        sessionTokenRef.current = new google.maps.places.AutocompleteSessionToken();
-        setAvailable(true);
-      })
-      .catch(() => setAvailable(false));
-    return () => { cancelled = true; };
-  }, []);
+  const getPredictions = useCallback(async (
+    input: string,
+    center?: { lat: number; lng: number },
+    radiusMeters: number = DEFAULT_SEARCH_RADIUS_METERS
+  ): Promise<PlacePrediction[]> => {
+    if (!available || !input.trim()) return [];
 
-  // Stable identities across renders (deps: [available] only — refs are read
-  // at call time regardless of when the callback was created). Without this,
-  // callers that put these in a useEffect dependency array (ServiceAreaPicker
-  // does, to re-search as the user types) would re-run that effect on every
-  // render, since a plain function expression here gets a new identity each
-  // time — that caused an infinite update loop.
-  const getPredictions = useCallback((input: string, biasCity = 'Hyderabad'): Promise<PlacePrediction[]> => {
-    if (!available || !autocompleteServiceRef.current || !input.trim()) return Promise.resolve([]);
-    return new Promise(resolve => {
-      autocompleteServiceRef.current.getPlacePredictions(
-        {
-          input: `${input}, ${biasCity}`,
-          sessionToken: sessionTokenRef.current,
-          componentRestrictions: { country: 'in' },
-          // The legacy Autocomplete API only accepts ONE type collection
-          // (geocode | address | establishment | (regions) | (cities)) — there's
-          // no literal "apartment complex" or "premise" filter exposed.
-          // 'establishment' is the closest fit: it returns named places/POIs
-          // (which is how residential complexes are indexed) instead of raw
-          // street addresses. We narrow further client-side below using each
-          // prediction's own `types`, which DOES include premise/subpremise.
-          types: ['establishment'],
+    try {
+      const res = await fetch('https://places.googleapis.com/v1/places:autocomplete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Goog-Api-Key': API_KEY as string,
         },
-        (predictions: any[], status: string) => {
-          if (status !== 'OK' || !predictions) return resolve([]);
-          const RESIDENTIAL_LIKE_TYPES = new Set([
-            'premise', 'subpremise', 'point_of_interest', 'establishment', 'neighborhood',
-          ]);
-          const filtered = predictions.filter((p: any) =>
-            (p.types ?? []).some((t: string) => RESIDENTIAL_LIKE_TYPES.has(t))
-          );
-          resolve((filtered.length > 0 ? filtered : predictions).map(p => ({ placeId: p.place_id, description: p.description })));
-        }
-      );
-    });
+        body: JSON.stringify({
+          input,
+          includedPrimaryTypes: RESIDENTIAL_PRIMARY_TYPES,
+          // locationRestriction is a HARD cutoff (unlike locationBias, which
+          // only re-ranks and can still surface results well outside it) —
+          // centered on the coach's actually-selected area, not a fixed
+          // citywide point, so a Gachibowli search can't surface Shamshabad
+          // (~40km away). Omitted entirely if the caller has no coordinates
+          // for the selected area, rather than falling back to a generic
+          // citywide center that would misleadingly restrict a 5km radius
+          // around the wrong place.
+          ...(center ? {
+            locationRestriction: {
+              circle: { center: { latitude: center.lat, longitude: center.lng }, radius: radiusMeters },
+            },
+          } : {}),
+          includedRegionCodes: ['in'],
+          sessionToken: sessionTokenRef.current,
+        }),
+      });
+      if (!res.ok) return [];
+
+      const data = await res.json();
+      const predictions: PlacePrediction[] = (data.suggestions ?? [])
+        .filter((s: any) => s.placePrediction)
+        .map((s: any) => ({
+          placeId: s.placePrediction.placeId,
+          description: s.placePrediction.text?.text ?? '',
+        }));
+
+      // Deprioritize (not drop) address-looking results — stable partition
+      // keeps relative order within each bucket.
+      return [
+        ...predictions.filter(p => !LOOKS_LIKE_STREET_ADDRESS.test(p.description)),
+        ...predictions.filter(p => LOOKS_LIKE_STREET_ADDRESS.test(p.description)),
+      ];
+    } catch {
+      return [];
+    }
   }, [available]);
 
-  const getPlaceDetails = useCallback((placeId: string): Promise<PlaceDetails | null> => {
-    if (!available || !placesServiceRef.current) return Promise.resolve(null);
-    return new Promise(resolve => {
-      placesServiceRef.current.getDetails(
-        { placeId, fields: ['name', 'formatted_address', 'geometry'], sessionToken: sessionTokenRef.current },
-        (place: any, status: string) => {
-          if (status !== 'OK' || !place?.geometry?.location) return resolve(null);
-          resolve({
-            placeId,
-            name: place.name ?? '',
-            formattedAddress: place.formatted_address ?? '',
-            lat: place.geometry.location.lat(),
-            lng: place.geometry.location.lng(),
-          });
-          // Fresh session token for the next autocomplete session (billing best practice).
-          sessionTokenRef.current = new (window as any).google.maps.places.AutocompleteSessionToken();
+  const getPlaceDetails = useCallback(async (placeId: string): Promise<PlaceDetails | null> => {
+    if (!available) return null;
+
+    // Must reuse the SAME token the preceding autocomplete keystrokes used —
+    // this is what links the two calls into one billed session instead of
+    // paid per-request Autocomplete pricing. Read it before rotating below.
+    const sessionToken = sessionTokenRef.current;
+
+    try {
+      const res = await fetch(
+        `https://places.googleapis.com/v1/places/${placeId}?sessionToken=${encodeURIComponent(sessionToken)}`,
+        {
+          headers: {
+            'X-Goog-Api-Key': API_KEY as string,
+            // Places API (New) returns nothing unless you name the fields you
+            // want. KEEP THIS EXACT LIST — see the cost-guardrails comment
+            // above before adding anything (rating/reviews/atmosphere fields
+            // jump the whole call to a more expensive pricing tier).
+            'X-Goog-FieldMask': 'id,displayName,formattedAddress,location',
+          },
         }
       );
-    });
+      if (!res.ok) return null;
+
+      const place = await res.json();
+      if (!place?.location) return null;
+
+      // Session is now closed by this Details call — mint a fresh token for
+      // the next distinct search. Do NOT reuse `sessionToken` again.
+      sessionTokenRef.current = newSessionToken();
+      return {
+        placeId,
+        name: place.displayName?.text ?? '',
+        formattedAddress: place.formattedAddress ?? '',
+        lat: place.location.latitude,
+        lng: place.location.longitude,
+      };
+    } catch {
+      return null;
+    }
   }, [available]);
 
   return { available, getPredictions, getPlaceDetails };

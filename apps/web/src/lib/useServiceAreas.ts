@@ -8,6 +8,8 @@ export interface ServiceArea {
   slug: string;
   city: string;
   display_order: number;
+  lat: number | null;
+  lng: number | null;
 }
 
 // Fetches the fixed Tier 1 service area list once. Shared by the onboarding

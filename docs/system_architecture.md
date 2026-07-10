@@ -62,7 +62,7 @@ The Client Layer provides the visual interface and coordinates edge computing ca
 *   **Expo Mobile App (`apps/mobile`):** React Native client deployed using Expo. Contains built-in camera, storage, and AV dependencies to perform mobile check-ins and attendance updates.
 *   **Edge Biometrics (`face-api.js`):** Client-side face detection module. When taking portrait enrollments or auto-attendance scans, `face-api.js` is dynamically imported to run local feature mapping via SSD MobileNet. It outputs a **128-dimensional face embedding array (vector)** directly on the client, minimizing backend CPU consumption.
 *   **Leaflet Maps & Geolocation:** Geolocation APIs capture user coordinates during check-ins, allowing the UI to cross-reference them with configured geofences on Leaflet maps.
-*   **Google Places Autocomplete (optional):** Loaded dynamically client-side only when `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` is configured. Used during Coach Onboarding to resolve a coach's residential community/apartment complex to a real Google Place (`place_id`, lat/lng, formatted address). Without a key configured, the UI falls back to manual community-name entry — see `docs/coach_service_areas.md`.
+*   **Google Places API (New) — Autocomplete (optional):** Direct REST calls from the browser (no Maps JS SDK), active only when `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` is configured. Used during Coach Onboarding to resolve a coach's residential community/apartment complex to a real Google Place (`place_id`, lat/lng, formatted address). Without a key configured, the UI falls back to manual community-name entry — see `docs/coach_service_areas.md`.
 
 ---
 

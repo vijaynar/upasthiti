@@ -71,10 +71,11 @@ further API changes.
 
 `apps/web/src/components/ServiceAreaPicker.tsx`, backed by
 `apps/web/src/lib/useServiceAreas.ts` (Tier 1 fetch) and
-`apps/web/src/lib/useGooglePlaces.ts` (thin wrapper around the classic
-Places `AutocompleteService`/`PlacesService` JS SDK, loaded on demand).
-Wired into `CoachOnboardingWizard.tsx` Step 2, between the category/tag
-picker and the admin-only Salary & Payroll section.
+`apps/web/src/lib/useGooglePlaces.ts` (plain `fetch()` wrapper around
+**Places API (New)** — no Maps JS SDK / `<script>` loader; the whole
+integration is two REST calls). Wired into `CoachOnboardingWizard.tsx` Step
+2, between the category/tag picker and the admin-only Salary & Payroll
+section.
 
 `useGooglePlaces` feature-detects `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`. Without
 it, `available` stays `false` and the community search box silently falls
@@ -82,15 +83,38 @@ back to plain manual-entry ("type a name + Enter to add"), so onboarding
 works today with zero external configuration — Places autocomplete activates
 automatically once a key is added, no code change required.
 
+**Autocomplete**: `POST https://places.googleapis.com/v1/places:autocomplete`
+— `includedPrimaryTypes: ['premise', 'establishment', 'point_of_interest']`
+restricts results to named places rather than raw street addresses (the
+closest fit to "apartment complex" in Places API (New)'s Table A type list —
+there's no literal "residential complex" type). `locationBias` softly biases
+toward Hyderabad (doesn't hard-exclude, so seeded areas far from the bias
+center still surface). Predictions that still look like a raw street address
+(`/^\d+[\s,]/`, e.g. "12, Main Road…") are deprioritized client-side, not
+dropped, since that's a heuristic and can misfire on legitimately-numbered
+complex names.
+
+**Place Details**: `GET https://places.googleapis.com/v1/places/{placeId}`
+with a required `X-Goog-FieldMask: id,displayName,formattedAddress,location`
+header — Places API (New) returns nothing unless you name the fields you
+want, which also keeps billing scoped to just those fields.
+
+Both calls carry a `sessionToken` (a client-generated UUID, rotated after
+each Details call) so Google bills the whole autocomplete-then-details
+sequence as one session instead of per-keystroke.
+
 ## Configuration
 
 To enable live Google Places search, set in `apps/web/.env.local`:
 
 ```
-NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=<a Maps JavaScript API key with Places enabled>
+NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=<a browser API key with Places API (New) enabled>
 ```
 
-Restrict the key to the app's origin(s) and to the Places API in the Google
-Cloud Console. This key is intentionally a `NEXT_PUBLIC_*` var (loaded
-client-side by the Maps JS SDK) — it should be an HTTP-referrer-restricted
-browser key, never a service-role-equivalent secret.
+**"Places API (New)" must be enabled explicitly** in Google Cloud Console —
+it's a distinct product from the legacy "Places API" and isn't turned on
+automatically even on an existing Maps key. Restrict the key's application
+restriction to HTTP referrers (your app's origin(s)); the same restriction
+model applies whether the key is used by the Maps JS SDK or called directly
+via `fetch()` as done here — this is a `NEXT_PUBLIC_*` var precisely because
+it's meant to be used client-side, never a service-role-equivalent secret.
