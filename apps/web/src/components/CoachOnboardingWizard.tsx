@@ -13,6 +13,8 @@ import { CategoryPicker, CategorySelection } from '@/components/CategoryPicker';
 import { useServiceAreas } from '@/lib/useServiceAreas';
 import { ServiceAreaPicker, ServiceAreaSelection } from '@/components/ServiceAreaPicker';
 import { LocalityAutocompleteInput } from '@/components/LocalityAutocompleteInput';
+import { RestrictedAutocompleteInput } from '@/components/RestrictedAutocompleteInput';
+import { INDIAN_STATES, CITIES_BY_STATE } from '@/lib/indianStatesCities';
 
 const SERVICE_TYPES_ONBOARD = [
   { value: 'Offline', label: 'Offline Coaching' },
@@ -68,7 +70,7 @@ export function CoachOnboardingWizard({
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
-  const [gender, setGender] = useState('Male');
+  const [gender, setGender] = useState('');
   const [dob, setDob] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
@@ -86,13 +88,13 @@ export function CoachOnboardingWizard({
     skillLevels: [],
   });
   const [specialization, setSpecialization] = useState('');
-  const [experienceYears, setExperienceYears] = useState('6');
-  const [qualification, setQualification] = useState('B.P.Ed, NIS Certified');
-  const [languagesKnown, setLanguagesKnown] = useState<string[]>(['English', 'Hindi']);
+  const [experienceYears, setExperienceYears] = useState('');
+  const [qualification, setQualification] = useState('');
+  const [languagesKnown, setLanguagesKnown] = useState<string[]>(['English']);
   const [langInput, setLangInput] = useState('');
   const [serviceTypes, setServiceTypes] = useState<string[]>(['Offline', 'Online']);
   const [classTypes, setClassTypes] = useState<string[]>(['Group Classes']);
-  const [bio, setBio] = useState('Passionate sports coach with years of training experience.');
+  const [bio, setBio] = useState('');
   const [certificationsSummary, setCertificationsSummary] = useState('');
   const { areas: serviceAreas } = useServiceAreas();
   const [serviceAreaSelection, setServiceAreaSelection] = useState<ServiceAreaSelection>({
@@ -116,11 +118,19 @@ export function CoachOnboardingWizard({
   });
 
   // --- Step 4: Location Details & Bank Details ---
-  const [country, setCountry] = useState('India');
-  const [stateName, setStateName] = useState('Karnataka');
-  const [cityName, setCityName] = useState('Bangalore');
-  const [areaName, setAreaName] = useState('Indiranagar');
-  const [addressLine, setAddressLine] = useState('123, 5th Main, Indiranagar');
+  const [country] = useState('India');
+  const [stateName, setStateName] = useState('');
+  const [cityName, setCityName] = useState('');
+  const [areaName, setAreaName] = useState('');
+
+  const handleStateChange = (newState: string) => {
+    setStateName(newState);
+    const cities = CITIES_BY_STATE[newState] || [];
+    if (cityName && !cities.some(c => c.toLowerCase() === cityName.toLowerCase())) {
+      setCityName('');
+    }
+  };
+  const [addressLine, setAddressLine] = useState('');
   const [joiningDate, setJoiningDate] = useState(new Date().toISOString().split('T')[0]);
 
   // Bank Info (Admin mode input, self mode can read PAN)
@@ -133,6 +143,8 @@ export function CoachOnboardingWizard({
   // --- Helper validation checks ---
   const isEmailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   const isPhoneValid = phone.length === 10;
+  const minDobDate = new Date(Date.now() - 12 * 365.25 * 24 * 60 * 60 * 1000);
+  const isDobTooYoung = dob !== '' && new Date(dob) > minDobDate;
   
   // Password validation
   const hasLength = password.length >= 8;
@@ -145,9 +157,10 @@ export function CoachOnboardingWizard({
                        lastName.trim() !== '' && 
                        isEmailValid && 
                        isPhoneValid && 
-                       gender !== '' && 
-                       dob !== '' && 
-                       country.trim() !== '' && 
+                       gender !== '' &&
+                       dob !== '' &&
+                       !isDobTooYoung &&
+                       country.trim() !== '' &&
                        stateName.trim() !== '' && 
                        cityName.trim() !== '';
 
@@ -214,6 +227,10 @@ export function CoachOnboardingWizard({
     setGender(randGender);
     setDob(randDOB);
     setAvatarPreview(`https://api.dicebear.com/7.x/adventurer/svg?seed=${randFirst}${randomId}`);
+    setLanguagesKnown(['English', 'Hindi']);
+    setStateName('Telangana');
+    setCityName('Hyderabad');
+    setAreaName('Gachibowli');
 
     if (categories.length > 0) {
       const cat = categories[Math.floor(Math.random() * categories.length)];
@@ -633,8 +650,9 @@ export function CoachOnboardingWizard({
                     onChange={(e) => setGender(e.target.value)}
                     className={`rounded-xl px-3 py-2 text-xs w-full outline-none focus:ring-1 focus:ring-indigo-500 border ${
                       isDark ? 'glass-input border-white/10 bg-[#060814] text-slate-200' : 'border-slate-200 bg-white text-slate-800'
-                    }`}
+                    } ${gender === '' ? 'text-slate-400' : ''}`}
                   >
+                    <option value="" disabled>Select Gender</option>
                     <option value="Male">Male</option>
                     <option value="Female">Female</option>
                     <option value="Other">Other</option>
@@ -650,7 +668,7 @@ export function CoachOnboardingWizard({
                     required
                     type="date"
                     value={dob}
-                    max={new Date(Date.now() - 12 * 365.25 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]}
+                    max={minDobDate.toISOString().split('T')[0]}
                     onChange={(e) => setDob(e.target.value)}
                     className={`rounded-xl px-3 py-2 text-xs w-full outline-none focus:ring-1 focus:ring-indigo-500 border ${
                       isDark ? 'glass-input border-white/10 bg-[#060814]/40 text-slate-200' : 'border-slate-200 bg-white text-slate-800'
@@ -663,7 +681,7 @@ export function CoachOnboardingWizard({
                     <input
                       required
                       type="email"
-                      placeholder="rahul@academy.com"
+                      placeholder="name@example.com"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       onBlur={() => setEmailTouched(true)}
@@ -699,7 +717,9 @@ export function CoachOnboardingWizard({
                   </div>
                 </div>
               </div>
-              <p className="text-[10px] text-slate-400 -mt-2">Must be at least 12 years old</p>
+              {isDobTooYoung && (
+                <p className="text-[10px] text-red-500 -mt-2">Must be at least 12 years old</p>
+              )}
 
               <div className="space-y-1">
                 <label className="block text-xs font-medium">Languages Known</label>
@@ -742,45 +762,33 @@ export function CoachOnboardingWizard({
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   <div>
-                    <label className="block text-xs font-medium mb-1">Country <span className="text-red-500 ml-1">*</span></label>
-                    <select
-                      value={country}
-                      onChange={(e) => setCountry(e.target.value)}
-                      className={`rounded-xl px-3 py-2 text-xs w-full outline-none border ${
-                        isDark ? 'glass-input border-white/10 bg-[#060814] text-slate-200' : 'border-slate-200 bg-white text-slate-800'
-                      }`}
-                    >
-                      <option value="India">India</option>
-                      <option value="USA">United States</option>
-                      <option value="UK">United Kingdom</option>
-                      <option value="Canada">Canada</option>
-                      <option value="Australia">Australia</option>
-                    </select>
+                    <label className="block text-xs font-medium mb-1">Country</label>
+                    <div className={`rounded-xl px-3 py-2 text-xs w-full border flex items-center gap-1.5 ${
+                      isDark ? 'border-white/10 bg-[#060814]/40 text-slate-400' : 'border-slate-200 bg-slate-50 text-slate-500'
+                    }`}>
+                      <span>🇮🇳</span> India
+                    </div>
                   </div>
                   <div>
                     <label className="block text-xs font-medium mb-1">State <span className="text-red-500 ml-1">*</span></label>
-                    <input
-                      required
-                      type="text"
-                      placeholder="Karnataka"
+                    <RestrictedAutocompleteInput
                       value={stateName}
-                      onChange={(e) => setStateName(e.target.value)}
-                      className={`rounded-xl px-3 py-2 text-xs w-full outline-none border ${
-                        isDark ? 'glass-input border-white/10 bg-[#060814]/40 text-slate-200' : 'border-slate-200 bg-white text-slate-800'
-                      }`}
+                      onChange={handleStateChange}
+                      options={INDIAN_STATES}
+                      placeholder="e.g. Telangana"
+                      theme={theme}
+                      strict
                     />
                   </div>
                   <div>
                     <label className="block text-xs font-medium mb-1">City <span className="text-red-500 ml-1">*</span></label>
-                    <input
-                      required
-                      type="text"
-                      placeholder="Bangalore"
+                    <RestrictedAutocompleteInput
                       value={cityName}
-                      onChange={(e) => setCityName(e.target.value)}
-                      className={`rounded-xl px-3 py-2 text-xs w-full outline-none border ${
-                        isDark ? 'glass-input border-white/10 bg-[#060814]/40 text-slate-200' : 'border-slate-200 bg-white text-slate-800'
-                      }`}
+                      onChange={setCityName}
+                      options={CITIES_BY_STATE[stateName] || []}
+                      placeholder="e.g. Hyderabad"
+                      theme={theme}
+                      strict={false}
                     />
                   </div>
                 </div>
@@ -795,7 +803,7 @@ export function CoachOnboardingWizard({
                     value={areaName}
                     onChange={setAreaName}
                     city={cityName}
-                    placeholder="Indiranagar"
+                    placeholder="Start typing to search your locality"
                     theme={theme}
                   />
                 </div>
@@ -811,7 +819,7 @@ export function CoachOnboardingWizard({
                     <textarea
                       rows={2}
                       maxLength={200}
-                      placeholder="123, 5th Main Road, Indiranagar"
+                      placeholder="Flat/House No., Street, Landmark"
                       value={addressLine}
                       onChange={(e) => setAddressLine(e.target.value)}
                       className={`rounded-xl px-3 py-2 text-xs w-full outline-none border resize-none ${
@@ -860,6 +868,7 @@ export function CoachOnboardingWizard({
                     required
                     type="number"
                     min={0}
+                    placeholder="e.g. 5"
                     value={experienceYears}
                     onChange={(e) => setExperienceYears(e.target.value)}
                     className={`rounded-xl px-3 py-2 text-xs w-full outline-none focus:ring-1 focus:ring-indigo-500 border ${
