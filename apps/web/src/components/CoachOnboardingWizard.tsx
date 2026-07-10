@@ -599,7 +599,7 @@ export function CoachOnboardingWizard({
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs font-medium mb-1">First Name <span className="text-red-500 ml-1">*</span></label>
                   <input
@@ -626,9 +626,37 @@ export function CoachOnboardingWizard({
                     }`}
                   />
                 </div>
+                <div>
+                  <label className="block text-xs font-medium mb-1">Gender <span className="text-red-500 ml-1">*</span></label>
+                  <select
+                    value={gender}
+                    onChange={(e) => setGender(e.target.value)}
+                    className={`rounded-xl px-3 py-2 text-xs w-full outline-none focus:ring-1 focus:ring-indigo-500 border ${
+                      isDark ? 'glass-input border-white/10 bg-[#060814] text-slate-200' : 'border-slate-200 bg-white text-slate-800'
+                    }`}
+                  >
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                    <option value="Other">Other</option>
+                    <option value="Prefer not to say">Prefer not to say</option>
+                  </select>
+                </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-medium mb-1">Date of Birth <span className="text-red-500 ml-1">*</span></label>
+                  <input
+                    required
+                    type="date"
+                    value={dob}
+                    max={new Date(Date.now() - 12 * 365.25 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]}
+                    onChange={(e) => setDob(e.target.value)}
+                    className={`rounded-xl px-3 py-2 text-xs w-full outline-none focus:ring-1 focus:ring-indigo-500 border ${
+                      isDark ? 'glass-input border-white/10 bg-[#060814]/40 text-slate-200' : 'border-slate-200 bg-white text-slate-800'
+                    }`}
+                  />
+                </div>
                 <div>
                   <label className="block text-xs font-medium mb-1">Email Address <span className="text-red-500 ml-1">*</span></label>
                   <div className="relative">
@@ -671,38 +699,7 @@ export function CoachOnboardingWizard({
                   </div>
                 </div>
               </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-medium mb-1">Gender <span className="text-red-500 ml-1">*</span></label>
-                  <select
-                    value={gender}
-                    onChange={(e) => setGender(e.target.value)}
-                    className={`rounded-xl px-3 py-2 text-xs w-full outline-none focus:ring-1 focus:ring-indigo-500 border ${
-                      isDark ? 'glass-input border-white/10 bg-[#060814] text-slate-200' : 'border-slate-200 bg-white text-slate-800'
-                    }`}
-                  >
-                    <option value="Male">Male</option>
-                    <option value="Female">Female</option>
-                    <option value="Other">Other</option>
-                    <option value="Prefer not to say">Prefer not to say</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium mb-1">Date of Birth <span className="text-red-500 ml-1">*</span></label>
-                  <input
-                    required
-                    type="date"
-                    value={dob}
-                    max={new Date(Date.now() - 18 * 365.25 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]}
-                    onChange={(e) => setDob(e.target.value)}
-                    className={`rounded-xl px-3 py-2 text-xs w-full outline-none focus:ring-1 focus:ring-indigo-500 border ${
-                      isDark ? 'glass-input border-white/10 bg-[#060814]/40 text-slate-200' : 'border-slate-200 bg-white text-slate-800'
-                    }`}
-                  />
-                  <p className="text-[10px] text-slate-400 mt-1">Must be at least 18 years old</p>
-                </div>
-              </div>
+              <p className="text-[10px] text-slate-400 -mt-2">Must be at least 12 years old</p>
 
               <div className="space-y-1">
                 <label className="block text-xs font-medium">Languages Known</label>
