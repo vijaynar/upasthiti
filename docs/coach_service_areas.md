@@ -103,6 +103,29 @@ Both calls carry a `sessionToken` (a client-generated UUID, rotated after
 each Details call) so Google bills the whole autocomplete-then-details
 sequence as one session instead of per-keystroke.
 
+`getPredictions(input, opts)` takes an options object (`center`,
+`radiusMeters`, `primaryTypes`) so different callers can restrict
+differently — `primaryTypes` defaults to the residential-complex list above
+when omitted; pass `[]` to opt out of type restriction entirely (Places API
+(New) doesn't treat an empty array as "no restriction", so it's omitted from
+the request body rather than sent literally empty).
+
+### Step 1 — Personal Information's "Area / Locality" field
+
+`apps/web/src/components/LocalityAutocompleteInput.tsx` is a second,
+simpler consumer of the same `useGooglePlaces` hook, wired into
+`CoachOnboardingWizard.tsx` Step 1 (Country/State/City/Area block). It has
+no relation to the Tier 1/Tier 2 model above — City there is arbitrary free
+text for any city, not just Hyderabad, so there's no lat/lng to build a real
+`locationRestriction` circle around. Instead it folds the typed city into
+the query text (`"<term>, <city>"`) and hard-filters the results to those
+whose description actually mentions that city, falling back to the
+unfiltered list only if that filter would otherwise leave nothing (guards
+against a city-name mismatch like "Bangalore" vs Google's canonical
+"Bengaluru" turning into a dead end). It calls `getPredictions` with
+`primaryTypes: []` (no type restriction — any kind of locality is valid
+here, unlike Step 2's residential-complex-only search).
+
 ## Configuration
 
 To enable live Google Places search, set in `apps/web/.env.local`:

@@ -14,6 +14,10 @@ import { useCallback, useRef, useState } from 'react';
 export interface PlacePrediction {
   placeId: string;
   description: string;
+  /** Just the place's own name, without the trailing city/state/country —
+   *  e.g. "Indiranagar" rather than "Indiranagar, Bengaluru, Karnataka,
+   *  India". Prefer this over `description` when filling a short text field. */
+  mainText: string;
 }
 
 export interface PlaceDetails {
@@ -30,7 +34,11 @@ const API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 // the legacy API's single broad `types` collection). These are the closest
 // documented types to "residential complex" — verify against Google's current
 // type table if predictions come back empty/unexpected, since Google
-// occasionally revises it.
+// occasionally revises it. Used as getPredictions()'s default when the caller
+// doesn't pass its own `primaryTypes` — i.e. the Service Area/Community
+// picker (Step 2). Callers searching for something other than a residential
+// complex (e.g. the Step 1 Area/Locality field) should pass their own list,
+// or `[]` to not restrict by type at all.
 const RESIDENTIAL_PRIMARY_TYPES = ['premise', 'establishment', 'point_of_interest'];
 
 // Hard cutoff radius around the caller-supplied center (the coach's actually
@@ -88,10 +96,11 @@ export function useGooglePlaces() {
 
   const getPredictions = useCallback(async (
     input: string,
-    center?: { lat: number; lng: number },
-    radiusMeters: number = DEFAULT_SEARCH_RADIUS_METERS
+    opts: { center?: { lat: number; lng: number }; radiusMeters?: number; primaryTypes?: string[] } = {}
   ): Promise<PlacePrediction[]> => {
     if (!available || !input.trim()) return [];
+
+    const { center, radiusMeters = DEFAULT_SEARCH_RADIUS_METERS, primaryTypes = RESIDENTIAL_PRIMARY_TYPES } = opts;
 
     try {
       const res = await fetch('https://places.googleapis.com/v1/places:autocomplete', {
@@ -102,15 +111,18 @@ export function useGooglePlaces() {
         },
         body: JSON.stringify({
           input,
-          includedPrimaryTypes: RESIDENTIAL_PRIMARY_TYPES,
+          // Omit entirely (rather than sending `[]`) when the caller opts out
+          // of type restriction — an empty array is not guaranteed to mean
+          // "no restriction" to the API.
+          ...(primaryTypes.length > 0 ? { includedPrimaryTypes: primaryTypes } : {}),
           // locationRestriction is a HARD cutoff (unlike locationBias, which
           // only re-ranks and can still surface results well outside it) —
-          // centered on the coach's actually-selected area, not a fixed
-          // citywide point, so a Gachibowli search can't surface Shamshabad
-          // (~40km away). Omitted entirely if the caller has no coordinates
-          // for the selected area, rather than falling back to a generic
-          // citywide center that would misleadingly restrict a 5km radius
-          // around the wrong place.
+          // centered on wherever the caller says to center it (e.g. the
+          // coach's actually-selected Tier 1 area for Step 2, so a Gachibowli
+          // search can't surface Shamshabad ~40km away). Omitted entirely if
+          // the caller has no coordinates, rather than falling back to a
+          // generic point that would misleadingly restrict the radius around
+          // the wrong place.
           ...(center ? {
             locationRestriction: {
               circle: { center: { latitude: center.lat, longitude: center.lng }, radius: radiusMeters },
@@ -128,6 +140,7 @@ export function useGooglePlaces() {
         .map((s: any) => ({
           placeId: s.placePrediction.placeId,
           description: s.placePrediction.text?.text ?? '',
+          mainText: s.placePrediction.structuredFormat?.mainText?.text ?? s.placePrediction.text?.text ?? '',
         }));
 
       // Deprioritize (not drop) address-looking results — stable partition

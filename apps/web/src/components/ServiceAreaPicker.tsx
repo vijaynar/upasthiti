@@ -75,7 +75,7 @@ export function ServiceAreaPicker({ areas, value, onChange, theme = 'light' }: S
           // Centered on the selected area (not a fixed citywide point) with a
           // hard 5km cutoff — see useGooglePlaces.ts for why this needs to be
           // locationRestriction rather than the old locationBias.
-          placesAvailable ? getPredictions(term, center) : Promise.resolve([]),
+          placesAvailable ? getPredictions(term, { center }) : Promise.resolve([]),
         ]);
         if (cancelled) return;
 

@@ -12,6 +12,7 @@ import { useCategoryTaxonomy } from '@/lib/useCategoryTaxonomy';
 import { CategoryPicker, CategorySelection } from '@/components/CategoryPicker';
 import { useServiceAreas } from '@/lib/useServiceAreas';
 import { ServiceAreaPicker, ServiceAreaSelection } from '@/components/ServiceAreaPicker';
+import { LocalityAutocompleteInput } from '@/components/LocalityAutocompleteInput';
 
 const SERVICE_TYPES_ONBOARD = [
   { value: 'Offline', label: 'Offline Coaching' },
@@ -742,24 +743,23 @@ export function CoachOnboardingWizard({
               <div className={`border-t pt-4 mt-2 space-y-3 ${isDark ? 'border-white/10' : 'border-slate-100'}`}>
                 <h4 className={`text-sm font-bold ${isDark ? 'text-slate-100' : 'text-slate-900'}`}>Address & Location Details</h4>
 
-                <div>
-                  <label className="block text-xs font-medium mb-1">Country <span className="text-red-500 ml-1">*</span></label>
-                  <select
-                    value={country}
-                    onChange={(e) => setCountry(e.target.value)}
-                    className={`rounded-xl px-3 py-2 text-xs w-full outline-none border ${
-                      isDark ? 'glass-input border-white/10 bg-[#060814] text-slate-200' : 'border-slate-200 bg-white text-slate-800'
-                    }`}
-                  >
-                    <option value="India">India</option>
-                    <option value="USA">United States</option>
-                    <option value="UK">United Kingdom</option>
-                    <option value="Canada">Canada</option>
-                    <option value="Australia">Australia</option>
-                  </select>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium mb-1">Country <span className="text-red-500 ml-1">*</span></label>
+                    <select
+                      value={country}
+                      onChange={(e) => setCountry(e.target.value)}
+                      className={`rounded-xl px-3 py-2 text-xs w-full outline-none border ${
+                        isDark ? 'glass-input border-white/10 bg-[#060814] text-slate-200' : 'border-slate-200 bg-white text-slate-800'
+                      }`}
+                    >
+                      <option value="India">India</option>
+                      <option value="USA">United States</option>
+                      <option value="UK">United Kingdom</option>
+                      <option value="Canada">Canada</option>
+                      <option value="Australia">Australia</option>
+                    </select>
+                  </div>
                   <div>
                     <label className="block text-xs font-medium mb-1">State <span className="text-red-500 ml-1">*</span></label>
                     <input
@@ -790,16 +790,16 @@ export function CoachOnboardingWizard({
 
                 <div>
                   <label className="block text-xs font-medium mb-1">
-                    Area / Locality <span className={`font-normal text-[10px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>(Optional)</span>
+                    Area / Locality <span className={`font-normal text-[10px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                      (Optional{cityName.trim() ? ` — restricted to ${cityName.trim()}` : ''})
+                    </span>
                   </label>
-                  <input
-                    type="text"
-                    placeholder="Indiranagar"
+                  <LocalityAutocompleteInput
                     value={areaName}
-                    onChange={(e) => setAreaName(e.target.value)}
-                    className={`rounded-xl px-3 py-2 text-xs w-full outline-none border ${
-                      isDark ? 'glass-input border-white/10 bg-[#060814]/40 text-slate-200' : 'border-slate-200 bg-white text-slate-800'
-                    }`}
+                    onChange={setAreaName}
+                    city={cityName}
+                    placeholder="Indiranagar"
+                    theme={theme}
                   />
                 </div>
 
