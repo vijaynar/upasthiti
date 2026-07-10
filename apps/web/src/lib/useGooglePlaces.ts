@@ -78,10 +78,24 @@ export function useGooglePlaces() {
           input: `${input}, ${biasCity}`,
           sessionToken: sessionTokenRef.current,
           componentRestrictions: { country: 'in' },
+          // The legacy Autocomplete API only accepts ONE type collection
+          // (geocode | address | establishment | (regions) | (cities)) — there's
+          // no literal "apartment complex" or "premise" filter exposed.
+          // 'establishment' is the closest fit: it returns named places/POIs
+          // (which is how residential complexes are indexed) instead of raw
+          // street addresses. We narrow further client-side below using each
+          // prediction's own `types`, which DOES include premise/subpremise.
+          types: ['establishment'],
         },
         (predictions: any[], status: string) => {
           if (status !== 'OK' || !predictions) return resolve([]);
-          resolve(predictions.map(p => ({ placeId: p.place_id, description: p.description })));
+          const RESIDENTIAL_LIKE_TYPES = new Set([
+            'premise', 'subpremise', 'point_of_interest', 'establishment', 'neighborhood',
+          ]);
+          const filtered = predictions.filter((p: any) =>
+            (p.types ?? []).some((t: string) => RESIDENTIAL_LIKE_TYPES.has(t))
+          );
+          resolve((filtered.length > 0 ? filtered : predictions).map(p => ({ placeId: p.place_id, description: p.description })));
         }
       );
     });

@@ -251,7 +251,9 @@ export function ServiceAreaPicker({ areas, value, onChange, theme = 'light' }: S
               <select
                 value={communityAreaId}
                 onChange={e => setCommunityAreaId(e.target.value)}
-                className={`${inputClass} w-32 shrink-0`}
+                className={`rounded-xl px-2 py-2 text-xs w-32 shrink-0 outline-none focus:ring-1 focus:ring-indigo-500 border ${
+                  isDark ? 'glass-input border-white/10 bg-[#060814] text-slate-200' : 'border-slate-200 bg-white text-slate-800'
+                }`}
               >
                 {selectedAreas.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
               </select>
@@ -266,7 +268,7 @@ export function ServiceAreaPicker({ areas, value, onChange, theme = 'light' }: S
                 disabled={adding}
                 className={inputClass}
               />
-              {(searching || suggestions.length > 0) && communityInput.trim().length >= 2 && (
+              {communityInput.trim().length >= 2 && (
                 <div className={`absolute z-10 mt-1 w-full rounded-xl border shadow-lg overflow-hidden ${
                   isDark ? 'bg-[#0b0e1c] border-white/10' : 'bg-white border-slate-200'
                 }`}>
