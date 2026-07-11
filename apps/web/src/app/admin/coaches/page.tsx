@@ -159,11 +159,6 @@ const ONBOARD_STEPS = [
   { id: 5, name: 'Review & Submit', desc: 'Verify and onboard' },
 ];
 
-const SPECIALIZATIONS_ONBOARD = [
-  'Singles', 'Doubles', 'Mixed Doubles', 'Coaching', 'Physical Training', 
-  'Tactics', 'Advanced Techniques', 'Beginner Basics'
-];
-
 const SERVICE_TYPES_ONBOARD = [
   'Personal Training', 'Group Training', 'Online Coaching', 'Offline Coaching'
 ];

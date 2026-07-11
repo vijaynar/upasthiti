@@ -77,6 +77,18 @@ integration is two REST calls). Wired into `CoachOnboardingWizard.tsx` Step
 2, between the category/tag picker and the admin-only Salary & Payroll
 section.
 
+Since Tier 1 areas are seeded per-city, the picker leads with a **City**
+field (`RestrictedAutocompleteInput`, non-strict — suggests the distinct
+cities present in `service_areas`, but doesn't hard-block other text) that
+defaults to whatever city the coach entered in Step 1's Address & Location
+Details, via a `defaultCity` prop. The coach can override it; only Tier 1
+areas matching the current city value are then offered below, and any
+previously-selected area/community from a since-abandoned city is dropped
+(not just hidden) so a stale selection can't silently ride along in the
+submitted payload. If no areas exist yet for the entered city, the area list
+is replaced with a short "not configured yet" note instead of an empty
+search box.
+
 `useGooglePlaces` feature-detects `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`. Without
 it, `available` stays `false` and the community search box silently falls
 back to plain manual-entry ("type a name + Enter to add"), so onboarding

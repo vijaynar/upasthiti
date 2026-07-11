@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Check, MapPin, Plus, Search, X } from 'lucide-react';
 import type { ServiceArea } from '@/lib/useServiceAreas';
 import { useGooglePlaces } from '@/lib/useGooglePlaces';
+import { RestrictedAutocompleteInput } from '@/components/RestrictedAutocompleteInput';
 
 export interface SelectedCommunity {
   id: string;
@@ -20,6 +21,10 @@ interface ServiceAreaPickerProps {
   areas: ServiceArea[];
   value: ServiceAreaSelection;
   onChange: (value: ServiceAreaSelection) => void;
+  // Localities are scoped to a city — this seeds the City field from the
+  // coach's Address & Location step. The coach can still change it, which
+  // re-filters which `areas` are offered below.
+  defaultCity: string;
   theme?: 'light' | 'dark';
 }
 
@@ -31,9 +36,28 @@ interface Suggestion {
   placeId?: string;       // kind === 'place'
 }
 
-export function ServiceAreaPicker({ areas, value, onChange, theme = 'light' }: ServiceAreaPickerProps) {
+export function ServiceAreaPicker({ areas, value, onChange, defaultCity, theme = 'light' }: ServiceAreaPickerProps) {
   const isDark = theme === 'dark';
   const { available: placesAvailable, getPredictions, getPlaceDetails } = useGooglePlaces();
+
+  const [city, setCity] = useState(defaultCity);
+  const cityTouchedRef = useRef(false);
+  useEffect(() => {
+    if (!cityTouchedRef.current) setCity(defaultCity);
+  }, [defaultCity]);
+  const handleCityChange = (v: string) => {
+    cityTouchedRef.current = true;
+    setCity(v);
+    // Areas/communities from the previous city are no longer valid choices —
+    // drop them rather than leaving them selected-but-hidden.
+    const validAreaIds = new Set(
+      areas.filter(a => a.city.trim().toLowerCase() === v.trim().toLowerCase()).map(a => a.id)
+    );
+    const areaIds = value.areaIds.filter(id => validAreaIds.has(id));
+    if (areaIds.length !== value.areaIds.length) {
+      onChange({ areaIds, communities: value.communities.filter(c => validAreaIds.has(c.areaId)) });
+    }
+  };
 
   const [areaFilter, setAreaFilter] = useState('');
   const [communityAreaId, setCommunityAreaId] = useState<string>('');
@@ -42,7 +66,14 @@ export function ServiceAreaPicker({ areas, value, onChange, theme = 'light' }: S
   const [searching, setSearching] = useState(false);
   const [adding, setAdding] = useState(false);
 
-  const selectedAreas = areas.filter(a => value.areaIds.includes(a.id));
+  // Only offer localities that belong to the selected city — Tier 1 areas
+  // are seeded per-city, so this is the primary scoping filter.
+  const cityAreas = city.trim()
+    ? areas.filter(a => a.city.trim().toLowerCase() === city.trim().toLowerCase())
+    : areas;
+  const availableCities = Array.from(new Set(areas.map(a => a.city))).sort();
+
+  const selectedAreas = cityAreas.filter(a => value.areaIds.includes(a.id));
 
   useEffect(() => {
     if (selectedAreas.length === 0) {
@@ -181,17 +212,37 @@ export function ServiceAreaPicker({ areas, value, onChange, theme = 'light' }: S
   const labelClass = 'block text-xs font-medium mb-1';
 
   const filteredAreas = areaFilter.trim()
-    ? areas.filter(a => a.name.toLowerCase().includes(areaFilter.trim().toLowerCase()))
-    : areas;
+    ? cityAreas.filter(a => a.name.toLowerCase().includes(areaFilter.trim().toLowerCase()))
+    : cityAreas;
 
   return (
     <div className="space-y-4">
       {/* Service Areas (Tier 1) */}
       <div>
-        <label className={`${labelClass} flex items-center gap-1`}>
-          <MapPin className="w-3.5 h-3.5" /> Service Areas
-          <span className={`font-normal text-[10px] ml-1 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>(Optional — helps students find you nearby)</span>
-        </label>
+        <div className="flex items-start justify-between gap-2 flex-wrap mb-1">
+          <label className={`${labelClass} flex items-center gap-1 mb-0`}>
+            <MapPin className="w-3.5 h-3.5" /> Service Areas
+            <span className={`font-normal text-[10px] ml-1 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>(Optional — helps students find you nearby)</span>
+          </label>
+          {/* City — scopes which Tier 1 localities are offered below. No
+              label needed; "City" as the placeholder is self-explanatory. */}
+          <div className="w-48 shrink-0">
+            <RestrictedAutocompleteInput
+              value={city}
+              onChange={handleCityChange}
+              options={availableCities}
+              placeholder="City"
+              theme={theme}
+              strict={false}
+            />
+          </div>
+        </div>
+
+        {cityAreas.length === 0 && (
+          <p className={`text-[10px] mb-1.5 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+            No localities configured yet for &ldquo;{city.trim() || '—'}&rdquo;.
+          </p>
+        )}
 
         {selectedAreas.length > 0 && (
           <div className="flex flex-wrap gap-1.5 mb-2">
@@ -204,30 +255,34 @@ export function ServiceAreaPicker({ areas, value, onChange, theme = 'light' }: S
           </div>
         )}
 
-        <div className="relative mb-1.5">
-          <Search className="absolute left-2.5 top-2 w-3.5 h-3.5 text-slate-400" />
-          <input
-            type="text"
-            value={areaFilter}
-            onChange={e => setAreaFilter(e.target.value)}
-            placeholder="Search localities…"
-            className={`${inputClass} pl-8`}
-          />
-        </div>
-        <div className={`flex flex-wrap gap-1.5 max-h-32 overflow-y-auto p-2 border rounded-xl ${isDark ? 'border-white/10 bg-white/[0.02]' : 'border-slate-200 bg-slate-50/50'}`}>
-          {filteredAreas.length === 0 && (
-            <span className="text-[10px] text-slate-400">No localities match &ldquo;{areaFilter}&rdquo;</span>
-          )}
-          {filteredAreas.map(a => {
-            const isSelected = value.areaIds.includes(a.id);
-            if (isSelected) return null; // already shown above as a removable chip
-            return (
-              <button key={a.id} type="button" onClick={() => toggleArea(a.id)} className={chipClass(false)}>
-                {a.name}
-              </button>
-            );
-          })}
-        </div>
+        {cityAreas.length > 0 && (
+          <>
+            <div className="relative mb-1.5">
+              <Search className="absolute left-2.5 top-2 w-3.5 h-3.5 text-slate-400" />
+              <input
+                type="text"
+                value={areaFilter}
+                onChange={e => setAreaFilter(e.target.value)}
+                placeholder="Search localities…"
+                className={`${inputClass} pl-8`}
+              />
+            </div>
+            <div className={`flex flex-wrap gap-1.5 max-h-32 overflow-y-auto p-2 border rounded-xl ${isDark ? 'border-white/10 bg-white/[0.02]' : 'border-slate-200 bg-slate-50/50'}`}>
+              {filteredAreas.length === 0 && (
+                <span className="text-[10px] text-slate-400">No localities match &ldquo;{areaFilter}&rdquo;</span>
+              )}
+              {filteredAreas.map(a => {
+                const isSelected = value.areaIds.includes(a.id);
+                if (isSelected) return null; // already shown above as a removable chip
+                return (
+                  <button key={a.id} type="button" onClick={() => toggleArea(a.id)} className={chipClass(false)}>
+                    {a.name}
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        )}
       </div>
 
       {/* Communities (Tier 2) — only once at least one area is picked */}

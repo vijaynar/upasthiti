@@ -86,7 +86,6 @@ interface CoachProfile {
   employee_id: string | null;
   designation: string | null;
   department: string | null;
-  specialization: string | null;
   employee_type: string | null;
   working_days: string | null;
   gender: string | null;
@@ -176,7 +175,6 @@ export default function CoachProfilePage() {
     employee_id: '',
     designation: '',
     department: '',
-    specialization: '',
     employee_type: '',
     working_days: '',
     gender: '',
@@ -222,7 +220,6 @@ export default function CoachProfilePage() {
   const [editDateOfBirth, setEditDateOfBirth] = useState('');
   const [editAddress, setEditAddress] = useState('');
 
-  const [editSpecialization, setEditSpecialization] = useState('');
   const [editExperienceYears, setEditExperienceYears] = useState('');
   const [editJoiningDate, setEditJoiningDate] = useState('');
   const [editEmployeeId, setEditEmployeeId] = useState('');
@@ -306,7 +303,7 @@ export default function CoachProfilePage() {
             .from('coaches')
             .select(`
               experience_years,
-              employee_id, designation, department, specialization, employee_type, working_days,
+              employee_id, designation, department, employee_type, working_days,
               gender, date_of_birth, address, emergency_contact_name, emergency_contact_relationship,
               emergency_contact_phone, emergency_contact_address, joining_date, bio, qualification,
               avg_rating, state, city, area, service_types, class_types, languages_known,
@@ -355,7 +352,6 @@ export default function CoachProfilePage() {
         if (coachRes.data) {
           const cd = coachRes.data as unknown as CoachProfile;
           setCoach(cd);
-          setEditSpecialization(cd.specialization ?? '');
           setEditExperienceYears(cd.experience_years != null ? String(cd.experience_years) : '');
           setEditJoiningDate(formatDateToInput(cd.joining_date));
           setEditEmployeeId(cd.employee_id ?? '');
@@ -482,7 +478,6 @@ export default function CoachProfilePage() {
         },
         // coach fields
         employeeId: editEmployeeId,
-        specialization: editSpecialization,
         experienceYears: editExperienceYears ? Number(editExperienceYears) : 0,
         joiningDate: editJoiningDate,
         gender: editGender,
@@ -536,7 +531,6 @@ export default function CoachProfilePage() {
       setCoach((prev) => ({
         ...prev,
         employee_id: editEmployeeId,
-        specialization: editSpecialization,
         experience_years: editExperienceYears ? Number(editExperienceYears) : 0,
         joining_date: editJoiningDate,
         gender: editGender,
@@ -589,7 +583,6 @@ export default function CoachProfilePage() {
       setNotifAttendance(prefs.attendance_reminders !== false);
       setNotifAnnouncement(prefs.announcement_alerts !== false);
     }
-    setEditSpecialization(coach.specialization ?? '');
     setEditExperienceYears(coach.experience_years != null ? String(coach.experience_years) : '');
     setEditJoiningDate(formatDateToInput(coach.joining_date));
     setEditEmployeeId(coach.employee_id ?? '');
@@ -1296,12 +1289,6 @@ export default function CoachProfilePage() {
                     </span>
                   </div>
                   <div className="flex flex-row items-start py-1">
-                    <span className="font-medium w-28 sm:w-36 shrink-0" style={{ color: 'var(--foreground-muted)' }}>Specialization</span>
-                    <span className="font-normal break-words min-w-0 flex-1" style={{ color: 'var(--foreground)' }}>
-                      {coach.specialization || '—'}
-                    </span>
-                  </div>
-                  <div className="flex flex-row items-start py-1">
                     <span className="font-medium w-28 sm:w-36 shrink-0" style={{ color: 'var(--foreground-muted)' }}>Experience</span>
                     <span className="font-normal break-words min-w-0 flex-1" style={{ color: 'var(--foreground)' }}>
                       {coach.experience_years != null ? `${coach.experience_years} Years` : '—'}
@@ -1365,15 +1352,6 @@ export default function CoachProfilePage() {
                       value={categorySelection}
                       onChange={setCategorySelection}
                       theme="dark"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-slate-500 dark:text-slate-400 font-bold mb-1.5">Specialization</label>
-                    <input
-                      type="text"
-                      value={editSpecialization}
-                      onChange={(e) => setEditSpecialization(e.target.value)}
-                      className="glass-input w-full rounded-xl px-3 py-2 focus:outline-none"
                     />
                   </div>
                   <div>

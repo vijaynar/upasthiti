@@ -68,7 +68,7 @@ export async function POST(req: Request) {
       serviceAreaIds, serviceCommunityIds,
       experienceYears, serviceTypes, classTypes, languagesKnown,
       qualification, certificationsSummary, joiningDate, bio,
-      country, state, city, area, address, specialization,
+      country, state, city, area, address,
       gender, dateOfBirth,
       // Financials
       bankAccountNumber, bankIfscCode, bankName, upiId, panNumber,
@@ -163,7 +163,6 @@ export async function POST(req: Request) {
         city: city || null,
         area: area || null,
         address: address || null,
-        specialization: specialization || null,
         age_groups: ageGroups || [],
         skill_levels: skillLevels || [],
         gender: gender || null,

@@ -131,7 +131,7 @@ export async function POST(req: Request) {
       serviceAreaIds, serviceCommunityIds,
       experienceYears, serviceTypes, classTypes, languagesKnown,
       qualification, certificationsSummary, joiningDate, bio,
-      country, state, city, area, address, specialization,
+      country, state, city, area, address,
       salaryType, fixedSalary, perClassRate, revenueSharePct,
       bankAccountNumber, bankIfscCode, bankName, upiId, panNumber, tenantId
     } = body;
@@ -216,7 +216,6 @@ export async function POST(req: Request) {
         city: city ?? null,
         area: area ?? null,
         address: address ?? null,
-        specialization: specialization ?? null,
         age_groups: ageGroups ?? [],
         skill_levels: skillLevels ?? [],
         account_status: 'Onboarding',
@@ -450,7 +449,6 @@ export async function PUT(req: Request) {
     if (fields.employeeId !== undefined) coachUpdate.employee_id = fields.employeeId;
     if (fields.designation !== undefined) coachUpdate.designation = fields.designation;
     if (fields.department !== undefined) coachUpdate.department = fields.department;
-    if (fields.specialization !== undefined) coachUpdate.specialization = fields.specialization;
     if (fields.employeeType !== undefined) coachUpdate.employee_type = fields.employeeType;
     if (fields.workingDays !== undefined) coachUpdate.working_days = fields.workingDays;
     if (fields.gender !== undefined) coachUpdate.gender = fields.gender;

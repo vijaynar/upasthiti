@@ -176,39 +176,41 @@ export function CategoryPicker({ categories, value, onChange, theme = 'light' }:
         );
       })}
 
-      {/* Age Groups */}
-      <div>
-        <label className={labelClass}>Age Groups Taught</label>
-        <div className="flex flex-wrap gap-1.5">
-          {AGE_GROUPS.map(ag => (
-            <button
-              key={ag}
-              type="button"
-              onClick={() => onChange({ ...value, ageGroups: toggleFromList(value.ageGroups, ag) })}
-              className={chipClass(value.ageGroups.includes(ag))}
-            >
-              {value.ageGroups.includes(ag) && <Check className="w-3 h-3 stroke-[3]" />}
-              {ag}
-            </button>
-          ))}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {/* Age Groups */}
+        <div>
+          <label className={labelClass}>Age Groups Taught</label>
+          <div className="flex flex-wrap gap-1.5">
+            {AGE_GROUPS.map(ag => (
+              <button
+                key={ag}
+                type="button"
+                onClick={() => onChange({ ...value, ageGroups: toggleFromList(value.ageGroups, ag) })}
+                className={chipClass(value.ageGroups.includes(ag))}
+              >
+                {value.ageGroups.includes(ag) && <Check className="w-3 h-3 stroke-[3]" />}
+                {ag}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
 
-      {/* Skill Levels */}
-      <div>
-        <label className={labelClass}>Skill Levels Coached</label>
-        <div className="flex flex-wrap gap-1.5">
-          {SKILL_LEVELS.map(sl => (
-            <button
-              key={sl}
-              type="button"
-              onClick={() => onChange({ ...value, skillLevels: toggleFromList(value.skillLevels, sl) })}
-              className={chipClass(value.skillLevels.includes(sl))}
-            >
-              {value.skillLevels.includes(sl) && <Check className="w-3 h-3 stroke-[3]" />}
-              {sl}
-            </button>
-          ))}
+        {/* Skill Levels */}
+        <div>
+          <label className={labelClass}>Skill Levels Coached</label>
+          <div className="flex flex-wrap gap-1.5">
+            {SKILL_LEVELS.map(sl => (
+              <button
+                key={sl}
+                type="button"
+                onClick={() => onChange({ ...value, skillLevels: toggleFromList(value.skillLevels, sl) })}
+                className={chipClass(value.skillLevels.includes(sl))}
+              >
+                {value.skillLevels.includes(sl) && <Check className="w-3 h-3 stroke-[3]" />}
+                {sl}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
     </div>

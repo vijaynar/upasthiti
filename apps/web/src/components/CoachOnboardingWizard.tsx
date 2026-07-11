@@ -16,16 +16,34 @@ import { LocalityAutocompleteInput } from '@/components/LocalityAutocompleteInpu
 import { RestrictedAutocompleteInput } from '@/components/RestrictedAutocompleteInput';
 import { INDIAN_STATES, CITIES_BY_STATE } from '@/lib/indianStatesCities';
 
+// No separate "Hybrid" option — selecting both Offline + Online already
+// conveys that, and a standalone Hybrid chip would just duplicate it.
 const SERVICE_TYPES_ONBOARD = [
   { value: 'Offline', label: 'Offline Coaching' },
   { value: 'Online', label: 'Online Coaching' },
-  { value: 'Hybrid', label: 'Hybrid (Online + Offline)' }
 ];
 
 const CLASS_TYPES_ONBOARD = [
   { value: 'Group Classes', label: 'Group Classes' },
   { value: 'One-to-One', label: 'One-to-One Sessions' }
 ];
+
+// Qualification is free text, but the *kind* of credential expected varies
+// a lot by category — keyed by categories.slug (see 0015_seed_category_taxonomy.sql).
+const QUALIFICATION_PLACEHOLDER_BY_CATEGORY: Record<string, string> = {
+  'sports': 'B.P.Ed, NIS Certified',
+  'fitness': 'Certified Personal Trainer (ACE/ACSM)',
+  'martial-arts-self-defense': 'Black Belt (3rd Dan), Certified Instructor',
+  'yoga-wellness': 'RYT 200, Yoga Alliance Certified',
+  'dance': 'Diploma in Dance, Certified Choreographer',
+  'music': 'B.A. Music, Trinity/ABRSM Grade 8',
+  'visual-arts': 'B.F.A., Diploma in Fine Arts',
+  'performing-arts': 'Diploma in Theatre Arts',
+  'adventure-outdoor': 'Wilderness First Aid, NOLS Certified',
+  'coding-technology': 'B.Tech/B.E., Certified Software Trainer',
+  'academic-tuition': 'M.Sc Mathematics, B.Ed',
+};
+const DEFAULT_QUALIFICATION_PLACEHOLDER = 'B.P.Ed, NIS Certified';
 
 const LANGUAGES_ONBOARD = [
   'English', 'Hindi', 'Kannada', 'Telugu', 'Tamil', 'Malayalam', 'Marathi', 'Gujarati'
@@ -87,9 +105,12 @@ export function CoachOnboardingWizard({
     ageGroups: [],
     skillLevels: [],
   });
-  const [specialization, setSpecialization] = useState('');
   const [experienceYears, setExperienceYears] = useState('');
   const [qualification, setQualification] = useState('');
+  const selectedCategorySlug = categories.find(c => c.id === categorySelection.categoryId)?.slug ?? null;
+  const qualificationPlaceholder = selectedCategorySlug
+    ? (QUALIFICATION_PLACEHOLDER_BY_CATEGORY[selectedCategorySlug] ?? DEFAULT_QUALIFICATION_PLACEHOLDER)
+    : DEFAULT_QUALIFICATION_PLACEHOLDER;
   const [languagesKnown, setLanguagesKnown] = useState<string[]>(['English']);
   const [langInput, setLangInput] = useState('');
   const [serviceTypes, setServiceTypes] = useState<string[]>(['Offline', 'Online']);
@@ -320,7 +341,6 @@ export function CoachOnboardingWizard({
           city: cityName || null,
           area: areaName || null,
           address: addressLine || null,
-          specialization: specialization || null,
           salaryType,
           fixedSalary: Number(fixedSalary),
           perClassRate: Number(perClassRate),
@@ -377,7 +397,6 @@ export function CoachOnboardingWizard({
             city: cityName,
             area: areaName,
             address: addressLine,
-            specialization,
             gender,
             dateOfBirth: dob || null,
             bankAccountNumber: bankAccountNumber || null,
@@ -861,96 +880,83 @@ export function CoachOnboardingWizard({
                 />
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-medium mb-1">Experience (in years) <span className="text-red-500 ml-1">*</span></label>
-                  <input
-                    required
-                    type="number"
-                    min={0}
-                    placeholder="e.g. 5"
-                    value={experienceYears}
-                    onChange={(e) => setExperienceYears(e.target.value)}
-                    className={`rounded-xl px-3 py-2 text-xs w-full outline-none focus:ring-1 focus:ring-indigo-500 border ${
-                      isDark ? 'glass-input border-white/10 bg-[#060814]/40 text-slate-200' : 'border-slate-200 bg-white text-slate-800'
-                    }`}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium mb-1">Qualification <span className="text-red-500 ml-1">*</span></label>
-                  <input
-                    required
-                    type="text"
-                    placeholder="B.P.Ed, NIS Certified"
-                    value={qualification}
-                    onChange={(e) => setQualification(e.target.value)}
-                    className={`rounded-xl px-3 py-2 text-xs w-full outline-none focus:ring-1 focus:ring-indigo-500 border ${
-                      isDark ? 'glass-input border-white/10 bg-[#060814]/40 text-slate-200' : 'border-slate-200 bg-white text-slate-800'
-                    }`}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium mb-1">
-                  Specialization Notes <span className={`font-normal text-[10px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>(Optional)</span>
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. Singles, Advanced Techniques, Exam-focused prep"
-                  value={specialization}
-                  onChange={(e) => setSpecialization(e.target.value)}
-                  className={`rounded-xl px-3 py-2 text-xs w-full outline-none focus:ring-1 focus:ring-indigo-500 border ${
-                    isDark ? 'glass-input border-white/10 bg-[#060814]/40 text-slate-200' : 'border-slate-200 bg-white text-slate-800'
-                  }`}
-                />
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-medium mb-1.5">Service Types <span className={`font-normal text-[10px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>(Select all that apply)</span></label>
-                  <div className="flex flex-wrap gap-1.5">
-                    {SERVICE_TYPES_ONBOARD.map(svc => {
-                      const isSelected = serviceTypes.includes(svc.value);
-                      return (
-                        <button
-                          key={svc.value}
-                          type="button"
-                          onClick={() => setServiceTypes(prev => isSelected ? prev.filter(s => s !== svc.value) : [...prev, svc.value])}
-                          className={`px-2.5 py-1 rounded-lg border text-[10px] font-semibold transition-all flex items-center gap-1 ${
-                            isSelected
-                              ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm'
-                              : (isDark ? 'bg-white/5 border-white/10 text-slate-400 hover:bg-white/10' : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200')
-                          }`}
-                        >
-                          {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
-                          {svc.label}
-                        </button>
-                      );
-                    })}
+              <div className={`p-4 border rounded-2xl space-y-3 ${isDark ? 'border-white/5 bg-white/[0.01]' : 'border-slate-100 bg-slate-50/20'}`}>
+                <div className="flex flex-col md:flex-row gap-3">
+                  <div className="md:w-36 shrink-0">
+                    <label className="block text-xs font-medium mb-1 whitespace-nowrap">Experience (in years) <span className="text-red-500 ml-1">*</span></label>
+                    <input
+                      required
+                      type="number"
+                      min={0}
+                      placeholder="e.g. 5"
+                      value={experienceYears}
+                      onChange={(e) => setExperienceYears(e.target.value)}
+                      className={`rounded-xl px-3 py-2 text-xs w-full outline-none focus:ring-1 focus:ring-indigo-500 border ${
+                        isDark ? 'glass-input border-white/10 bg-[#060814]/40 text-slate-200' : 'border-slate-200 bg-white text-slate-800'
+                      }`}
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <label className="block text-xs font-medium mb-1">Qualification <span className="text-red-500 ml-1">*</span></label>
+                    <input
+                      required
+                      type="text"
+                      placeholder={qualificationPlaceholder}
+                      value={qualification}
+                      onChange={(e) => setQualification(e.target.value)}
+                      className={`rounded-xl px-3 py-2 text-xs w-full outline-none focus:ring-1 focus:ring-indigo-500 border ${
+                        isDark ? 'glass-input border-white/10 bg-[#060814]/40 text-slate-200' : 'border-slate-200 bg-white text-slate-800'
+                      }`}
+                    />
                   </div>
                 </div>
-                <div>
-                  <label className="block text-xs font-medium mb-1.5">Class Types <span className={`font-normal text-[10px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>(Select all that apply)</span></label>
-                  <div className="flex flex-wrap gap-1.5">
-                    {CLASS_TYPES_ONBOARD.map(cls => {
-                      const isSelected = classTypes.includes(cls.value);
-                      return (
-                        <button
-                          key={cls.value}
-                          type="button"
-                          onClick={() => setClassTypes(prev => isSelected ? prev.filter(c => c !== cls.value) : [...prev, cls.value])}
-                          className={`px-2.5 py-1 rounded-lg border text-[10px] font-semibold transition-all flex items-center gap-1 ${
-                            isSelected
-                              ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm'
-                              : (isDark ? 'bg-white/5 border-white/10 text-slate-400 hover:bg-white/10' : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200')
-                          }`}
-                        >
-                          {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
-                          {cls.label}
-                        </button>
-                      );
-                    })}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium mb-1.5">Service Types <span className={`font-normal text-[10px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>(Select all that apply)</span></label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {SERVICE_TYPES_ONBOARD.map(svc => {
+                        const isSelected = serviceTypes.includes(svc.value);
+                        return (
+                          <button
+                            key={svc.value}
+                            type="button"
+                            onClick={() => setServiceTypes(prev => isSelected ? prev.filter(s => s !== svc.value) : [...prev, svc.value])}
+                            className={`px-2.5 py-1 rounded-lg border text-[10px] font-semibold transition-all flex items-center gap-1 ${
+                              isSelected
+                                ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm'
+                                : (isDark ? 'bg-white/5 border-white/10 text-slate-400 hover:bg-white/10' : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200')
+                            }`}
+                          >
+                            {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                            {svc.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium mb-1.5">Class Types <span className={`font-normal text-[10px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>(Select all that apply)</span></label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {CLASS_TYPES_ONBOARD.map(cls => {
+                        const isSelected = classTypes.includes(cls.value);
+                        return (
+                          <button
+                            key={cls.value}
+                            type="button"
+                            onClick={() => setClassTypes(prev => isSelected ? prev.filter(c => c !== cls.value) : [...prev, cls.value])}
+                            className={`px-2.5 py-1 rounded-lg border text-[10px] font-semibold transition-all flex items-center gap-1 ${
+                              isSelected
+                                ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm'
+                                : (isDark ? 'bg-white/5 border-white/10 text-slate-400 hover:bg-white/10' : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200')
+                            }`}
+                          >
+                            {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                            {cls.label}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -961,6 +967,7 @@ export function CoachOnboardingWizard({
                   areas={serviceAreas}
                   value={serviceAreaSelection}
                   onChange={setServiceAreaSelection}
+                  defaultCity={cityName}
                   theme={theme}
                 />
               </div>
