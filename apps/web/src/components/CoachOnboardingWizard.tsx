@@ -230,59 +230,80 @@ export function CoachOnboardingWizard({
     setLanguagesKnown(prev => prev.filter(l => l !== lang));
   };
 
+  // Only fills fields on the step currently visible — filling later/earlier
+  // steps behind the scenes made it look like the wizard was pre-populated
+  // when the user hadn't actually gotten there yet.
   const fillRandomData = () => {
     const randomId = Math.floor(1000 + Math.random() * 9000);
     const randFirst = ['Amit', 'Rajesh', 'Vikram', 'Pooja', 'Neha', 'Sanjay', 'Preeti', 'Sunil'][Math.floor(Math.random() * 8)];
     const randLast = ['Sharma', 'Verma', 'Kumar', 'Patel', 'Joshi', 'Singh', 'Gupta', 'Reddy'][Math.floor(Math.random() * 8)];
-    const randEmail = `coach.${randFirst.toLowerCase()}.${randLast.toLowerCase()}.${randomId}@upasthiti.com`;
-    const randPhone = Math.floor(6000000000 + Math.random() * 3999999999).toString();
-    const randPassword = `Onboard@${randomId}!`;
-    const randDOB = '1990-06-15';
-    const randGender = Math.random() > 0.5 ? 'Male' : 'Female';
 
-    setFirstName(randFirst);
-    setLastName(randLast);
-    setEmail(randEmail);
-    setPhone(randPhone);
-    setPassword(randPassword);
-    setGender(randGender);
-    setDob(randDOB);
-    setAvatarPreview(`https://api.dicebear.com/7.x/adventurer/svg?seed=${randFirst}${randomId}`);
-    setLanguagesKnown(['English', 'Hindi']);
-    setStateName('Telangana');
-    setCityName('Hyderabad');
-    setAreaName('Gachibowli');
+    if (step === 1) {
+      const randEmail = `coach.${randFirst.toLowerCase()}.${randLast.toLowerCase()}.${randomId}@upasthiti.com`;
+      const randPhone = Math.floor(6000000000 + Math.random() * 3999999999).toString();
+      const randDOB = '1990-06-15';
+      const randGender = Math.random() > 0.5 ? 'Male' : 'Female';
 
-    if (categories.length > 0) {
-      const cat = categories[Math.floor(Math.random() * categories.length)];
-      const sub = cat.subcategories.length > 0
-        ? cat.subcategories[Math.floor(Math.random() * cat.subcategories.length)]
-        : null;
-      setCategorySelection({
-        categoryId: cat.id,
-        subcategoryIds: sub ? [sub.id] : [],
-        primarySubcategoryId: sub?.id ?? null,
-        tagIds: [],
-        ageGroups: ['Kids', 'Adults'],
-        skillLevels: ['Beginner', 'Intermediate'],
+      setFirstName(randFirst);
+      setLastName(randLast);
+      setEmail(randEmail);
+      setPhone(randPhone);
+      setGender(randGender);
+      setDob(randDOB);
+      setAvatarPreview(`https://api.dicebear.com/7.x/adventurer/svg?seed=${randFirst}${randomId}`);
+      setLanguagesKnown(['English', 'Hindi']);
+      setStateName('Telangana');
+      setCityName('Hyderabad');
+      setAreaName('Gachibowli');
+      setAddressLine('Flat 402, 3rd Block, Lotus Apts');
+    }
+
+    if (step === 2) {
+      if (categories.length > 0) {
+        const cat = categories[Math.floor(Math.random() * categories.length)];
+        const sub = cat.subcategories.length > 0
+          ? cat.subcategories[Math.floor(Math.random() * cat.subcategories.length)]
+          : null;
+        setCategorySelection({
+          categoryId: cat.id,
+          subcategoryIds: sub ? [sub.id] : [],
+          primarySubcategoryId: sub?.id ?? null,
+          tagIds: [],
+          ageGroups: ['Kids', 'Adults'],
+          skillLevels: ['Beginner', 'Intermediate'],
+        });
+      }
+      setExperienceYears(Math.floor(2 + Math.random() * 12).toString());
+      setQualification('B.P.Ed, Certified Instructor');
+      setBio('Passionate coaching specialist focused on standard fitness, skill refinement, and consistent training modules.');
+      setCertificationsSummary('National Coaching Federation Level 2, Certified Sports Physiologist.');
+
+      if (serviceAreas.length > 0) {
+        const shuffled = [...serviceAreas].sort(() => Math.random() - 0.5);
+        setServiceAreaSelection({ areaIds: shuffled.slice(0, 2).map(a => a.id), communities: [] });
+      }
+    }
+
+    if (step === 3) {
+      setDocFiles(prev => {
+        const next = { ...prev };
+        DOCUMENT_TYPES.forEach(doc => {
+          const fileName = `${doc.key.replace(/\s+/g, '_')}_Test.pdf`;
+          next[doc.key] = new File([`Test document content for ${doc.label}`], fileName, { type: 'application/pdf' });
+        });
+        return next;
       });
     }
-    setExperienceYears(Math.floor(2 + Math.random() * 12).toString());
-    setQualification('B.P.Ed, Certified Instructor');
-    setBio('Passionate coaching specialist focused on standard fitness, skill refinement, and consistent training modules.');
-    setCertificationsSummary('National Coaching Federation Level 2, Certified Sports Physiologist.');
 
-    if (serviceAreas.length > 0) {
-      const shuffled = [...serviceAreas].sort(() => Math.random() - 0.5);
-      setServiceAreaSelection({ areaIds: shuffled.slice(0, 2).map(a => a.id), communities: [] });
+    if (step === 4) {
+      const randPassword = `Onboard@${randomId}!`;
+      setPassword(randPassword);
+      setBankName('State Bank of India');
+      setBankAccountNumber(`3040506070${randomId}`);
+      setBankIfscCode('SBIN0004561');
+      setUpiId(`${randFirst.toLowerCase()}@oksbi`);
+      setPanNumber(`ABCDE${randomId}F`);
     }
-
-    setAddressLine('Flat 402, 3rd Block, Lotus Apts');
-    setBankName('State Bank of India');
-    setBankAccountNumber(`3040506070${randomId}`);
-    setBankIfscCode('SBIN0004561');
-    setUpiId(`${randFirst.toLowerCase()}@oksbi`);
-    setPanNumber(`ABCDE${randomId}F`);
   };
 
   const navigateToStep = (targetStep: number) => {
@@ -577,7 +598,7 @@ export function CoachOnboardingWizard({
               <h3 className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-900'}`}>Step {step} of 5</h3>
               <p className={`text-xs mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{STEPS_LIST[step - 1].name}</p>
             </div>
-            {(isAdminMode || testMode) && (
+            {(isAdminMode || testMode) && (step === 1 || step === 2 || step === 3 || step === 4) && (
               <button
                 type="button"
                 onClick={fillRandomData}
@@ -1045,6 +1066,13 @@ export function CoachOnboardingWizard({
               <div>
                 <h3 className={`text-xs font-semibold ${isDark ? 'text-slate-200' : 'text-slate-850'}`}>Academy Verification Files</h3>
                 <p className="text-slate-400 text-[10px] mt-0.5">Please upload scans or PDF documentation to bypass manual pre-activation flags.</p>
+              </div>
+
+              <div className={`p-3 rounded-xl border flex items-start gap-2.5 text-xs ${
+                isDark ? 'border-amber-500/20 bg-amber-500/5 text-amber-400' : 'border-amber-200 bg-amber-50 text-amber-700'
+              }`}>
+                <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                <span>You can skip this step for now, but approval will be put on hold until these documents are uploaded and verified later from the coach&apos;s profile.</span>
               </div>
 
               <div className="space-y-3">
