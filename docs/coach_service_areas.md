@@ -1,7 +1,7 @@
 # Coach Service Areas & Communities
 
 A two-tier geography model for where a coach operates, collected during Coach
-Onboarding (Step 2, before Salary & Payroll) and intended to power a future
+Onboarding (Step 2, Professional Profile) and intended to power a future
 "coaches near me" Discovery filter.
 
 ## Model
@@ -74,8 +74,9 @@ further API changes.
 `apps/web/src/lib/useGooglePlaces.ts` (plain `fetch()` wrapper around
 **Places API (New)** — no Maps JS SDK / `<script>` loader; the whole
 integration is two REST calls). Wired into `CoachOnboardingWizard.tsx` Step
-2, between the category/tag picker and the admin-only Salary & Payroll
-section.
+2, after the category/tag picker (the admin-only "Salary & Payroll" section
+that previously followed it here has since been removed from onboarding —
+see `docs/coach_pricing_policies.md`).
 
 Since Tier 1 areas are seeded per-city, the picker leads with a **City**
 field (`RestrictedAutocompleteInput`, non-strict — suggests the distinct

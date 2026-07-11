@@ -58,6 +58,63 @@ async function syncCoachServiceAreas(
   }
 }
 
+// A single pricing policy as edited by PaymentPricingStep. Mirrors the
+// helper + interface in apps/web/src/app/api/v1/coaches/route.ts (kept local
+// for the same reason as the two helpers above).
+interface PricingPolicyInput {
+  policyType: 'monthly_subscription' | 'per_class' | 'package' | 'trial_session' | 'fine_based' | 'one_time_registration';
+  enabled: boolean;
+  isDefault?: boolean;
+  rules: Record<string, unknown>[];
+}
+
+// Insert a newly-created coach's student-facing pricing policies — how THIS
+// coach charges students, distinct from coach_financial_settings below
+// (how the academy pays the coach).
+async function syncCoachPricingPolicies(
+  db: ReturnType<typeof adminDb>,
+  coachId: string,
+  tenantId: string,
+  policies: PricingPolicyInput[],
+  allowStudentOverrides: boolean
+) {
+  const enabledPolicies = policies.filter((p) => p.enabled);
+  const defaultPolicyType = enabledPolicies.find((p) => p.isDefault)?.policyType ?? null;
+
+  for (const policy of enabledPolicies) {
+    const { data: inserted, error: policyErr } = await db
+      .from('coach_pricing_policies')
+      .insert({
+        tenant_id: tenantId,
+        coach_id: coachId,
+        policy_type: policy.policyType,
+        enabled: true,
+        is_default: policy.policyType === defaultPolicyType,
+      })
+      .select('id')
+      .single();
+    if (policyErr) throw policyErr;
+
+    const rules = (policy.rules ?? []).map((rule, index) => ({
+      ...rule,
+      policy_id: inserted.id,
+      sort_order: index,
+    }));
+    if (rules.length > 0) {
+      const { error: rulesErr } = await db.from('coach_pricing_rules').insert(rules);
+      if (rulesErr) throw rulesErr;
+    }
+  }
+
+  const { error: settingsErr } = await db.from('coach_pricing_settings').upsert({
+    coach_id: coachId,
+    tenant_id: tenantId,
+    default_policy_type: defaultPolicyType,
+    allow_student_overrides: allowStudentOverrides,
+  });
+  if (settingsErr) throw settingsErr;
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
@@ -72,6 +129,8 @@ export async function POST(req: Request) {
       gender, dateOfBirth,
       // Financials
       bankAccountNumber, bankIfscCode, bankName, upiId, panNumber,
+      // Student-facing pricing (how this coach charges students)
+      pricingPolicies, allowStudentOverrides,
       // Academy fields
       tenantName, tenantSlug
     } = body;
@@ -224,6 +283,17 @@ export async function POST(req: Request) {
         await db.from('users').delete().eq('id', userId);
         await db.auth.admin.deleteUser(userId);
         throw finErr;
+      }
+
+      if (Array.isArray(pricingPolicies) && pricingPolicies.length > 0) {
+        try {
+          await syncCoachPricingPolicies(db, userId, tenantId, pricingPolicies, !!allowStudentOverrides);
+        } catch (pricingErr) {
+          await db.from('coaches').delete().eq('id', userId);
+          await db.from('users').delete().eq('id', userId);
+          await db.auth.admin.deleteUser(userId);
+          throw pricingErr;
+        }
       }
 
       return created({

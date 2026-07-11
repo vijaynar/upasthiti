@@ -31,6 +31,7 @@ Abhyas supports a multi-tenant, multi-role structure. Each role is tailored to i
     *   Set late thresholds ("If arrival is > 5 minutes after start, apply custom rules or mark absent").
     *   Set holiday calendars and designated weekends.
 *   **Fines Configuration:** Define fine structures for absences and late arrivals (e.g., "Absent Fine Rule 1: ₹1,000 for up to 4 absences; Rule 2: ₹2,000 for 5+ absences").
+*   **Student Pricing Policies:** Enable any combination of Monthly Subscription, Per Class, Class Packages, Trial Session, Fine-Based (attendance-linked), and One-Time Registration pricing — not mutually exclusive — plus per-student custom overrides (scholarships, negotiated rates). Configured during Coach Onboarding and editable later from Profile settings. See `docs/coach_pricing_policies.md`.
 *   **Health & Sports Parametrization:** Define custom tracking metrics based on the institute's specialty (e.g., "50m swimming timing" for swimming centers, "flexibility test" for yoga, "strength index" for gymnastics).
 *   **AI Review Panel:** Approve or override ambiguous face recognition matches flagged with low confidence levels.
 *   **Payment Verification Queue:** Review submitted student payment proofs (screenshots, transaction IDs, cash handovers), approve them (marking ledgers `Paid`), or reject them with custom reasons (marking ledgers `Unpaid` and triggering alerts).

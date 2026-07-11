@@ -6,7 +6,7 @@ import {
   Building2, Eye, EyeOff, Globe, Lock, Mail, Sparkles, User,
   Check, CheckCircle2, ChevronLeft, ChevronRight, X, Phone,
   ShieldCheck, FileText, MapPin, AlertCircle, Camera, ArrowLeft, ArrowRight,
-  Upload, Trash2, ShieldAlert, IndianRupee, Landmark, Calendar, Award
+  Upload, Trash2, ShieldAlert, Landmark, Calendar, Award
 } from 'lucide-react';
 import { useCategoryTaxonomy } from '@/lib/useCategoryTaxonomy';
 import { CategoryPicker, CategorySelection } from '@/components/CategoryPicker';
@@ -15,6 +15,12 @@ import { ServiceAreaPicker, ServiceAreaSelection } from '@/components/ServiceAre
 import { LocalityAutocompleteInput } from '@/components/LocalityAutocompleteInput';
 import { RestrictedAutocompleteInput } from '@/components/RestrictedAutocompleteInput';
 import { INDIAN_STATES, CITIES_BY_STATE } from '@/lib/indianStatesCities';
+import {
+  PaymentPricingStep,
+  createDefaultPaymentPricingSelection,
+  isPaymentPricingValid,
+  type PaymentPricingSelection,
+} from '@/components/PaymentPricingStep';
 
 // No separate "Hybrid" option — selecting both Offline + Online already
 // conveys that, and a standalone Hybrid chip would just duplicate it.
@@ -138,7 +144,12 @@ export function CoachOnboardingWizard({
     'Experience Certificate': null,
   });
 
-  // --- Step 4: Location Details & Bank Details ---
+  // --- Step 4: Payment & Pricing --- (how THIS coach charges students —
+  // distinct from coach_financial_settings, which is how the academy pays
+  // the coach)
+  const [paymentPricing, setPaymentPricing] = useState<PaymentPricingSelection>(createDefaultPaymentPricingSelection());
+
+  // --- Step 5: Location Details & Bank Details ---
   const [country] = useState('India');
   const [stateName, setStateName] = useState('');
   const [cityName, setCityName] = useState('');
@@ -195,14 +206,16 @@ export function CoachOnboardingWizard({
                        bio.length <= 500;
 
   const isStep3Valid = true; // Documents step validation (optional, can submit empty if not strict)
-  const isStep4Valid = isPasswordValid;
+  const isStep4Valid = isPaymentPricingValid(paymentPricing);
+  const isStep5Valid = isPasswordValid;
 
   const STEPS_LIST = [
     { id: 1, name: 'Personal Information', desc: 'Basic details & location' },
     { id: 2, name: 'Professional Profile', desc: 'Your skills and experience' },
     { id: 3, name: 'Documents', desc: 'Upload identity & certificates' },
-    { id: 4, name: 'Account Security', desc: 'Secure your account' },
-    { id: 5, name: 'Review & Submit', desc: 'Review your information' }
+    { id: 4, name: 'Payment & Pricing', desc: 'How you charge students' },
+    { id: 5, name: 'Account Security', desc: 'Secure your account' },
+    { id: 6, name: 'Review & Submit', desc: 'Review your information' }
   ];
 
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -307,6 +320,17 @@ export function CoachOnboardingWizard({
     }
 
     if (step === 4) {
+      setPaymentPricing((prev) => ({
+        ...prev,
+        policies: prev.policies.map((p) =>
+          p.policyType === 'monthly_subscription' || p.policyType === 'per_class' || p.policyType === 'package'
+            ? { ...p, enabled: true }
+            : p
+        ),
+      }));
+    }
+
+    if (step === 5) {
       const randPassword = `Onboard@${randomId}!`;
       setPassword(randPassword);
       setBankName('State Bank of India');
@@ -323,6 +347,7 @@ export function CoachOnboardingWizard({
       if (step === 2 && !isStep2Valid) return;
       if (step === 3 && !isStep3Valid) return;
       if (step === 4 && !isStep4Valid) return;
+      if (step === 5 && !isStep5Valid) return;
     }
     setStep(targetStep);
     if (targetStep > maxStepReached) {
@@ -382,6 +407,8 @@ export function CoachOnboardingWizard({
           bankIfscCode: bankIfscCode || null,
           upiId: upiId || null,
           panNumber: panNumber || null,
+          pricingPolicies: paymentPricing.policies,
+          allowStudentOverrides: paymentPricing.allowStudentOverrides,
           tenantId
         };
 
@@ -436,6 +463,8 @@ export function CoachOnboardingWizard({
             bankName: bankName || null,
             upiId: upiId || null,
             panNumber: panNumber || null,
+            pricingPolicies: paymentPricing.policies,
+            allowStudentOverrides: paymentPricing.allowStudentOverrides,
           }),
         });
 
@@ -616,10 +645,10 @@ export function CoachOnboardingWizard({
         <div className={`px-6 pt-6 pb-2 border-b ${isDark ? 'border-white/5' : 'border-slate-100'}`}>
           <div className="flex items-center justify-between">
             <div>
-              <h3 className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-900'}`}>Step {step} of 5</h3>
+              <h3 className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-900'}`}>Step {step} of {STEPS_LIST.length}</h3>
               <p className={`text-xs mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{STEPS_LIST[step - 1].name}</p>
             </div>
-            {(isAdminMode || testMode) && (step === 1 || step === 2 || step === 3 || step === 4) && (
+            {(isAdminMode || testMode) && (step === 1 || step === 2 || step === 3 || step === 4 || step === 5) && (
               <button
                 type="button"
                 onClick={fillRandomData}
@@ -1014,54 +1043,6 @@ export function CoachOnboardingWizard({
                 />
               </div>
 
-              {/* Salary & Payroll (Admin Configure Only) */}
-              {isAdminMode && (
-                <div className={`p-4 border rounded-2xl space-y-3 ${isDark ? 'border-white/5 bg-white/[0.01]' : 'border-slate-100 bg-slate-50/20'}`}>
-                  <p className="text-[10px] font-bold text-indigo-500 uppercase tracking-wider flex items-center gap-1">
-                    <IndianRupee className="w-3.5 h-3.5" /> Salary & Payroll Settings
-                  </p>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    <div className="col-span-2">
-                      <label className="block text-[9px] text-slate-500 mb-1">Payroll Type</label>
-                      <select
-                        value={salaryType}
-                        onChange={(e) => setSalaryType(e.target.value)}
-                        className={`rounded-xl px-2 py-1 text-xs w-full outline-none border ${
-                          isDark ? 'glass-input border-white/10 bg-[#060814] text-slate-200' : 'border-slate-200 bg-white text-slate-800'
-                        }`}
-                      >
-                        <option value="Fixed Monthly">Fixed Monthly</option>
-                        <option value="Per Class">Per Class Session</option>
-                        <option value="Revenue Share">Revenue Share %</option>
-                        <option value="Hybrid">Hybrid Combo Matrix</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-[9px] text-slate-500 mb-1">Monthly Base (₹)</label>
-                      <input
-                        type="number"
-                        value={fixedSalary}
-                        onChange={(e) => setFixedSalary(e.target.value)}
-                        className={`rounded-xl px-2 py-1 text-xs w-full outline-none border ${
-                          isDark ? 'glass-input border-white/10 bg-[#060814]/40 text-slate-200' : 'border-slate-200 bg-white text-slate-800'
-                        }`}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[9px] text-slate-500 mb-1">Per Session (₹)</label>
-                      <input
-                        type="number"
-                        value={perClassRate}
-                        onChange={(e) => setPerClassRate(e.target.value)}
-                        className={`rounded-xl px-2 py-1 text-xs w-full outline-none border ${
-                          isDark ? 'glass-input border-white/10 bg-[#060814]/40 text-slate-200' : 'border-slate-200 bg-white text-slate-800'
-                        }`}
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
-
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="block text-xs font-medium">Professional Bio <span className="text-red-500 ml-1">*</span></label>
@@ -1157,8 +1138,13 @@ export function CoachOnboardingWizard({
             </div>
           )}
 
-          {/* STEP 4: Account Security */}
+          {/* STEP 4: Payment & Pricing */}
           {step === 4 && (
+            <PaymentPricingStep value={paymentPricing} onChange={setPaymentPricing} theme={theme} />
+          )}
+
+          {/* STEP 5: Account Security */}
+          {step === 5 && (
             <div className="space-y-4">
               <div>
                 <h3 className={`text-sm font-bold ${isDark ? 'text-slate-100' : 'text-slate-900'}`}>Secure Your Account</h3>
@@ -1217,8 +1203,8 @@ export function CoachOnboardingWizard({
             </div>
           )}
 
-          {/* STEP 5: Review & Submit */}
-          {step === 5 && (
+          {/* STEP 6: Review & Submit */}
+          {step === 6 && (
             <div className="space-y-4 max-h-[340px] overflow-y-auto pr-1">
               <div>
                 <h3 className={`text-sm font-bold ${isDark ? 'text-slate-100' : 'text-slate-900'}`}>Review Your Information</h3>
@@ -1317,13 +1303,33 @@ export function CoachOnboardingWizard({
                       <span className="font-semibold text-[10px] leading-relaxed">{bio.length > 120 ? bio.slice(0, 120) + '…' : bio}</span>
                     </div>
                   )}
-                  {isAdminMode && (
-                    <div className="col-span-2">
-                      <span className="text-slate-500 block text-[9px]">Payroll Rate</span>
-                      <span className="font-semibold">{salaryType} · Base ₹{fixedSalary} · Session ₹{perClassRate}</span>
-                    </div>
-                  )}
                 </div>
+              </div>
+
+              {/* Payment & Pricing Card */}
+              <div className={`p-4 border rounded-xl relative ${isDark ? 'border-white/5 bg-white/[0.01]' : 'border-slate-200 bg-slate-50/50'}`}>
+                <button
+                  type="button"
+                  onClick={() => setStep(4)}
+                  className="absolute top-4 right-4 text-indigo-500 hover:text-indigo-700 text-xs font-bold transition-colors"
+                >
+                  Edit
+                </button>
+                <h4 className="text-[10px] font-bold text-indigo-500 uppercase tracking-wider mb-3">Payment & Pricing</h4>
+                {paymentPricing.policies.some(p => p.enabled) ? (
+                  <div className="flex flex-wrap gap-1.5 text-xs">
+                    {paymentPricing.policies.filter(p => p.enabled).map(p => (
+                      <span
+                        key={p.policyType}
+                        className={`px-2 py-1 rounded-lg font-semibold ${isDark ? 'bg-indigo-500/10 text-indigo-300' : 'bg-indigo-50 text-indigo-700'}`}
+                      >
+                        {p.policyType.replace(/_/g, ' ')}{p.isDefault ? ' (Default)' : ''}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-400">No pricing method enabled yet.</p>
+                )}
               </div>
 
               {/* Info banner */}
@@ -1357,7 +1363,7 @@ export function CoachOnboardingWizard({
               <div />
             )}
 
-            {step < 5 ? (
+            {step < STEPS_LIST.length ? (
               <button
                 key="continue-btn"
                 type="button"
@@ -1366,7 +1372,8 @@ export function CoachOnboardingWizard({
                   (step === 1 && !isStep1Valid) ||
                   (step === 2 && !isStep2Valid) ||
                   (step === 3 && !isStep3Valid) ||
-                  (step === 4 && !isStep4Valid)
+                  (step === 4 && !isStep4Valid) ||
+                  (step === 5 && !isStep5Valid)
                 }
                 className="inline-flex items-center px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shadow-sm shadow-indigo-600/10"
               >

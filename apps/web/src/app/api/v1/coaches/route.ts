@@ -69,6 +69,75 @@ async function syncCoachServiceAreas(
   }
 }
 
+// A single pricing policy as edited by PaymentPricingStep: one enabled/
+// disabled toggle (policy_type) plus one-or-more rule rows (package pricing
+// has several tiers; every other policy type has exactly one rule row).
+interface PricingPolicyInput {
+  policyType: 'monthly_subscription' | 'per_class' | 'package' | 'trial_session' | 'fine_based' | 'one_time_registration';
+  enabled: boolean;
+  isDefault?: boolean;
+  rules: Record<string, unknown>[];
+}
+
+// Replace a coach's pricing policies/rules and settings in one shot
+// (delete-then-reinsert, same rationale as syncCoachCategories above).
+// Student-facing pricing (this coach charges students) — distinct from
+// coach_financial_settings (the academy pays this coach), never conflated.
+async function syncCoachPricingPolicies(
+  db: ReturnType<typeof adminDb>,
+  coachId: string,
+  tenantId: string,
+  policies: PricingPolicyInput[],
+  allowStudentOverrides: boolean
+) {
+  const { data: existingPolicies } = await db
+    .from('coach_pricing_policies')
+    .select('id')
+    .eq('coach_id', coachId);
+
+  const existingIds = (existingPolicies ?? []).map((p) => p.id);
+  if (existingIds.length > 0) {
+    await db.from('coach_pricing_rules').delete().in('policy_id', existingIds);
+    await db.from('coach_pricing_policies').delete().in('id', existingIds);
+  }
+
+  const enabledPolicies = policies.filter((p) => p.enabled);
+  const defaultPolicyType = enabledPolicies.find((p) => p.isDefault)?.policyType ?? null;
+
+  for (const policy of enabledPolicies) {
+    const { data: inserted, error: policyErr } = await db
+      .from('coach_pricing_policies')
+      .insert({
+        tenant_id: tenantId,
+        coach_id: coachId,
+        policy_type: policy.policyType,
+        enabled: true,
+        is_default: policy.policyType === defaultPolicyType,
+      })
+      .select('id')
+      .single();
+    if (policyErr) throw policyErr;
+
+    const rules = (policy.rules ?? []).map((rule, index) => ({
+      ...rule,
+      policy_id: inserted.id,
+      sort_order: index,
+    }));
+    if (rules.length > 0) {
+      const { error: rulesErr } = await db.from('coach_pricing_rules').insert(rules);
+      if (rulesErr) throw rulesErr;
+    }
+  }
+
+  const { error: settingsErr } = await db.from('coach_pricing_settings').upsert({
+    coach_id: coachId,
+    tenant_id: tenantId,
+    default_policy_type: defaultPolicyType,
+    allow_student_overrides: allowStudentOverrides,
+  });
+  if (settingsErr) throw settingsErr;
+}
+
 export async function GET(req: Request) {
   try {
     const ctx = await getAuthContext();
@@ -133,7 +202,8 @@ export async function POST(req: Request) {
       qualification, certificationsSummary, joiningDate, bio,
       country, state, city, area, address,
       salaryType, fixedSalary, perClassRate, revenueSharePct,
-      bankAccountNumber, bankIfscCode, bankName, upiId, panNumber, tenantId
+      bankAccountNumber, bankIfscCode, bankName, upiId, panNumber, tenantId,
+      pricingPolicies, allowStudentOverrides,
     } = body;
 
     if (!email || !password || !firstName || !lastName || !primarySubcategoryId || experienceYears === undefined) {
@@ -276,6 +346,20 @@ export async function POST(req: Request) {
       await db.from('users').delete().eq('id', userId);
       await db.auth.admin.deleteUser(userId);
       throw finErr;
+    }
+
+    // 5. Insert student-facing pricing policies (how THIS coach charges
+    // students — distinct from the financial settings above, which is how
+    // the academy pays the coach)
+    if (Array.isArray(pricingPolicies) && pricingPolicies.length > 0) {
+      try {
+        await syncCoachPricingPolicies(db, userId, effectiveTenantId, pricingPolicies, !!allowStudentOverrides);
+      } catch (pricingErr) {
+        await db.from('coaches').delete().eq('id', userId);
+        await db.from('users').delete().eq('id', userId);
+        await db.auth.admin.deleteUser(userId);
+        throw pricingErr;
+      }
     }
 
     return created({ userId, coach });
@@ -489,6 +573,11 @@ export async function PUT(req: Request) {
           .update(finUpdate)
           .eq('coach_id', coachId);
         if (finErr) throw finErr;
+      }
+
+      // Student-facing pricing policies — replace the whole set when provided
+      if (Array.isArray(fields.pricingPolicies)) {
+        await syncCoachPricingPolicies(db, coachId, effectiveTenantId, fields.pricingPolicies, !!fields.allowStudentOverrides);
       }
     }
 

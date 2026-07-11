@@ -314,6 +314,170 @@ export type Database = {
         Update: Partial<Omit<Database['public']['Tables']['fines']['Insert'], 'id' | 'tenant_id'>>;
       };
 
+      coach_pricing_policies: {
+        Row: {
+          id: string;
+          tenant_id: string;
+          coach_id: string;
+          policy_type:
+            | 'monthly_subscription'
+            | 'per_class'
+            | 'package'
+            | 'trial_session'
+            | 'fine_based'
+            | 'one_time_registration';
+          enabled: boolean;
+          is_default: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          tenant_id: string;
+          coach_id: string;
+          policy_type:
+            | 'monthly_subscription'
+            | 'per_class'
+            | 'package'
+            | 'trial_session'
+            | 'fine_based'
+            | 'one_time_registration';
+          enabled?: boolean;
+          is_default?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Omit<Database['public']['Tables']['coach_pricing_policies']['Insert'], 'id' | 'tenant_id' | 'coach_id'>>;
+      };
+
+      coach_pricing_rules: {
+        Row: {
+          id: string;
+          policy_id: string;
+          amount: number;
+          currency: string;
+          billing_cycle: 'Weekly' | 'Monthly' | 'Quarterly' | 'Yearly' | null;
+          auto_renew: boolean | null;
+          late_fee_amount: number | null;
+          late_fee_grace_days: number | null;
+          cancellation_window_hours: number | null;
+          min_booking_count: number | null;
+          class_count: number | null;
+          sort_order: number;
+          trial_type: 'free' | 'paid' | null;
+          late_arrival_fee_amount: number | null;
+          late_arrival_threshold_minutes: number | null;
+          absence_fee_amount: number | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          policy_id: string;
+          amount?: number;
+          currency?: string;
+          billing_cycle?: 'Weekly' | 'Monthly' | 'Quarterly' | 'Yearly' | null;
+          auto_renew?: boolean | null;
+          late_fee_amount?: number | null;
+          late_fee_grace_days?: number | null;
+          cancellation_window_hours?: number | null;
+          min_booking_count?: number | null;
+          class_count?: number | null;
+          sort_order?: number;
+          trial_type?: 'free' | 'paid' | null;
+          late_arrival_fee_amount?: number | null;
+          late_arrival_threshold_minutes?: number | null;
+          absence_fee_amount?: number | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Omit<Database['public']['Tables']['coach_pricing_rules']['Insert'], 'id' | 'policy_id'>>;
+      };
+
+      coach_pricing_settings: {
+        Row: {
+          coach_id: string;
+          tenant_id: string;
+          default_policy_type:
+            | 'monthly_subscription'
+            | 'per_class'
+            | 'package'
+            | 'trial_session'
+            | 'fine_based'
+            | 'one_time_registration'
+            | null;
+          allow_student_overrides: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          coach_id: string;
+          tenant_id: string;
+          default_policy_type?:
+            | 'monthly_subscription'
+            | 'per_class'
+            | 'package'
+            | 'trial_session'
+            | 'fine_based'
+            | 'one_time_registration'
+            | null;
+          allow_student_overrides?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Omit<Database['public']['Tables']['coach_pricing_settings']['Insert'], 'coach_id' | 'tenant_id'>>;
+      };
+
+      coach_student_pricing_overrides: {
+        Row: {
+          id: string;
+          tenant_id: string;
+          coach_id: string;
+          student_id: string;
+          override_type:
+            | 'monthly_subscription'
+            | 'per_class'
+            | 'package'
+            | 'trial_session'
+            | 'fine_based'
+            | 'one_time_registration'
+            | 'scholarship'
+            | 'custom';
+          override_amount: number;
+          class_count: number | null;
+          reason: string | null;
+          effective_from: string;
+          effective_to: string | null;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          tenant_id: string;
+          coach_id: string;
+          student_id: string;
+          override_type:
+            | 'monthly_subscription'
+            | 'per_class'
+            | 'package'
+            | 'trial_session'
+            | 'fine_based'
+            | 'one_time_registration'
+            | 'scholarship'
+            | 'custom';
+          override_amount: number;
+          class_count?: number | null;
+          reason?: string | null;
+          effective_from?: string;
+          effective_to?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Omit<Database['public']['Tables']['coach_student_pricing_overrides']['Insert'], 'id' | 'tenant_id' | 'coach_id' | 'student_id'>>;
+      };
+
       permissions: {
         Row: {
           id: string;

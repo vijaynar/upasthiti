@@ -31,6 +31,58 @@ import {
 import { createBrowserClient } from '@supabase/ssr';
 import { useCategoryTaxonomy } from '@/lib/useCategoryTaxonomy';
 import { CategoryPicker, CategorySelection } from '@/components/CategoryPicker';
+import { useTheme } from '@/lib/theme';
+import {
+  PaymentPricingStep,
+  createDefaultPaymentPricingSelection,
+  type PaymentPricingSelection,
+  type PricingRule,
+} from '@/components/PaymentPricingStep';
+
+// Reconstructs a PaymentPricingSelection from the coach_pricing_policies /
+// coach_pricing_rules / coach_pricing_settings rows loaded for this coach —
+// the inverse of what apps/web/src/app/api/v1/coaches/route.ts inserts.
+function buildPaymentPricingSelection(
+  policyRows: any[],
+  settingsRow: any
+): PaymentPricingSelection {
+  const base = createDefaultPaymentPricingSelection();
+  const defaultPolicyType = settingsRow?.default_policy_type ?? null;
+
+  return {
+    allowStudentOverrides: !!settingsRow?.allow_student_overrides,
+    policies: base.policies.map((basePolicy) => {
+      const row = policyRows.find((p) => p.policy_type === basePolicy.policyType);
+      if (!row) return basePolicy;
+
+      const rules: PricingRule[] = (row.coach_pricing_rules ?? [])
+        .slice()
+        .sort((a: any, b: any) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+        .map((r: any) => ({
+          amount: Number(r.amount) || 0,
+          currency: r.currency ?? 'INR',
+          billing_cycle: r.billing_cycle ?? undefined,
+          auto_renew: r.auto_renew ?? undefined,
+          late_fee_amount: r.late_fee_amount != null ? Number(r.late_fee_amount) : undefined,
+          late_fee_grace_days: r.late_fee_grace_days ?? undefined,
+          cancellation_window_hours: r.cancellation_window_hours ?? undefined,
+          min_booking_count: r.min_booking_count ?? undefined,
+          class_count: r.class_count ?? undefined,
+          trial_type: r.trial_type ?? undefined,
+          late_arrival_fee_amount: r.late_arrival_fee_amount != null ? Number(r.late_arrival_fee_amount) : undefined,
+          late_arrival_threshold_minutes: r.late_arrival_threshold_minutes ?? undefined,
+          absence_fee_amount: r.absence_fee_amount != null ? Number(r.absence_fee_amount) : undefined,
+        }));
+
+      return {
+        ...basePolicy,
+        enabled: true,
+        isDefault: row.policy_type === defaultPolicyType,
+        rules: rules.length > 0 ? rules : basePolicy.rules,
+      };
+    }),
+  };
+}
 
 const EMPTY_CATEGORY_SELECTION: CategorySelection = {
   categoryId: null,
@@ -160,6 +212,7 @@ export default function CoachProfilePage() {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
+  const { mode } = useTheme();
 
   // ── State ──────────────────────────────────────────────────────────────────
   const [loading, setLoading] = useState(true);
@@ -206,6 +259,10 @@ export default function CoachProfilePage() {
   });
 
   const [documents, setDocuments] = useState<Record<string, string>>({});
+
+  // Student-facing pricing (how THIS coach charges students) — distinct from
+  // `financials` above, which is how the academy pays the coach.
+  const [paymentPricing, setPaymentPricing] = useState<PaymentPricingSelection>(createDefaultPaymentPricingSelection());
 
   // Edit Mode state
   const [isEditing, setIsEditing] = useState(false);
@@ -293,7 +350,7 @@ export default function CoachProfilePage() {
 
         const userId = authData.user.id;
 
-        const [userRes, coachRes, financialsRes, docsRes] = await Promise.all([
+        const [userRes, coachRes, financialsRes, docsRes, pricingPoliciesRes, pricingSettingsRes] = await Promise.all([
           supabase
             .from('users')
             .select('id, email, first_name, last_name, phone, alternate_phone, notification_preferences, avatar_url, role, tenant_id, last_login, login_device')
@@ -322,6 +379,15 @@ export default function CoachProfilePage() {
             .from('coach_documents')
             .select('document_type, document_name, file_url')
             .eq('coach_id', userId),
+          supabase
+            .from('coach_pricing_policies')
+            .select('policy_type, coach_pricing_rules(*)')
+            .eq('coach_id', userId),
+          supabase
+            .from('coach_pricing_settings')
+            .select('default_policy_type, allow_student_overrides')
+            .eq('coach_id', userId)
+            .maybeSingle(),
         ]);
 
         if (userRes.error) {
@@ -389,6 +455,8 @@ export default function CoachProfilePage() {
             userRes.data ? `${userRes.data.first_name} ${userRes.data.last_name}` : ''
           );
         }
+
+        setPaymentPricing(buildPaymentPricingSelection(pricingPoliciesRes.data ?? [], pricingSettingsRes.data));
 
         if (docsRes.data) {
           const docMap: Record<string, string> = {};
@@ -506,6 +574,8 @@ export default function CoachProfilePage() {
         bankIfscCode: editBankIfscCode,
         bankAccountHolderName: editBankAccountHolderName,
         upiId: editUpiId,
+        pricingPolicies: paymentPricing.policies,
+        allowStudentOverrides: paymentPricing.allowStudentOverrides,
       };
 
       const res = await fetch('/api/v1/coaches', {
@@ -1843,6 +1913,33 @@ export default function CoachProfilePage() {
             </div>
           </div>
 
+        </div>
+
+        {/* ── Payment & Pricing Panel ────────────────────────────────────────── */}
+        <div className="glass-panel rounded-2xl p-4 shadow-sm mt-4">
+          <div className="flex items-center gap-2 border-b border-white/10 pb-1.5 mb-2">
+            <Landmark className="w-5 h-5 text-indigo-500" />
+            <h3 className="text-md font-bold" style={{ color: 'var(--foreground)' }}>Payment & Pricing</h3>
+          </div>
+
+          {!isEditing ? (
+            paymentPricing.policies.some((p) => p.enabled) ? (
+              <div className="flex flex-wrap gap-1.5 text-sm">
+                {paymentPricing.policies.filter((p) => p.enabled).map((p) => (
+                  <span
+                    key={p.policyType}
+                    className="px-2 py-1 rounded-lg font-semibold bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-300"
+                  >
+                    {p.policyType.replace(/_/g, ' ')}{p.isDefault ? ' (Default)' : ''}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm" style={{ color: 'var(--foreground-muted)' }}>No pricing method configured yet.</p>
+            )
+          ) : (
+            <PaymentPricingStep value={paymentPricing} onChange={setPaymentPricing} theme={mode} />
+          )}
         </div>
 
         {/* ── Footer Information Banner ─────────────────────────────────────── */}
