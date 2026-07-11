@@ -1,6 +1,6 @@
 -- ============================================================
 -- MIGRATION: 0002_face_matching_rpc.sql
--- Upasthiti — pgvector Cosine Similarity Face Matching RPC
+-- Abhyas — pgvector Cosine Similarity Face Matching RPC
 -- ============================================================
 -- This function is called by the Next.js API route:
 --   POST /api/v1/attendance/match-face

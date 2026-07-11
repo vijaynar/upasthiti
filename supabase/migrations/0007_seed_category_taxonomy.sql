@@ -1,7 +1,13 @@
 -- =========================================================================
--- MIGRATION: 0015_seed_category_taxonomy.sql
--- Upasthiti — Seed the Discovery category/subcategory/tag taxonomy and
--- best-effort backfill existing coaches from their legacy primary_skill.
+-- MIGRATION: 0007_seed_category_taxonomy.sql
+-- Abhyas — Seed the Discovery category/subcategory/tag taxonomy.
+--
+-- Consolidated: values below are the FINAL state (category renamed to
+-- "Martial Arts", "Running" seeded directly under Fitness) — earlier
+-- iterations seeded "Martial Arts & Self-Defense" and "Running" under
+-- Sports, then corrected both with follow-up UPDATEs. No backfill-from-
+-- legacy-primary_skill step is needed here since this baseline schema
+-- never has a coaches.primary_skill column to backfill from.
 -- =========================================================================
 
 -- 1. Categories --------------------------------------------------------------
@@ -20,7 +26,7 @@ INSERT INTO public.categories (name, slug, icon, display_order) VALUES
 
 -- 2. Subcategories -------------------------------------------------------------
 
--- Sports
+-- Sports (Running lives under Fitness, not here)
 INSERT INTO public.subcategories (category_id, name, slug, display_order)
 SELECT id, v.name, v.slug, v.ord FROM public.categories, (VALUES
     ('Badminton', 'badminton', 1), ('Cricket', 'cricket', 2), ('Football', 'football', 3),
@@ -203,40 +209,3 @@ SELECT id, 'subject', v.name, v.slug, v.ord FROM public.subcategories, (VALUES
     ('Exam Strategy & Time Management', 'exam-strategy-time-management', 1),
     ('Career Counseling', 'career-counseling', 2), ('College Admissions (India/Abroad)', 'college-admissions', 3)
 ) AS v(name, slug, ord) WHERE subcategories.slug = 'study-skills-counseling';
-
--- 4. Best-effort backfill of existing coaches from legacy primary_skill ---------
--- Maps the old hardcoded COACH_TYPES dropdown values to the closest new
--- subcategory. Values with no reasonable equivalent (Squash, Gymnastics,
--- generic "Dance Trainer", "Other Custom Coach") are intentionally left
--- unmapped — those coaches stay uncategorized until they re-tag themselves
--- via the profile editor, rather than being force-matched to something wrong.
-WITH mapping (old_value, new_slug) AS (VALUES
-    ('Badminton', 'badminton'),
-    ('Badminton Coach', 'badminton'),
-    ('Tennis', 'tennis'),
-    ('Tennis Instructor', 'tennis'),
-    ('Table Tennis', 'table-tennis'),
-    ('Table Tennis Coach', 'table-tennis'),
-    ('Swimming', 'swimming'),
-    ('Swimming Coach', 'swimming'),
-    ('Football', 'football'),
-    ('Football Coach', 'football'),
-    ('Cricket', 'cricket'),
-    ('Cricket Coach', 'cricket'),
-    ('Basketball', 'basketball'),
-    ('Basketball Coach', 'basketball'),
-    ('Athletics', 'athletics-track'),
-    ('Yoga Coach', 'hatha-yoga'),
-    ('Fitness Coach', 'general-fitness'),
-    ('Skating Coach', 'skating'),
-    ('Running Coach', 'running'),
-    ('Zumba Trainer', 'zumba')
-)
-INSERT INTO public.coach_categories (coach_id, subcategory_id, is_primary)
-SELECT c.id, s.id, true
-FROM public.coaches c
-JOIN mapping m ON m.old_value = c.primary_skill
-JOIN public.subcategories s ON s.slug = m.new_slug
-WHERE NOT EXISTS (
-    SELECT 1 FROM public.coach_categories cc WHERE cc.coach_id = c.id
-);

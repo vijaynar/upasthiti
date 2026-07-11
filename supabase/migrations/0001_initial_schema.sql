@@ -1,13 +1,19 @@
 -- ============================================================
 -- MIGRATION: 0001_initial_schema.sql
--- Upasthiti — Core Database Schema
+-- Abhyas — Core Database Schema
 -- ============================================================
 -- Run: supabase db reset  (applies all migrations fresh)
+--
+-- Consolidated baseline: this replaces what used to be 24 separate
+-- migration files (many of which added a column in one migration and
+-- dropped/renamed it a few migrations later). Every table here reflects
+-- the final, current shape of the schema — no intermediate churn.
 -- ============================================================
 
 -- Enable required extensions
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "vector";        -- pgvector for face embeddings
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- ============================================================
 -- TABLE 1: tenants
@@ -21,30 +27,47 @@ CREATE TABLE tenants (
     subscription_status VARCHAR(50)  NOT NULL DEFAULT 'trial'
                             CHECK (subscription_status IN ('trial', 'active', 'suspended', 'cancelled')),
     logo_url            TEXT,
+    country             VARCHAR(100) DEFAULT 'India',
+    state               VARCHAR(100) DEFAULT 'Telangana',
+    city                VARCHAR(100) DEFAULT 'Hyderabad',
+    address             TEXT,
+    email               VARCHAR(255),
     created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- ============================================================
 -- TABLE 2: users
--- Linked 1-to-1 with Supabase auth.users via shared UUID
+-- Linked 1-to-1 with Supabase auth.users via shared UUID.
+-- email is intentionally NOT unique — the same email may be reused
+-- across multiple user rows (e.g. a parent and student sharing an inbox).
+-- role_id is nullable and has no FK yet; the FK to roles(id) is added in
+-- 0009_governance_rbac.sql once that table exists.
 -- ============================================================
 CREATE TABLE users (
-    id              UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-    tenant_id       UUID         NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-    email           VARCHAR(255) NOT NULL UNIQUE,
-    role            VARCHAR(50)  NOT NULL
-                        CHECK (role IN ('superadmin', 'admin', 'student', 'parent')),
-    first_name      VARCHAR(100) NOT NULL,
-    last_name       VARCHAR(100) NOT NULL,
-    phone           VARCHAR(20),
-    avatar_url      TEXT,
-    is_active       BOOLEAN      NOT NULL DEFAULT true,
+    id                       UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    tenant_id                UUID         NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    email                    VARCHAR(255) NOT NULL,
+    role                     VARCHAR(50)  NOT NULL
+                                 CHECK (role IN ('superadmin', 'admin', 'student', 'parent', 'coach')),
+    role_id                  UUID,                                         -- FK added in 0009 (governance RBAC)
+    first_name               VARCHAR(100) NOT NULL,
+    last_name                VARCHAR(100) NOT NULL,
+    phone                    VARCHAR(20),
+    alternate_phone          VARCHAR(20),
+    avatar_url               TEXT,
+    is_active                BOOLEAN      NOT NULL DEFAULT true,
+    available_roles          VARCHAR(50)[] NOT NULL DEFAULT '{}',          -- roles this user can switch between
+    notification_preferences JSONB DEFAULT '{"email": true, "sms": false, "whatsapp": false, "attendance_reminders": true, "announcement_alerts": true}'::jsonb,
+    last_login               TIMESTAMPTZ,
+    login_device             TEXT,
     -- Notification tokens (populated when mobile app registers)
-    expo_push_token VARCHAR(255),                              -- [LATER] mobile push
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+    expo_push_token          VARCHAR(255),                                 -- [LATER] mobile push
+    created_at               TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at               TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE INDEX idx_users_last_login ON users (last_login DESC);
 
 -- ============================================================
 -- TABLE 3: classes
@@ -189,24 +212,70 @@ CREATE TABLE tenant_settings (
 
 -- ============================================================
 -- TABLE 11: fines
--- Auto-generated or manually created fine records.
--- Deferred: fine_payments table (payment proof uploads) is LATER
+-- Auto-generated or manually created fine records, including
+-- payment-proof upload support (proof URL / transaction id / method).
 -- ============================================================
 CREATE TABLE fines (
-    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    tenant_id    UUID          NOT NULL REFERENCES tenants(id)        ON DELETE CASCADE,
-    student_id   UUID          NOT NULL REFERENCES students(id)       ON DELETE CASCADE,
-    attendance_log_id UUID     REFERENCES attendance_logs(id)         ON DELETE SET NULL,
-    amount       NUMERIC(10,2) NOT NULL,
-    reason       TEXT          NOT NULL,
-    status       VARCHAR(50)   NOT NULL DEFAULT 'unpaid'
-                     CHECK (status IN ('unpaid', 'paid', 'waived')), -- 'pending_verification' added LATER
-    issued_date  DATE          NOT NULL DEFAULT CURRENT_DATE,
-    paid_date    TIMESTAMPTZ,
-    waived_by    UUID          REFERENCES users(id),
-    waive_reason TEXT,
-    created_at   TIMESTAMPTZ   NOT NULL DEFAULT now(),
-    updated_at   TIMESTAMPTZ   NOT NULL DEFAULT now()
+    id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id          UUID          NOT NULL REFERENCES tenants(id)        ON DELETE CASCADE,
+    student_id         UUID          NOT NULL REFERENCES students(id)       ON DELETE CASCADE,
+    attendance_log_id  UUID          REFERENCES attendance_logs(id)         ON DELETE SET NULL,
+    amount             NUMERIC(10,2) NOT NULL,
+    reason             TEXT          NOT NULL,
+    status             VARCHAR(50)   NOT NULL DEFAULT 'unpaid'
+                            CHECK (status IN ('unpaid', 'pending_verification', 'paid', 'waived')),
+    issued_date        DATE          NOT NULL DEFAULT CURRENT_DATE,
+    paid_date          TIMESTAMPTZ,
+    waived_by          UUID          REFERENCES users(id),
+    waive_reason       TEXT,
+    payment_proof_url  TEXT,
+    transaction_id     VARCHAR(100),
+    payment_method     VARCHAR(50)   CHECK (payment_method IN ('upi', 'bank_transfer', 'cash')),
+    rejection_reason   TEXT,
+    created_at         TIMESTAMPTZ   NOT NULL DEFAULT now(),
+    updated_at         TIMESTAMPTZ   NOT NULL DEFAULT now()
+);
+
+-- ============================================================
+-- TABLE 12: group_attendance_photos
+-- One reference photo per batch per day, used alongside per-student face
+-- matching for a batch-level attendance record.
+-- ============================================================
+CREATE TABLE group_attendance_photos (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id   UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    batch_id    UUID NOT NULL REFERENCES batches(id) ON DELETE CASCADE,
+    date        DATE NOT NULL,
+    photo_url   TEXT NOT NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- ============================================================
+-- TABLE 13: student_join_requests
+-- A student requesting to join a batch, subject to admin approval.
+-- ============================================================
+CREATE TABLE student_join_requests (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id   UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    student_id  UUID NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    batch_id    UUID NOT NULL REFERENCES batches(id) ON DELETE CASCADE,
+    remark      TEXT,
+    status      VARCHAR(50) NOT NULL DEFAULT 'pending'
+                    CHECK (status IN ('pending', 'approved', 'rejected')),
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- ============================================================
+-- TABLE 14: student_removals
+-- Record of a student being removed from a batch (audit trail — who, when, why).
+-- ============================================================
+CREATE TABLE student_removals (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id   UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    student_id  UUID NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+    batch_id    UUID NOT NULL REFERENCES batches(id) ON DELETE CASCADE,
+    remark      TEXT,
+    removed_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- ============================================================

@@ -1,6 +1,6 @@
 -- =========================================================================
--- MIGRATION: 0014_coach_category_taxonomy.sql
--- Upasthiti — Discovery Category/Subcategory/Tag Taxonomy
+-- MIGRATION: 0006_coach_category_taxonomy.sql
+-- Abhyas — Discovery Category/Subcategory/Tag Taxonomy
 --
 -- Replaces the free-text coaches.primary_skill field with a real,
 -- platform-wide (not tenant-scoped) taxonomy so that Discovery filtering
@@ -82,14 +82,7 @@ CREATE TABLE public.coach_tags (
     UNIQUE (coach_id, tag_id)
 );
 
--- 6. coaches: Discovery filter metadata ----------------------------------------
-ALTER TABLE public.coaches
-    ADD COLUMN IF NOT EXISTS age_groups   VARCHAR(20)[] NOT NULL DEFAULT '{}'
-        CHECK (age_groups <@ ARRAY['Kids', 'Teens', 'Adults']::VARCHAR(20)[]),
-    ADD COLUMN IF NOT EXISTS skill_levels VARCHAR(20)[] NOT NULL DEFAULT '{}'
-        CHECK (skill_levels <@ ARRAY['Beginner', 'Intermediate', 'Advanced']::VARCHAR(20)[]);
-
--- 7. Indexes ---------------------------------------------------------------------
+-- 6. Indexes ---------------------------------------------------------------------
 CREATE INDEX IF NOT EXISTS idx_categories_active ON public.categories(is_active, display_order);
 CREATE INDEX IF NOT EXISTS idx_subcategories_category ON public.subcategories(category_id);
 CREATE INDEX IF NOT EXISTS idx_tags_subcategory ON public.tags(subcategory_id);
@@ -97,3 +90,34 @@ CREATE INDEX IF NOT EXISTS idx_coach_categories_coach ON public.coach_categories
 CREATE INDEX IF NOT EXISTS idx_coach_categories_subcategory ON public.coach_categories(subcategory_id);
 CREATE INDEX IF NOT EXISTS idx_coach_tags_coach ON public.coach_tags(coach_id);
 CREATE INDEX IF NOT EXISTS idx_coach_tags_tag ON public.coach_tags(tag_id);
+
+-- 7. Row Level Security -----------------------------------------------------------
+-- categories/subcategories/tags: platform-wide reference data — public read,
+-- writes are admin/service-role only (no client-side write path exists).
+ALTER TABLE public.categories    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.subcategories ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.tags          ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "allow_public_read_categories"    ON public.categories    FOR SELECT USING (true);
+CREATE POLICY "allow_public_read_subcategories" ON public.subcategories FOR SELECT USING (true);
+CREATE POLICY "allow_public_read_tags"          ON public.tags          FOR SELECT USING (true);
+
+-- coach_categories/coach_tags: public read (Discovery reads any coach's
+-- tags), self-managed write. apps/web/src/app/student/dashboard/page.tsx
+-- inserts into both client-side (the caller's own session) during coach
+-- self-onboarding, with coach_id = the caller's own auth.uid() — the
+-- self_insert/self_manage policies below exist specifically for that flow.
+ALTER TABLE public.coach_categories ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.coach_tags       ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "allow_public_read_coach_categories" ON public.coach_categories FOR SELECT USING (true);
+CREATE POLICY "coach_categories_self_insert" ON public.coach_categories
+    FOR INSERT WITH CHECK (coach_id = auth.uid());
+CREATE POLICY "coach_categories_self_manage" ON public.coach_categories
+    FOR ALL USING (coach_id = auth.uid()) WITH CHECK (coach_id = auth.uid());
+
+CREATE POLICY "allow_public_read_coach_tags" ON public.coach_tags FOR SELECT USING (true);
+CREATE POLICY "coach_tags_self_insert" ON public.coach_tags
+    FOR INSERT WITH CHECK (coach_id = auth.uid());
+CREATE POLICY "coach_tags_self_manage" ON public.coach_tags
+    FOR ALL USING (coach_id = auth.uid()) WITH CHECK (coach_id = auth.uid());
