@@ -250,7 +250,18 @@ export function CoachOnboardingWizard({
       setPhone(randPhone);
       setGender(randGender);
       setDob(randDOB);
-      setAvatarPreview(`https://api.dicebear.com/7.x/adventurer/svg?seed=${randFirst}${randomId}`);
+
+      const avatarSeed = `${randFirst}${randomId}`;
+      const avatarUrl = `https://api.dicebear.com/7.x/adventurer/svg?seed=${avatarSeed}`;
+      setAvatarPreview(avatarUrl);
+      // Autofill only sets a preview URL by default — turn it into a real File so
+      // submitOnboarding's upload step (gated on `avatarFile`) actually persists it,
+      // instead of silently leaving avatar_url unset like it did before.
+      fetch(avatarUrl)
+        .then(res => res.blob())
+        .then(blob => setAvatarFile(new File([blob], `avatar_${avatarSeed}.svg`, { type: blob.type || 'image/svg+xml' })))
+        .catch(err => console.error('Autofill: failed to fetch placeholder avatar', err));
+
       setLanguagesKnown(['English', 'Hindi']);
       setStateName('Telangana');
       setCityName('Hyderabad');
@@ -449,13 +460,23 @@ export function CoachOnboardingWizard({
 
       // --- 3. Upload Profile Photo ---
       if (avatarFile && userId) {
-        const ext = avatarFile.name.split('.').pop() || 'png';
-        const path = `avatars/coach_${userId}_${Date.now()}.${ext}`;
-        const { data: uploadData, error: uploadErr } = await supabase.storage.from('avatars').upload(path, avatarFile, { upsert: true });
-        if (!uploadErr && uploadData) {
+        try {
+          const ext = avatarFile.name.split('.').pop() || 'png';
+          const path = `avatars/coach_${userId}_${Date.now()}.${ext}`;
+          const { data: uploadData, error: uploadErr } = await supabase.storage
+            .from('avatars')
+            .upload(path, avatarFile, { upsert: true, contentType: avatarFile.type || undefined });
+          if (uploadErr || !uploadData) {
+            throw uploadErr ?? new Error('Avatar upload returned no data');
+          }
           const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path);
-          const avatarUrl = urlData.publicUrl;
-          await supabase.from('users').update({ avatar_url: avatarUrl }).eq('id', userId);
+          const { error: updateErr } = await supabase.from('users').update({ avatar_url: urlData.publicUrl }).eq('id', userId);
+          if (updateErr) throw updateErr;
+        } catch (avatarErr) {
+          // Non-fatal — the coach account already exists at this point, so we log
+          // rather than aborting onboarding over a photo. Matches the document
+          // upload handling below.
+          console.error('Profile photo upload failed:', avatarErr);
         }
       }
 
