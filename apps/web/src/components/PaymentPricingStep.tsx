@@ -159,13 +159,13 @@ export function PaymentPricingStep({ value, onChange, theme = 'light' }: Payment
   const inputClass = `rounded-xl px-2.5 py-1.5 text-xs w-full outline-none border ${
     isDark ? 'glass-input border-white/10 bg-[#060814]/40 text-slate-200' : 'border-slate-200 bg-white text-slate-800'
   }`;
-  const labelClass = 'block text-[10px] text-slate-500 mb-1';
-  const cardClass = `p-4 border rounded-2xl space-y-3 ${isDark ? 'border-white/5 bg-white/[0.01]' : 'border-slate-100 bg-slate-50/20'}`;
+  const labelClass = 'flex items-end min-h-[2rem] text-[10px] text-slate-500 mb-1 leading-tight';
+  const cardClass = `p-3 border rounded-2xl space-y-2.5 ${isDark ? 'border-white/5 bg-white/[0.01]' : 'border-slate-100 bg-slate-50/20'}`;
 
   const enabledPolicies = value.policies.filter((p) => p.enabled);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <div>
         <h3 className={`text-sm font-bold ${isDark ? 'text-slate-100' : 'text-slate-900'}`}>How would you like to charge students?</h3>
         <p className={`text-xs mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
@@ -173,6 +173,8 @@ export function PaymentPricingStep({ value, onChange, theme = 'light' }: Payment
         </p>
       </div>
 
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
+      <div className="lg:col-span-2 space-y-3">
       {POLICY_ORDER.map((policyType) => {
         const policy = value.policies.find((p) => p.policyType === policyType)!;
         const rule = policy.rules[0];
@@ -340,23 +342,23 @@ export function PaymentPricingStep({ value, onChange, theme = 'light' }: Payment
             )}
 
             {policy.enabled && policyType === 'one_time_registration' && (
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div>
-                  <label className={labelClass}>Registration Fee (₹)</label>
-                  <input type="number" min={0} value={rule.amount} onChange={(e) => updateRule(policyType, 0, { amount: Number(e.target.value) })} className={inputClass} />
-                </div>
+              <div className="max-w-[200px]">
+                <label className={labelClass}>Registration Fee (₹)</label>
+                <input type="number" min={0} value={rule.amount} onChange={(e) => updateRule(policyType, 0, { amount: Number(e.target.value) })} className={inputClass} />
               </div>
             )}
           </div>
         );
       })}
+      </div>
 
+      <div className="lg:col-span-1 lg:sticky lg:top-4 space-y-3">
       <div className={cardClass}>
         <p className="text-[10px] font-bold text-indigo-500 uppercase tracking-wider">Default Pricing for New Students</p>
         {enabledPolicies.length === 0 ? (
-          <p className="text-[11px] text-slate-400">Enable at least one pricing method above to choose a default.</p>
+          <p className="text-[11px] text-slate-400">Enable at least one pricing method to choose a default.</p>
         ) : (
-          <div className="flex flex-wrap gap-3">
+          <div className="flex flex-col gap-2">
             {enabledPolicies.map((p) => (
               <label key={p.policyType} className="flex items-center gap-1.5 text-xs">
                 <input type="radio" name="default-policy" checked={p.isDefault} onChange={() => setDefaultPolicy(p.policyType)} /> {POLICY_LABELS[p.policyType]}
@@ -364,8 +366,10 @@ export function PaymentPricingStep({ value, onChange, theme = 'light' }: Payment
             ))}
           </div>
         )}
+      </div>
 
-        <label className={`flex items-start gap-2 pt-2 border-t ${isDark ? 'border-white/5' : 'border-slate-100'}`}>
+      <div className={cardClass}>
+        <label className="flex items-start gap-2">
           <input
             type="checkbox"
             checked={value.allowStudentOverrides}
@@ -380,6 +384,8 @@ export function PaymentPricingStep({ value, onChange, theme = 'light' }: Payment
             </p>
           </span>
         </label>
+      </div>
+      </div>
       </div>
     </div>
   );
