@@ -100,6 +100,20 @@ AS $$
     SELECT auth.jwt() -> 'app_metadata' ->> 'role';
 $$;
 
+-- Helper function: look up a student's tenant_id while bypassing RLS.
+-- parent_student_map_admin_all needs a student's tenant, but a direct
+-- `EXISTS (SELECT 1 FROM students ...)` there re-triggers students' own RLS,
+-- which (via students_parent_select) queries back into parent_student_map —
+-- an infinite recursion loop (Postgres error 42P17). SECURITY DEFINER runs
+-- this lookup as the function owner, which bypasses RLS and breaks the cycle.
+CREATE OR REPLACE FUNCTION student_tenant_id(p_student_id UUID)
+RETURNS UUID
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = public
+AS $$
+    SELECT tenant_id FROM students WHERE id = p_student_id;
+$$;
+
 -- ── tenants: admins see only their own tenant ──────────────
 CREATE POLICY "tenants_select_own"
     ON tenants FOR SELECT
@@ -215,10 +229,7 @@ CREATE POLICY "parent_student_map_admin_all"
     ON parent_student_map FOR ALL
     USING (
         auth_user_role() IN ('admin', 'superadmin')
-        AND EXISTS (
-            SELECT 1 FROM students s
-            WHERE s.id = parent_student_map.student_id AND s.tenant_id = auth_tenant_id()
-        )
+        AND student_tenant_id(parent_student_map.student_id) = auth_tenant_id()
     );
 
 -- ── attendance_logs: tenant-scoped; students see own ──────
