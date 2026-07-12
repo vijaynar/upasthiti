@@ -50,12 +50,12 @@ export default function CustomSelect({
         type="button"
         disabled={disabled}
         onClick={() => setOpen(!open)}
-        className={`w-full pl-10 pr-10 h-10 rounded-xl glass-input text-xs font-semibold text-left flex items-center justify-between cursor-pointer relative select-none disabled:opacity-40 disabled:cursor-not-allowed
+        className={`w-full pl-10 pr-10 h-9 rounded-xl glass-input text-xs font-semibold text-left flex items-center justify-between cursor-pointer relative select-none disabled:opacity-40 disabled:cursor-not-allowed
         ${open ? 'border-indigo-500 shadow-[0_0_14px_rgba(99,102,241,0.25)]' : ''}`}
       >
         {/* Left Icon (if provided) */}
         {icon && (
-          <span className="absolute left-3.5 top-3 flex items-center justify-center pointer-events-none">
+          <span className="absolute left-3.5 top-2.5 flex items-center justify-center pointer-events-none">
             {icon}
           </span>
         )}

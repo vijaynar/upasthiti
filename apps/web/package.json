@@ -10,10 +10,10 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@supabase/ssr": "^0.5.2",
-    "@supabase/supabase-js": "^2.106.1",
     "@abhyas/common": "*",
     "@abhyas/database": "*",
+    "@supabase/ssr": "^0.5.2",
+    "@supabase/supabase-js": "^2.106.1",
     "clsx": "^2.1.1",
     "face-api.js": "^0.22.2",
     "leaflet": "^1.9.4",
@@ -29,6 +29,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "playwright": "^1.61.1",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

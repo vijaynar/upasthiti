@@ -14,6 +14,7 @@ import {
   Check,
 } from 'lucide-react';
 import { useCategoryTaxonomy, Tag } from '@/lib/useCategoryTaxonomy';
+import { Chip } from '@/components/Chip';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -240,20 +241,21 @@ function CoachSearchContent() {
                   Specialty
                 </h3>
                 <div className="flex flex-wrap gap-1.5">
-                  {activeCategory.subcategories.map(sub => (
-                    <button
-                      key={sub.id}
-                      onClick={() => selectSubcategory(sub.id)}
-                      className={`px-2.5 py-1 rounded-lg border text-[10px] font-semibold transition-all flex items-center gap-1 ${
-                        subcategoryId === sub.id
-                          ? 'bg-indigo-600 border-indigo-600 text-white'
-                          : 'bg-white/[0.03] border-white/10 text-slate-400 hover:bg-white/[0.08]'
-                      }`}
-                    >
-                      {subcategoryId === sub.id && <Check className="w-3 h-3 stroke-[3]" />}
-                      {sub.name}
-                    </button>
-                  ))}
+                  {activeCategory.subcategories.map(sub => {
+                    const isSelected = subcategoryId === sub.id;
+                    return (
+                      <Chip
+                        key={sub.id}
+                        theme="dark"
+                        clickable
+                        selected={isSelected}
+                        onClick={() => selectSubcategory(sub.id)}
+                        icon={isSelected ? <Check className="stroke-[3]" /> : undefined}
+                      >
+                        {sub.name}
+                      </Chip>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -268,20 +270,21 @@ function CoachSearchContent() {
                     {TAG_TYPE_LABELS[type as Tag['tag_type']]}
                   </h3>
                   <div className="flex flex-wrap gap-1.5">
-                    {typeTags.map(tag => (
-                      <button
-                        key={tag.id}
-                        onClick={() => toggleTag(tag.id)}
-                        className={`px-2.5 py-1 rounded-lg border text-[10px] font-semibold transition-all flex items-center gap-1 ${
-                          tagIds.includes(tag.id)
-                            ? 'bg-indigo-600 border-indigo-600 text-white'
-                            : 'bg-white/[0.03] border-white/10 text-slate-400 hover:bg-white/[0.08]'
-                        }`}
-                      >
-                        {tagIds.includes(tag.id) && <Check className="w-3 h-3 stroke-[3]" />}
-                        {tag.name}
-                      </button>
-                    ))}
+                    {typeTags.map(tag => {
+                      const isSelected = tagIds.includes(tag.id);
+                      return (
+                        <Chip
+                          key={tag.id}
+                          theme="dark"
+                          clickable
+                          selected={isSelected}
+                          onClick={() => toggleTag(tag.id)}
+                          icon={isSelected ? <Check className="stroke-[3]" /> : undefined}
+                        >
+                          {tag.name}
+                        </Chip>
+                      );
+                    })}
                   </div>
                 </div>
               );
@@ -294,17 +297,15 @@ function CoachSearchContent() {
               </h3>
               <div className="flex flex-wrap gap-1.5">
                 {AGE_GROUPS.map(ag => (
-                  <button
+                  <Chip
                     key={ag}
+                    theme="dark"
+                    clickable
+                    selected={ageGroup === ag}
                     onClick={() => { setAgeGroup(ageGroup === ag ? '' : ag); setPage(1); }}
-                    className={`px-2.5 py-1 rounded-lg border text-[10px] font-semibold transition-all ${
-                      ageGroup === ag
-                        ? 'bg-indigo-600 border-indigo-600 text-white'
-                        : 'bg-white/[0.03] border-white/10 text-slate-400 hover:bg-white/[0.08]'
-                    }`}
                   >
                     {ag}
-                  </button>
+                  </Chip>
                 ))}
               </div>
             </div>
@@ -316,17 +317,15 @@ function CoachSearchContent() {
               </h3>
               <div className="flex flex-wrap gap-1.5">
                 {SKILL_LEVELS.map(sl => (
-                  <button
+                  <Chip
                     key={sl}
+                    theme="dark"
+                    clickable
+                    selected={skillLevel === sl}
                     onClick={() => { setSkillLevel(skillLevel === sl ? '' : sl); setPage(1); }}
-                    className={`px-2.5 py-1 rounded-lg border text-[10px] font-semibold transition-all ${
-                      skillLevel === sl
-                        ? 'bg-indigo-600 border-indigo-600 text-white'
-                        : 'bg-white/[0.03] border-white/10 text-slate-400 hover:bg-white/[0.08]'
-                    }`}
                   >
                     {sl}
-                  </button>
+                  </Chip>
                 ))}
               </div>
             </div>

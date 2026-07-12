@@ -32,6 +32,7 @@ import { createBrowserClient } from '@supabase/ssr';
 import { useCategoryTaxonomy } from '@/lib/useCategoryTaxonomy';
 import { CategoryPicker, CategorySelection } from '@/components/CategoryPicker';
 import { useTheme } from '@/lib/theme';
+import { Chip } from '@/components/Chip';
 import {
   PaymentPricingStep,
   createDefaultPaymentPricingSelection,
@@ -1450,9 +1451,12 @@ export default function CoachProfilePage() {
                       {['Offline', 'Online', 'Hybrid'].map((opt) => {
                         const isSelected = editServiceTypes.includes(opt);
                         return (
-                          <button
+                          <Chip
                             key={opt}
-                            type="button"
+                            theme={mode}
+                            size="md"
+                            clickable
+                            selected={isSelected}
                             onClick={() => {
                               if (isSelected) {
                                 setEditServiceTypes(editServiceTypes.filter((x) => x !== opt));
@@ -1460,14 +1464,9 @@ export default function CoachProfilePage() {
                                 setEditServiceTypes([...editServiceTypes, opt]);
                               }
                             }}
-                            className={`px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all ${
-                              isSelected
-                                ? 'bg-indigo-600 border-indigo-500 text-white'
-                                : 'border-white/10 text-slate-400 hover:border-white/20'
-                            }`}
                           >
                             {opt}
-                          </button>
+                          </Chip>
                         );
                       })}
                     </div>
@@ -1478,9 +1477,12 @@ export default function CoachProfilePage() {
                       {['One-to-One', 'Group Classes'].map((opt) => {
                         const isSelected = editClassTypes.includes(opt);
                         return (
-                          <button
+                          <Chip
                             key={opt}
-                            type="button"
+                            theme={mode}
+                            size="md"
+                            clickable
+                            selected={isSelected}
                             onClick={() => {
                               if (isSelected) {
                                 setEditClassTypes(editClassTypes.filter((x) => x !== opt));
@@ -1488,14 +1490,9 @@ export default function CoachProfilePage() {
                                 setEditClassTypes([...editClassTypes, opt]);
                               }
                             }}
-                            className={`px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all ${
-                              isSelected
-                                ? 'bg-indigo-600 border-indigo-500 text-white'
-                                : 'border-white/10 text-slate-400 hover:border-white/20'
-                            }`}
                           >
                             {opt}
-                          </button>
+                          </Chip>
                         );
                       })}
                     </div>
@@ -1504,19 +1501,16 @@ export default function CoachProfilePage() {
                     <label className="block text-slate-500 dark:text-slate-400 font-bold mb-1.5">Languages Known <span className="text-red-500">*</span></label>
                     <div className="flex flex-wrap gap-1.5 mb-2">
                       {editLanguagesKnown.map((lang) => (
-                        <span
+                        <Chip
                           key={lang}
-                          className="inline-flex items-center gap-1 bg-white/5 border border-white/10 text-slate-300 px-2 py-0.5 rounded-lg text-xs"
+                          theme={mode}
+                          size="md"
+                          selected
+                          removable
+                          onRemove={() => setEditLanguagesKnown(editLanguagesKnown.filter((l) => l !== lang))}
                         >
                           {lang}
-                          <button
-                            type="button"
-                            onClick={() => setEditLanguagesKnown(editLanguagesKnown.filter((l) => l !== lang))}
-                            className="text-slate-500 hover:text-white"
-                          >
-                            <X className="w-3 h-3" />
-                          </button>
-                        </span>
+                        </Chip>
                       ))}
                     </div>
                     <div className="flex gap-2">

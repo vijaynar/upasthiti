@@ -24,6 +24,7 @@ import {
   Users,
 } from 'lucide-react';
 import CustomSelect from '../components/CustomSelect';
+import { Chip } from '@/components/Chip';
 
 // ─── Interfaces ───────────────────────────────────────────────────────────────
 
@@ -1417,9 +1418,12 @@ export default function BatchesPage() {
                                     const selections = pendingDaySelections[a.id] || new Set(managingBatch.days_of_week);
                                     const isOn = selections.has(d);
                                     return (
-                                      <button
+                                      <Chip
                                         key={d}
-                                        type="button"
+                                        theme="dark"
+                                        size="xs"
+                                        clickable
+                                        selected={isOn}
                                         onClick={() => {
                                           setPendingDaySelections(prev => {
                                             const next = { ...prev };
@@ -1429,14 +1433,9 @@ export default function BatchesPage() {
                                             return next;
                                           });
                                         }}
-                                        className={`px-2 py-0.5 rounded text-[9px] font-bold border transition-all cursor-pointer ${
-                                          isOn
-                                            ? 'bg-indigo-600/30 border-indigo-400/50 text-indigo-300'
-                                            : 'bg-white/5 border-white/10 text-slate-500 hover:border-white/20 hover:text-slate-300'
-                                        }`}
                                       >
                                         {weekdayNames[d]}
-                                      </button>
+                                      </Chip>
                                     );
                                   })}
                                 </div>
@@ -1621,9 +1620,12 @@ export default function BatchesPage() {
                           {managingBatch.days_of_week.map((d) => {
                             const isOn = assignDaySelections.has(d);
                             return (
-                              <button
+                              <Chip
                                 key={d}
-                                type="button"
+                                theme="dark"
+                                size="sm"
+                                clickable
+                                selected={isOn}
                                 onClick={() => {
                                   setAssignDaySelections(prev => {
                                     const next = new Set(prev);
@@ -1631,14 +1633,9 @@ export default function BatchesPage() {
                                     return next;
                                   });
                                 }}
-                                className={`px-3 py-1.5 rounded-lg text-[10px] font-bold border transition-all cursor-pointer ${
-                                  isOn
-                                    ? 'bg-indigo-600/30 border-indigo-400/50 text-indigo-300'
-                                    : 'bg-white/5 border-white/10 text-slate-500 hover:border-white/20 hover:text-slate-300'
-                                }`}
                               >
                                 {weekdayNames[d]}
-                              </button>
+                              </Chip>
                             );
                           })}
                         </div>

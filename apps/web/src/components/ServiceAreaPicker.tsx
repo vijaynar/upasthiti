@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Check, MapPin, Plus, Search, X } from 'lucide-react';
+import { Check, MapPin, Plus, Search } from 'lucide-react';
 import type { ServiceArea } from '@/lib/useServiceAreas';
 import { useGooglePlaces } from '@/lib/useGooglePlaces';
 import { RestrictedAutocompleteInput } from '@/components/RestrictedAutocompleteInput';
+import { Chip } from '@/components/Chip';
 
 export interface SelectedCommunity {
   id: string;
@@ -201,11 +202,6 @@ export function ServiceAreaPicker({ areas, value, onChange, defaultCity, theme =
     }
   };
 
-  const chipClass = (selected: boolean) => `px-2.5 py-1 rounded-lg border text-[10px] font-semibold transition-all flex items-center gap-1 ${
-    selected
-      ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm'
-      : (isDark ? 'bg-white/5 border-white/10 text-slate-400 hover:bg-white/10' : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200')
-  }`;
   const inputClass = `rounded-xl px-3 py-2 text-xs w-full outline-none focus:ring-1 focus:ring-indigo-500 border ${
     isDark ? 'glass-input border-white/10 bg-[#060814] text-slate-200' : 'border-slate-200 bg-white text-slate-800'
   }`;
@@ -247,10 +243,9 @@ export function ServiceAreaPicker({ areas, value, onChange, defaultCity, theme =
         {selectedAreas.length > 0 && (
           <div className="flex flex-wrap gap-1.5 mb-2">
             {selectedAreas.map(a => (
-              <span key={a.id} className={chipClass(true)}>
+              <Chip key={a.id} theme={theme} selected removable onRemove={() => toggleArea(a.id)}>
                 {a.name}
-                <button type="button" onClick={() => toggleArea(a.id)}><X className="w-2.5 h-2.5" /></button>
-              </span>
+              </Chip>
             ))}
           </div>
         )}
@@ -275,9 +270,9 @@ export function ServiceAreaPicker({ areas, value, onChange, defaultCity, theme =
                 const isSelected = value.areaIds.includes(a.id);
                 if (isSelected) return null; // already shown above as a removable chip
                 return (
-                  <button key={a.id} type="button" onClick={() => toggleArea(a.id)} className={chipClass(false)}>
+                  <Chip key={a.id} theme={theme} clickable onClick={() => toggleArea(a.id)}>
                     {a.name}
-                  </button>
+                  </Chip>
                 );
               })}
             </div>
@@ -298,13 +293,20 @@ export function ServiceAreaPicker({ areas, value, onChange, defaultCity, theme =
           {value.communities.length > 0 && (
             <div className="flex flex-wrap gap-1.5 mb-2">
               {value.communities.map(c => (
-                <span key={c.id} className={chipClass(true)}>
+                <Chip
+                  key={c.id}
+                  theme={theme}
+                  selected
+                  removable
+                  onRemove={() => removeCommunity(c.id)}
+                  trailing={
+                    <span className="opacity-60 text-indigo-100">
+                      · {areas.find(a => a.id === c.areaId)?.name}
+                    </span>
+                  }
+                >
                   {c.name}
-                  <span className={`opacity-60 ${isDark ? 'text-indigo-200' : 'text-indigo-100'}`}>
-                    · {areas.find(a => a.id === c.areaId)?.name}
-                  </span>
-                  <button type="button" onClick={() => removeCommunity(c.id)}><X className="w-2.5 h-2.5" /></button>
-                </span>
+                </Chip>
               ))}
             </div>
           )}

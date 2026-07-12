@@ -159,8 +159,8 @@ export function PaymentPricingStep({ value, onChange, theme = 'light' }: Payment
   const inputClass = `rounded-xl px-2.5 py-1.5 text-xs w-full outline-none border ${
     isDark ? 'glass-input border-white/10 bg-[#060814]/40 text-slate-200' : 'border-slate-200 bg-white text-slate-800'
   }`;
-  const labelClass = 'flex items-end min-h-[2rem] text-[10px] text-slate-500 mb-1 leading-tight';
-  const cardClass = `p-3 border rounded-2xl space-y-2.5 ${isDark ? 'border-white/5 bg-white/[0.01]' : 'border-slate-100 bg-slate-50/20'}`;
+  const labelClass = 'flex items-end min-h-[1rem] text-[10px] text-slate-500 mb-0.5 leading-tight';
+  const cardClass = `p-3 border rounded-2xl space-y-1 ${isDark ? 'border-white/5 bg-white/[0.01]' : 'border-slate-100 bg-slate-50/20'}`;
 
   const enabledPolicies = value.policies.filter((p) => p.enabled);
 
@@ -188,6 +188,7 @@ export function PaymentPricingStep({ value, onChange, theme = 'light' }: Payment
               <button
                 type="button"
                 onClick={() => updatePolicy(policyType, { enabled: !policy.enabled })}
+                style={{ minHeight: 0 }}
                 className="cursor-pointer"
                 aria-label={`Toggle ${POLICY_LABELS[policyType]}`}
               >
@@ -277,13 +278,13 @@ export function PaymentPricingStep({ value, onChange, theme = 'light' }: Payment
                       <input type="number" min={0} value={tier.amount} onChange={(e) => updateRule(policyType, index, { amount: Number(e.target.value) })} className={inputClass} />
                     </div>
                     {policy.rules.length > 1 && (
-                      <button type="button" onClick={() => removePackageTier(index)} className="p-1.5 text-red-400 hover:text-red-300">
+                      <button type="button" onClick={() => removePackageTier(index)} style={{ minHeight: 0 }} className="p-1.5 text-red-400 hover:text-red-300">
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     )}
                   </div>
                 ))}
-                <button type="button" onClick={addPackageTier} className={`inline-flex items-center gap-1 text-[11px] font-semibold cursor-pointer ${isDark ? 'text-indigo-400' : 'text-indigo-600'}`}>
+                <button type="button" onClick={addPackageTier} style={{ minHeight: 0 }} className={`inline-flex items-center gap-1 text-[11px] font-semibold cursor-pointer ${isDark ? 'text-indigo-400' : 'text-indigo-600'}`}>
                   <Plus className="w-3.5 h-3.5" /> Add Package
                 </button>
               </div>

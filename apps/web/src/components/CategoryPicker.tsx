@@ -2,6 +2,7 @@
 
 import { Check, Star } from 'lucide-react';
 import type { Category, Tag } from '@/lib/useCategoryTaxonomy';
+import { Chip } from '@/components/Chip';
 
 export interface CategorySelection {
   categoryId: string | null;
@@ -32,11 +33,6 @@ export function CategoryPicker({ categories, value, onChange, theme = 'light' }:
   const isDark = theme === 'dark';
   const activeCategory = categories.find(c => c.id === value.categoryId) ?? null;
 
-  const chipClass = (selected: boolean) => `px-2.5 py-1 rounded-lg border text-[10px] font-semibold transition-all flex items-center gap-1 ${
-    selected
-      ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm'
-      : (isDark ? 'bg-white/5 border-white/10 text-slate-400 hover:bg-white/10' : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200')
-  }`;
   const inputClass = `rounded-xl px-3 py-2 text-xs w-full outline-none focus:ring-1 focus:ring-indigo-500 border ${
     isDark ? 'glass-input border-white/10 bg-[#060814] text-slate-200' : 'border-slate-200 bg-white text-slate-800'
   }`;
@@ -135,22 +131,29 @@ export function CategoryPicker({ categories, value, onChange, theme = 'light' }:
               const isSelected = value.subcategoryIds.includes(sub.id);
               const isPrimary = value.primarySubcategoryId === sub.id;
               return (
-                <span key={sub.id} className={chipClass(isSelected)}>
-                  <button type="button" onClick={() => toggleSubcategory(sub.id)} className="flex items-center gap-1">
-                    {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                <Chip
+                  key={sub.id}
+                  theme={theme}
+                  selected={isSelected}
+                  icon={isSelected ? <Check className="stroke-[3]" /> : undefined}
+                  trailing={
+                    isSelected && (
+                      <button
+                        type="button"
+                        onClick={() => setPrimary(sub.id)}
+                        title={isPrimary ? 'Primary specialty' : 'Set as primary'}
+                        style={{ minHeight: 0 }}
+                        className="shrink-0"
+                      >
+                        <Star className={`w-3 h-3 ${isPrimary ? 'fill-amber-400 text-amber-400' : 'text-white/40'}`} />
+                      </button>
+                    )
+                  }
+                >
+                  <button type="button" onClick={() => toggleSubcategory(sub.id)} style={{ minHeight: 0 }} className="cursor-pointer">
                     {sub.name}
                   </button>
-                  {isSelected && (
-                    <button
-                      type="button"
-                      onClick={() => setPrimary(sub.id)}
-                      title={isPrimary ? 'Primary specialty' : 'Set as primary'}
-                      className="ml-0.5"
-                    >
-                      <Star className={`w-3 h-3 ${isPrimary ? 'fill-amber-400 text-amber-400' : 'text-white/40'}`} />
-                    </button>
-                  )}
-                </span>
+                </Chip>
               );
             })}
           </div>
@@ -165,12 +168,21 @@ export function CategoryPicker({ categories, value, onChange, theme = 'light' }:
           <div key={type}>
             <label className={labelClass}>{TAG_TYPE_LABELS[type as Tag['tag_type']]}</label>
             <div className="flex flex-wrap gap-1.5">
-              {tags.map(tag => (
-                <button key={tag.id} type="button" onClick={() => toggleTag(tag.id)} className={chipClass(value.tagIds.includes(tag.id))}>
-                  {value.tagIds.includes(tag.id) && <Check className="w-3 h-3 stroke-[3]" />}
-                  {tag.name}
-                </button>
-              ))}
+              {tags.map(tag => {
+                const isSelected = value.tagIds.includes(tag.id);
+                return (
+                  <Chip
+                    key={tag.id}
+                    theme={theme}
+                    clickable
+                    selected={isSelected}
+                    onClick={() => toggleTag(tag.id)}
+                    icon={isSelected ? <Check className="stroke-[3]" /> : undefined}
+                  >
+                    {tag.name}
+                  </Chip>
+                );
+              })}
             </div>
           </div>
         );
@@ -181,17 +193,21 @@ export function CategoryPicker({ categories, value, onChange, theme = 'light' }:
         <div>
           <label className={labelClass}>Age Groups Taught</label>
           <div className="flex flex-wrap gap-1.5">
-            {AGE_GROUPS.map(ag => (
-              <button
-                key={ag}
-                type="button"
-                onClick={() => onChange({ ...value, ageGroups: toggleFromList(value.ageGroups, ag) })}
-                className={chipClass(value.ageGroups.includes(ag))}
-              >
-                {value.ageGroups.includes(ag) && <Check className="w-3 h-3 stroke-[3]" />}
-                {ag}
-              </button>
-            ))}
+            {AGE_GROUPS.map(ag => {
+              const isSelected = value.ageGroups.includes(ag);
+              return (
+                <Chip
+                  key={ag}
+                  theme={theme}
+                  clickable
+                  selected={isSelected}
+                  onClick={() => onChange({ ...value, ageGroups: toggleFromList(value.ageGroups, ag) })}
+                  icon={isSelected ? <Check className="stroke-[3]" /> : undefined}
+                >
+                  {ag}
+                </Chip>
+              );
+            })}
           </div>
         </div>
 
@@ -199,17 +215,21 @@ export function CategoryPicker({ categories, value, onChange, theme = 'light' }:
         <div>
           <label className={labelClass}>Skill Levels Coached</label>
           <div className="flex flex-wrap gap-1.5">
-            {SKILL_LEVELS.map(sl => (
-              <button
-                key={sl}
-                type="button"
-                onClick={() => onChange({ ...value, skillLevels: toggleFromList(value.skillLevels, sl) })}
-                className={chipClass(value.skillLevels.includes(sl))}
-              >
-                {value.skillLevels.includes(sl) && <Check className="w-3 h-3 stroke-[3]" />}
-                {sl}
-              </button>
-            ))}
+            {SKILL_LEVELS.map(sl => {
+              const isSelected = value.skillLevels.includes(sl);
+              return (
+                <Chip
+                  key={sl}
+                  theme={theme}
+                  clickable
+                  selected={isSelected}
+                  onClick={() => onChange({ ...value, skillLevels: toggleFromList(value.skillLevels, sl) })}
+                  icon={isSelected ? <Check className="stroke-[3]" /> : undefined}
+                >
+                  {sl}
+                </Chip>
+              );
+            })}
           </div>
         </div>
       </div>
