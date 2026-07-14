@@ -586,7 +586,7 @@ export default function AdminDashboard() {
             pendingFeesList.push({
               id: f.id,
               name: `${f.students?.user?.first_name} ${f.students?.user?.last_name}`,
-              batchName: f.students?.batches?.name || 'Badminton A',
+              batchName: f.students?.batches?.name || 'Batch',
               avatarUrl: f.students?.user?.avatar_url,
               dueDate: dueDate,
               amount: Number(f.amount)
@@ -688,7 +688,7 @@ export default function AdminDashboard() {
               needyStudents.push({
                 id: studentId,
                 name: `${student.user?.first_name} ${student.user?.last_name}`,
-                batchName: batch?.name || 'Badminton A',
+                batchName: batch?.name || 'Batch',
                 avatarUrl: student.user?.avatar_url,
                 absentCount: info.count,
                 lastAbsentLabel: new Date(info.lastDate).toLocaleDateString('default', { month: 'short', day: 'numeric' })
@@ -967,7 +967,8 @@ export default function AdminDashboard() {
         });
 
         let highestDay = { rate: 0, label: 'N/A' };
-        let lowestDay = { rate: 100, label: 'N/A' };
+        let lowestDay = { rate: 0, label: 'N/A' };
+        let lowestDaySet = false;
         let totalSessionsSet = new Set<string>();
         let rangePresent = 0;
         let rangeAbsent = 0;
@@ -997,27 +998,23 @@ export default function AdminDashboard() {
             if (rate > highestDay.rate) {
               highestDay = { rate, label };
             }
-            if (rate < lowestDay.rate) {
+            if (!lowestDaySet || rate < lowestDay.rate) {
               lowestDay = { rate, label };
+              lowestDaySet = true;
             }
           }
         }
-        if (highestDay.label === 'N/A' && chartPoints.length > 0) {
-          highestDay = { rate: 96, label: 'May 30' };
-          lowestDay = { rate: 86, label: 'May 31' };
-        }
-
         const totalSessionsVal = totalSessionsSet.size;
         const totalRangeLogs = rangePresent + rangeAbsent;
-        const avgAttendanceVal = totalRangeLogs > 0 ? Number(((rangePresent / totalRangeLogs) * 100).toFixed(1)) : 91.6;
+        const avgAttendanceVal = totalRangeLogs > 0 ? Number(((rangePresent / totalRangeLogs) * 100).toFixed(1)) : 0;
 
         setAdminAttendanceOverview({
           avgAttendance: avgAttendanceVal,
           highestDay,
           lowestDay,
-          totalSessions: totalSessionsVal || 84,
-          presentCount: rangePresent || 773,
-          absentCount: rangeAbsent || 71,
+          totalSessions: totalSessionsVal,
+          presentCount: rangePresent,
+          absentCount: rangeAbsent,
           chartPoints
         });
 
@@ -1061,15 +1058,6 @@ export default function AdminDashboard() {
           };
         });
 
-        if (batchPerf.length === 0) {
-          batchPerf = [
-            { id: '1', name: 'Morning Fitness', time: '5:30 AM - 6:30 AM', students: 28, attendance: 96 },
-            { id: '2', name: 'Badminton A', time: '6:30 AM - 7:30 AM', students: 24, attendance: 92 },
-            { id: '3', name: 'Yoga Beginner', time: '7:00 AM - 8:00 AM', students: 20, attendance: 85 },
-            { id: '4', name: 'Evening Fitness', time: '6:00 PM - 7:00 PM', students: 25, attendance: 88 },
-            { id: '5', name: 'Badminton B', time: '7:00 PM - 8:00 PM', students: 28, attendance: 82 }
-          ];
-        }
         setAdminBatchPerformance(batchPerf);
 
         // H. Action Center Metrics
@@ -1195,15 +1183,6 @@ export default function AdminDashboard() {
         });
 
         activities.sort((a, b) => b.timestamp - a.timestamp);
-        if (activities.length === 0) {
-          activities.push(
-            { time: '09:15 AM', title: 'Priya Iyer marked attendance for Yoga Beginner', subtitle: 'Batch • June 4, 2026', color: 'green' },
-            { time: '08:45 AM', title: 'Aarav Sharma joined Badminton A batch', subtitle: 'Student • June 4, 2026', color: 'blue' },
-            { time: '08:30 AM', title: 'Payment of ₹4,000 received from Dev Kulkarni', subtitle: 'Payment • June 4, 2026', color: 'green' },
-            { time: '07:50 AM', title: 'New batch "Zumba Dance" created', subtitle: 'Batch • June 4, 2026', color: 'purple' },
-            { time: '07:30 AM', title: 'Riya Trivedi submitted fee verification', subtitle: 'Verification • June 4, 2026', color: 'orange' }
-          );
-        }
         setAdminRecentActivity(activities.slice(0, 6));
 
         // J. Pending Fee Payments (unpaid fines)
@@ -1215,20 +1194,12 @@ export default function AdminDashboard() {
           .order('issued_date', { ascending: false })
           .limit(5);
 
-        let pendingFeesDisplay = (unpaidFinesList || []).map((fine: any) => ({
+        const pendingFeesDisplay = (unpaidFinesList || []).map((fine: any) => ({
           name: fine.student?.user ? `${fine.student.user.first_name} ${fine.student.user.last_name}` : 'Student',
           reason: fine.reason || 'Membership Fee',
           amount: `₹${Number(fine.amount).toLocaleString()}`,
           overdueText: calculateDaysOverdue(fine.issued_date)
         }));
-
-        if (pendingFeesDisplay.length === 0) {
-          pendingFeesDisplay = [
-            { name: 'Dev Kulkarni', reason: 'Membership Fee', amount: '₹2,000', overdueText: '10 days overdue' },
-            { name: 'Riya Trivedi', reason: 'Monthly Fee', amount: '₹1,500', overdueText: '5 days overdue' },
-            { name: 'Aditya Patel', reason: 'Badminton Fee', amount: '₹1,200', overdueText: '3 days overdue' }
-          ];
-        }
         setAdminPendingFees(pendingFeesDisplay);
 
         // K. Upcoming Classes
@@ -1246,23 +1217,15 @@ export default function AdminDashboard() {
           });
         }
 
-        let upcomingClasses = todayBatches
+        const upcomingClasses = todayBatches
           .filter((b: any) => b.start_time > currentLocalTimeStr)
           .sort((a: any, b: any) => a.start_time.localeCompare(b.start_time))
           .slice(0, 3)
           .map((b: any) => ({
             time: formatTime12h(b.start_time),
             batchName: b.name,
-            coachName: coachMap[b.id] || 'Rajesh Sharma'
+            coachName: coachMap[b.id] || 'Unassigned'
           }));
-
-        if (upcomingClasses.length === 0) {
-          upcomingClasses = [
-            { time: '04:30 PM', batchName: 'Badminton A', coachName: 'Rajesh Sharma' },
-            { time: '06:00 PM', batchName: 'Evening Fitness', coachName: 'Priyanka Iyer' },
-            { time: '07:00 PM', batchName: 'Zumba Dance', coachName: 'Sneha Pillai' }
-          ];
-        }
         setAdminUpcomingClasses(upcomingClasses);
       }
     } catch (err) {
@@ -2745,6 +2708,11 @@ export default function AdminDashboard() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5 text-xs">
+                {adminBatchPerformance.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="py-6 text-center text-slate-500 text-[11px]">No batches scheduled today</td>
+                  </tr>
+                )}
                 {adminBatchPerformance.map((batch) => {
                   let progressColor = 'bg-rose-500';
                   if (batch.attendance >= 90) {
@@ -2914,6 +2882,9 @@ export default function AdminDashboard() {
 
           {/* Timeline Feed */}
           <div className="flex-1 overflow-y-auto space-y-3.5 pt-3 pr-1 no-scrollbar">
+            {adminRecentActivity.length === 0 && (
+              <p className="text-[11px] text-slate-500 text-center py-6">No recent activity yet</p>
+            )}
             {adminRecentActivity.map((act, idx) => {
               let dotColor = 'bg-indigo-500 ring-indigo-500/20';
               if (act.color === 'green') dotColor = 'bg-emerald-500 ring-emerald-500/20';
@@ -2961,6 +2932,9 @@ export default function AdminDashboard() {
               </Link>
             </div>
             <div className="flex-1 overflow-y-auto space-y-2 pt-2.5 pr-1 no-scrollbar">
+              {adminPendingFees.length === 0 && (
+                <p className="text-[10px] text-slate-500 text-center py-4">No pending fee payments</p>
+              )}
               {adminPendingFees.map((fine, idx) => (
                 <div key={idx} className="flex items-center justify-between text-xs py-1">
                   <div>
@@ -2989,6 +2963,9 @@ export default function AdminDashboard() {
               </Link>
             </div>
             <div className="flex-1 overflow-y-auto space-y-2 pt-2.5 pr-1 no-scrollbar">
+              {adminUpcomingClasses.length === 0 && (
+                <p className="text-[10px] text-slate-500 text-center py-4">No upcoming classes today</p>
+              )}
               {adminUpcomingClasses.map((cls, idx) => (
                 <div key={idx} className="flex items-center justify-between text-xs py-1">
                   <div>
