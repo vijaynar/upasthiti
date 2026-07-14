@@ -37,7 +37,7 @@ export default function UserDirectoryPage() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [adding, setAdding] = useState(false);
   const [deactivating, setDeactivating] = useState<string | null>(null);
-  const [form, setForm] = useState({ email: '', password: '', firstName: '', lastName: '', phone: '', role: 'coach' });
+  const [form, setForm] = useState({ email: '', password: '', firstName: '', lastName: '', phone: '', role: 'student' });
 
   const loadUsers = useCallback(async () => {
     setLoading(true);
@@ -73,7 +73,7 @@ export default function UserDirectoryPage() {
       const json = await res.json();
       if (!json.success) throw new Error(json.error);
       setShowAddModal(false);
-      setForm({ email: '', password: '', firstName: '', lastName: '', phone: '', role: 'coach' });
+      setForm({ email: '', password: '', firstName: '', lastName: '', phone: '', role: 'student' });
       setSuccessMsg('User added successfully.');
       setTimeout(() => setSuccessMsg(null), 3000);
       await loadUsers();
@@ -272,9 +272,11 @@ export default function UserDirectoryPage() {
                 <select value={form.role} onChange={e => setForm(f => ({...f, role: e.target.value}))}
                   className="w-full h-9 px-3 rounded-xl glass-input text-xs font-bold">
                   <option value="admin">Admin</option>
-                  <option value="coach">Coach</option>
                   <option value="student">Student</option>
                 </select>
+                <p className="text-slate-500 text-[10px]">
+                  To add a coach, use &ldquo;Onboard New Coach&rdquo; on the Coaches page — coach accounts need a full profile that this form doesn&apos;t collect.
+                </p>
               </div>
             </div>
             <div className="flex gap-3 mt-5">

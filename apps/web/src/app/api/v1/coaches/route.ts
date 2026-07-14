@@ -695,7 +695,6 @@ export async function PUT(req: Request) {
     if (fields.designation !== undefined) coachUpdate.designation = fields.designation;
     if (fields.department !== undefined) coachUpdate.department = fields.department;
     if (fields.employeeType !== undefined) coachUpdate.employee_type = fields.employeeType;
-    if (fields.workingDays !== undefined) coachUpdate.working_days = fields.workingDays;
     if (fields.gender !== undefined) coachUpdate.gender = fields.gender;
     if (fields.dateOfBirth !== undefined) coachUpdate.date_of_birth = fields.dateOfBirth || null;
     if (fields.address !== undefined) coachUpdate.address = fields.address;

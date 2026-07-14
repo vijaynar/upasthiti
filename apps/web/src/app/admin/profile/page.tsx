@@ -140,7 +140,6 @@ interface CoachProfile {
   designation: string | null;
   department: string | null;
   employee_type: string | null;
-  working_days: string | null;
   gender: string | null;
   date_of_birth: string | null;
   address: string | null;
@@ -230,7 +229,6 @@ export default function CoachProfilePage() {
     designation: '',
     department: '',
     employee_type: '',
-    working_days: '',
     gender: '',
     date_of_birth: '',
     address: '',
@@ -361,7 +359,7 @@ export default function CoachProfilePage() {
             .from('coaches')
             .select(`
               experience_years,
-              employee_id, designation, department, employee_type, working_days,
+              employee_id, designation, department, employee_type,
               gender, date_of_birth, address, emergency_contact_name, emergency_contact_relationship,
               emergency_contact_phone, emergency_contact_address, joining_date, bio, qualification,
               avg_rating, state, city, area, service_types, class_types, languages_known,

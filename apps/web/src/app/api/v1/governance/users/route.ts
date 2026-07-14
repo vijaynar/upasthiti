@@ -43,6 +43,9 @@ export async function POST(req: Request) {
     if (!email || !password || !firstName || !lastName || !role) {
       return err('email, password, firstName, lastName, and role are required.', 422);
     }
+    if (role === 'coach') {
+      return err('Coach accounts must be created via POST /api/v1/coaches ("Onboard New Coach") — that flow creates the required coaches profile row atomically with the user.', 422);
+    }
 
     const db = adminDb();
 
@@ -92,6 +95,9 @@ export async function PUT(req: Request) {
 
     const { userId, role, roleId, firstName, lastName, phone, isActive } = await req.json();
     if (!userId) return err('userId is required.', 422);
+    if (role === 'coach') {
+      return err('Changing a user to the coach role requires a coaches profile row and must go through POST /api/v1/coaches.', 422);
+    }
 
     const db = adminDb();
 
