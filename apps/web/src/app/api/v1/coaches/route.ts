@@ -3,7 +3,7 @@
 // POST /api/v1/coaches        — onboard a new coach (admin only)
 // PUT  /api/v1/coaches        — update coach profile / activate / deactivate (admin or self)
 
-import { getAuthContext, adminDb, ok, created, err, hasRole } from '@/lib/api';
+import { getAuthContext, adminDb, ok, created, err, hasRole, logAuditEvent, logCoachAuditEvent } from '@/lib/api';
 
 // Generate a simple, unique SEO-friendly slug
 function generateSlug(firstName: string, lastName: string): string {
@@ -157,10 +157,19 @@ export async function GET(req: Request) {
         coach_profile:coaches!inner(
           experience_years, service_types, class_types, languages_known,
           qualification, certifications_summary, joining_date, bio, country, state, city,
-          area, account_status, public_profile_slug, achievements, gallery_urls,
+          area, address, gender, date_of_birth, account_status, status_reason,
+          document_request_note, document_request_at,
+          public_profile_slug, achievements, gallery_urls,
           avg_rating, retention_rate, conversion_rate, satisfaction_score, created_at,
           age_groups, skill_levels,
-          coach_categories(is_primary, subcategory:subcategories(name, slug, category:categories(name, slug, icon)))
+          coach_categories(is_primary, subcategory:subcategories(name, slug, category:categories(name, slug, icon))),
+          service_areas:coach_service_areas(area:service_areas(name, city)),
+          service_communities:coach_service_communities(community:service_communities(name)),
+          pricing_policies:coach_pricing_policies(policy_type, enabled, is_default),
+          availability:coach_availability(id),
+          financial:coach_financial_settings(salary_type, fixed_salary, per_class_rate, revenue_share_pct,
+            bank_name, bank_account_number, bank_ifsc_code, upi_id, pan_number),
+          documents:coach_documents(document_type, verification_status)
         ),
         batch_assignments:coach_batch_assignments!coach_batch_assignments_coach_id_fkey(
           id, status, batch_id,
@@ -362,6 +371,10 @@ export async function POST(req: Request) {
       }
     }
 
+    const onboardDescription = `Onboarded coach ${firstName} ${lastName} (${email})`;
+    await logAuditEvent(effectiveTenantId, ctx.userId, 'coaches.onboard', onboardDescription);
+    await logCoachAuditEvent(effectiveTenantId, ctx.userId, userId, 'coaches.onboard', onboardDescription);
+
     return created({ userId, coach });
   } catch (e: unknown) {
     return err(e instanceof Error ? e.message : 'Internal server error', 500);
@@ -386,8 +399,15 @@ export async function PUT(req: Request) {
       return err('Forbidden: coaches can only update their own profile', 403);
     }
 
-    // Verify coach belongs to tenant (unless superadmin)
-    const coachQuery = db.from('users').select('id, tenant_id').eq('id', coachId).eq('role', 'coach');
+    // Verify coach belongs to tenant (unless superadmin) — pulled together
+    // with name/email/current status so every lifecycle branch below can
+    // gate transitions and write a friendly audit description without a
+    // second round-trip.
+    const coachQuery = db
+      .from('users')
+      .select('id, tenant_id, first_name, last_name, email, coach:coaches(account_status)')
+      .eq('id', coachId)
+      .eq('role', 'coach');
     if (ctx.role !== 'superadmin') {
       coachQuery.eq('tenant_id', ctx.tenantId);
     }
@@ -396,10 +416,23 @@ export async function PUT(req: Request) {
       return err('Coach not found in your tenant', 404);
     }
     const effectiveTenantId = coachProfile.tenant_id;
+    const coachName = `${coachProfile.first_name} ${coachProfile.last_name}`;
+    const coachLabel = `${coachName} (${coachProfile.email})`;
+    const currentStatus: string | undefined = Array.isArray(coachProfile.coach)
+      ? coachProfile.coach[0]?.account_status
+      : (coachProfile.coach as any)?.account_status;
 
-    // Action: deactivate — admin only
+    const writeAudit = async (actionType: string, description: string) => {
+      await logAuditEvent(effectiveTenantId, ctx.userId, actionType, description);
+      await logCoachAuditEvent(effectiveTenantId, ctx.userId, coachId, actionType, description);
+    };
+
+    // Action: deactivate — admin only, from Active or Paused
     if (action === 'deactivate') {
       if (!hasRole(ctx, 'admin', 'superadmin')) return err('Forbidden', 403);
+      if (currentStatus !== 'Active' && currentStatus !== 'Paused') {
+        return err('Only an Active or Paused coach can be deactivated.', 400);
+      }
       const { error: userErr } = await db
         .from('users')
         .update({ is_active: false })
@@ -408,24 +441,144 @@ export async function PUT(req: Request) {
 
       const { error: coachErr } = await db
         .from('coaches')
-        .update({ account_status: 'Inactive' })
+        .update({ account_status: 'Inactive', status_reason: null })
         .eq('id', coachId);
       if (coachErr) throw coachErr;
 
+      await writeAudit('coaches.deactivate', `Deactivated coach ${coachLabel}`);
       return ok({ success: true, message: 'Coach deactivated' });
     }
 
-    // Action: reactivate / approve — admin only
+    // Action: reject — admin only, from any non-Active status
+    if (action === 'reject') {
+      if (!hasRole(ctx, 'admin', 'superadmin')) return err('Forbidden', 403);
+      if (currentStatus === 'Active') {
+        return err('An Active coach cannot be rejected — deactivate, pause, or suspend instead.', 400);
+      }
+      const reason = (fields.rejectionReason ?? '').trim();
+      if (!reason) return err('rejectionReason is required', 422);
+
+      const { error: userErr } = await db.from('users').update({ is_active: false }).eq('id', coachId);
+      if (userErr) throw userErr;
+
+      const { error: coachErr } = await db
+        .from('coaches')
+        .update({ account_status: 'Rejected', status_reason: reason })
+        .eq('id', coachId);
+      if (coachErr) throw coachErr;
+
+      await writeAudit('coaches.reject', `Rejected coach ${coachLabel}: ${reason}`);
+      return ok({ success: true, message: 'Coach application rejected' });
+    }
+
+    // Action: pause — admin only, from Active only. Coach keeps logging in.
+    if (action === 'pause') {
+      if (!hasRole(ctx, 'admin', 'superadmin')) return err('Forbidden', 403);
+      if (currentStatus !== 'Active') {
+        return err('Only an Active coach can be paused.', 400);
+      }
+      const reason = (fields.pauseReason ?? '').trim();
+      if (!reason) return err('pauseReason is required', 422);
+
+      const { error: coachErr } = await db
+        .from('coaches')
+        .update({ account_status: 'Paused', status_reason: reason })
+        .eq('id', coachId);
+      if (coachErr) throw coachErr;
+
+      await writeAudit('coaches.pause', `Paused coach ${coachLabel}: ${reason}`);
+      return ok({ success: true, message: 'Coach paused' });
+    }
+
+    // Action: suspend — admin only, from Active or Paused. Login blocked.
+    if (action === 'suspend') {
+      if (!hasRole(ctx, 'admin', 'superadmin')) return err('Forbidden', 403);
+      if (currentStatus !== 'Active' && currentStatus !== 'Paused') {
+        return err('Only an Active or Paused coach can be suspended.', 400);
+      }
+      const reason = (fields.suspendReason ?? '').trim();
+      if (!reason) return err('suspendReason is required', 422);
+
+      const { error: userErr } = await db.from('users').update({ is_active: false }).eq('id', coachId);
+      if (userErr) throw userErr;
+
+      const { error: coachErr } = await db
+        .from('coaches')
+        .update({ account_status: 'Suspended', status_reason: reason })
+        .eq('id', coachId);
+      if (coachErr) throw coachErr;
+
+      await writeAudit('coaches.suspend', `Suspended coach ${coachLabel}: ${reason}`);
+      return ok({ success: true, message: 'Coach suspended' });
+    }
+
+    // Action: archive — admin only, terminal (only Approve/Resume can revive)
+    if (action === 'archive') {
+      if (!hasRole(ctx, 'admin', 'superadmin')) return err('Forbidden', 403);
+      if (currentStatus === 'Archived') {
+        return err('Coach is already archived.', 400);
+      }
+      const reason = (fields.archiveReason ?? '').trim();
+      if (!reason) return err('archiveReason is required', 422);
+
+      const { error: userErr } = await db.from('users').update({ is_active: false }).eq('id', coachId);
+      if (userErr) throw userErr;
+
+      const { error: coachErr } = await db
+        .from('coaches')
+        .update({ account_status: 'Archived', status_reason: reason })
+        .eq('id', coachId);
+      if (coachErr) throw coachErr;
+
+      await writeAudit('coaches.archive', `Archived coach ${coachLabel}: ${reason}`);
+      return ok({ success: true, message: 'Coach archived' });
+    }
+
+    // Action: request-documents — admin only, logged in-app only (no
+    // email/SMS provider exists in this codebase to actually deliver it).
+    if (action === 'request-documents') {
+      if (!hasRole(ctx, 'admin', 'superadmin')) return err('Forbidden', 403);
+      const note = (fields.documentRequestNote ?? '').trim();
+      if (!note) return err('documentRequestNote is required', 422);
+
+      const { error: coachErr } = await db
+        .from('coaches')
+        .update({ document_request_note: note, document_request_at: new Date().toISOString() })
+        .eq('id', coachId);
+      if (coachErr) throw coachErr;
+
+      await writeAudit('coaches.request_documents', `Requested documents from coach ${coachLabel}: ${note}`);
+      return ok({ success: true, message: 'Document request logged' });
+    }
+
+    // Action: reset-password — admin only, triggers Supabase Auth's
+    // existing password-recovery email (no new email infra needed).
+    if (action === 'reset-password') {
+      if (!hasRole(ctx, 'admin', 'superadmin')) return err('Forbidden', 403);
+      const { error: resetErr } = await db.auth.admin.generateLink({
+        type: 'recovery',
+        email: coachProfile.email,
+      });
+      if (resetErr) throw resetErr;
+
+      await writeAudit('coaches.reset_password', `Triggered a password reset for coach ${coachLabel}`);
+      return ok({ success: true, message: 'Password reset email triggered' });
+    }
+
+    // Action: reactivate / approve — admin only. Universal "-> Active"
+    // transition: Approve from a pending state (with Government-ID check),
+    // or Resume from Paused/Suspended/Rejected/Inactive/Archived (no
+    // re-check — the coach was already verified once).
     if (action === 'reactivate' || action === 'approve') {
       if (!hasRole(ctx, 'admin', 'superadmin')) return err('Forbidden', 403);
-      
+
       // Verification check: ensure Government ID is uploaded
       if (action === 'approve') {
         const { data: docs, error: docsErr } = await db
           .from('coach_documents')
           .select('document_type, verification_status')
           .eq('coach_id', coachId);
-        
+
         if (docsErr) throw docsErr;
 
         const hasGovtId = docs?.some(d => d.document_type === 'Government ID');
@@ -440,7 +593,7 @@ export async function PUT(req: Request) {
           .update({ verification_status: 'Verified' })
           .eq('coach_id', coachId)
           .eq('verification_status', 'Pending');
-          
+
         if (verifyErr) {
           console.warn('[Coach Approval] Failed to auto-verify coach documents:', verifyErr.message);
         }
@@ -457,8 +610,8 @@ export async function PUT(req: Request) {
       // Update role to 'coach' in public.users
       const { error: userErr } = await db
         .from('users')
-        .update({ 
-          is_active: true, 
+        .update({
+          is_active: true,
           role: 'coach',
           role_id: coachRole?.id || null
         })
@@ -475,14 +628,20 @@ export async function PUT(req: Request) {
 
       const { error: coachErr } = await db
         .from('coaches')
-        .update({ account_status: 'Active' })
+        .update({ account_status: 'Active', status_reason: null })
         .eq('id', coachId);
       if (coachErr) throw coachErr;
 
+      if (action === 'approve') {
+        await writeAudit('coaches.approve', `Approved & activated coach ${coachLabel}`);
+      } else {
+        await writeAudit('coaches.resume', `Resumed coach ${coachLabel} from ${currentStatus ?? 'unknown'} to Active`);
+      }
       return ok({ success: true, message: 'Coach activated and marked active.' });
     }
 
     // Action: update coach profile fields
+    let profileChanged = false;
     const coachUpdate: Record<string, any> = {};
     if (fields.experienceYears !== undefined) coachUpdate.experience_years = Number(fields.experienceYears);
     if (fields.serviceTypes !== undefined) coachUpdate.service_types = fields.serviceTypes;
@@ -511,11 +670,13 @@ export async function PUT(req: Request) {
         resolvedSubcategoryIds.push(fields.primarySubcategoryId);
       }
       await syncCoachCategories(db, coachId, resolvedSubcategoryIds, fields.primarySubcategoryId, fields.tagIds ?? []);
+      profileChanged = true;
     }
 
     // Service area / community tagging — replace the whole set when provided
     if (fields.serviceAreaIds !== undefined || fields.serviceCommunityIds !== undefined) {
       await syncCoachServiceAreas(db, coachId, fields.serviceAreaIds ?? [], fields.serviceCommunityIds ?? []);
+      profileChanged = true;
     }
 
     // Redesigned profile new fields
@@ -550,6 +711,7 @@ export async function PUT(req: Request) {
         .update(coachUpdate)
         .eq('id', coachId);
       if (coachErr) throw coachErr;
+      profileChanged = true;
     }
 
     // Update financial fields (Admin or Self)
@@ -573,11 +735,13 @@ export async function PUT(req: Request) {
           .update(finUpdate)
           .eq('coach_id', coachId);
         if (finErr) throw finErr;
+        profileChanged = true;
       }
 
       // Student-facing pricing policies — replace the whole set when provided
       if (Array.isArray(fields.pricingPolicies)) {
         await syncCoachPricingPolicies(db, coachId, effectiveTenantId, fields.pricingPolicies, !!fields.allowStudentOverrides);
+        profileChanged = true;
       }
     }
 
@@ -598,6 +762,13 @@ export async function PUT(req: Request) {
         .update(userUpdate)
         .eq('id', coachId);
       if (userErr) throw userErr;
+      profileChanged = true;
+    }
+
+    // Only log admin-initiated edits — a coach editing their own "My
+    // Profile" isn't an admin action and shouldn't appear in that trail.
+    if (profileChanged && hasRole(ctx, 'admin', 'superadmin')) {
+      await writeAudit('coaches.update', `Updated profile for coach ${coachLabel}`);
     }
 
     return ok({ success: true });

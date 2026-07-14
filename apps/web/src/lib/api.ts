@@ -194,3 +194,33 @@ export async function logAuditEvent(
     console.error('[AuditLog] Failed to write audit log:', e);
   }
 }
+
+/**
+ * Write a per-coach audit log entry to public.coach_audit_logs.
+ * Powers the Coach Management drawer's Timeline/Activity tab. Call this
+ * alongside logAuditEvent for every coach lifecycle action — same event,
+ * two read-paths (tenant-wide Governance log vs. per-coach timeline).
+ */
+export async function logCoachAuditEvent(
+  tenantId: string,
+  actorId: string,
+  coachId: string,
+  actionType: string,
+  description: string,
+  metaData?: Record<string, unknown>
+): Promise<void> {
+  try {
+    const db = adminDb();
+    await db.from('coach_audit_logs').insert({
+      tenant_id: tenantId,
+      actor_id: actorId,
+      coach_id: coachId,
+      action_type: actionType,
+      description,
+      meta_data: metaData ?? null,
+    });
+  } catch (e) {
+    // Audit logging must never crash the main operation
+    console.error('[CoachAuditLog] Failed to write coach audit log:', e);
+  }
+}

@@ -64,6 +64,48 @@ const DOCUMENT_TYPES = [
   { key: 'Experience Certificate', label: 'Experience Certificate', required: false, hint: 'Previous employer / academy letter' },
 ];
 
+// Shape of the coach object returned by GET /api/v1/coaches (see CoachItem
+// in admin/coaches/page.tsx) — only the fields this wizard pre-fills.
+export interface CoachEditData {
+  id: string;
+  email: string;
+  first_name: string;
+  last_name: string;
+  phone: string | null;
+  avatar_url: string | null;
+  coach_profile: {
+    experience_years: number;
+    service_types: string[];
+    class_types: string[];
+    languages_known: string[];
+    qualification: string | null;
+    certifications_summary: string | null;
+    joining_date: string;
+    bio: string | null;
+    country: string | null;
+    state: string | null;
+    city: string | null;
+    area: string | null;
+    address: string | null;
+    gender: string | null;
+    date_of_birth: string | null;
+    age_groups: string[];
+    skill_levels: string[];
+    coach_categories: {
+      is_primary: boolean;
+      subcategory: { name: string; slug: string; category: { name: string; slug: string; icon: string | null } | null } | null;
+    }[];
+    service_areas: { area: { name: string; city: string } | null }[];
+    service_communities: { community: { name: string } | null }[];
+    pricing_policies: { policy_type: string; enabled: boolean; is_default: boolean }[];
+    financial: {
+      salary_type: string; fixed_salary: number; per_class_rate: number; revenue_share_pct: number;
+      bank_name: string | null; bank_account_number: string | null; bank_ifsc_code: string | null;
+      upi_id: string | null; pan_number: string | null;
+    } | null;
+  } | null;
+}
+
 interface CoachOnboardingWizardProps {
   isAdminMode: boolean;
   tenantId?: string;
@@ -71,6 +113,8 @@ interface CoachOnboardingWizardProps {
   onSuccess: (userId: string) => void;
   theme?: 'light' | 'dark';
   testMode?: boolean;
+  mode?: 'create' | 'edit';
+  editCoach?: CoachEditData;
 }
 
 export function CoachOnboardingWizard({
@@ -79,8 +123,11 @@ export function CoachOnboardingWizard({
   onCancel,
   onSuccess,
   theme = 'light',
-  testMode = false
+  testMode = false,
+  mode = 'create',
+  editCoach
 }: CoachOnboardingWizardProps) {
+  const isEditMode = mode === 'edit' && !!editCoach;
   const supabase = createBrowserClient();
   const isDark = theme === 'dark';
 
@@ -173,6 +220,107 @@ export function CoachOnboardingWizard({
   const [upiId, setUpiId] = useState('');
   const [panNumber, setPanNumber] = useState('');
 
+  // --- Edit mode: pre-fill every field from the coach being edited ---
+  useEffect(() => {
+    if (!isEditMode || !editCoach) return;
+    const p = editCoach.coach_profile;
+
+    setFirstName(editCoach.first_name ?? '');
+    setLastName(editCoach.last_name ?? '');
+    setEmail(editCoach.email ?? '');
+    setPhone((editCoach.phone ?? '').replace(/^\+91/, ''));
+    setGender(p?.gender ?? '');
+    setDob(p?.date_of_birth ?? '');
+    setAvatarPreview(editCoach.avatar_url ?? null);
+
+    if (p) {
+      const primaryCat = p.coach_categories.find(c => c.is_primary);
+      const categoryId = categories.find(c => c.slug === primaryCat?.subcategory?.category?.slug)?.id ?? null;
+      setCategorySelection({
+        categoryId,
+        subcategoryIds: p.coach_categories.map(() => '').filter(Boolean), // resolved below once categories load
+        primarySubcategoryId: null,
+        tagIds: [],
+        ageGroups: p.age_groups ?? [],
+        skillLevels: p.skill_levels ?? [],
+      });
+      setExperienceYears(String(p.experience_years ?? ''));
+      setQualification(p.qualification ?? '');
+      setCertificationsSummary(p.certifications_summary ?? '');
+      setLanguagesKnown(p.languages_known ?? ['English']);
+      setServiceTypes(p.service_types ?? ['Offline']);
+      setClassTypes(p.class_types ?? ['Group Classes']);
+      setBio(p.bio ?? '');
+      setServiceAreaSelection({
+        areaIds: [], // resolved below once serviceAreas load
+        communities: [],
+      });
+      setStateName(p.state ?? '');
+      setCityName(p.city ?? '');
+      setAreaName(p.area ?? '');
+      setAddressLine(p.address ?? '');
+      setJoiningDate(p.joining_date ?? new Date().toISOString().split('T')[0]);
+
+      if (p.financial) {
+        setSalaryType(p.financial.salary_type ?? 'Fixed Monthly');
+        setFixedSalary(String(p.financial.fixed_salary ?? '0'));
+        setPerClassRate(String(p.financial.per_class_rate ?? '0'));
+        setRevenueSharePct(String(p.financial.revenue_share_pct ?? '0'));
+        setBankName(p.financial.bank_name ?? '');
+        setBankAccountNumber(p.financial.bank_account_number ?? '');
+        setBankIfscCode(p.financial.bank_ifsc_code ?? '');
+        setUpiId(p.financial.upi_id ?? '');
+        setPanNumber(p.financial.pan_number ?? '');
+      }
+
+      if (p.pricing_policies?.length) {
+        setPaymentPricing(prev => ({
+          ...prev,
+          policies: prev.policies.map(policy => {
+            const saved = p.pricing_policies.find(pp => pp.policy_type === policy.policyType);
+            return saved ? { ...policy, enabled: saved.enabled, isDefault: saved.is_default } : policy;
+          }),
+        }));
+      }
+    }
+    // Runs once when the wizard mounts in edit mode — the coach record is
+    // fetched once by the parent and passed in as a stable prop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEditMode]);
+
+  // categorySelection.subcategoryIds/primarySubcategoryId and
+  // serviceAreaSelection.areaIds/communities need the taxonomy lists loaded
+  // before they can be resolved from names — re-resolve once those lists
+  // arrive (they're fetched async by useCategoryTaxonomy/useServiceAreas).
+  useEffect(() => {
+    if (!isEditMode || !editCoach?.coach_profile || categories.length === 0) return;
+    const p = editCoach.coach_profile;
+    const primaryCat = p.coach_categories.find(c => c.is_primary);
+    const cat = categories.find(c => c.slug === primaryCat?.subcategory?.category?.slug);
+    if (!cat) return;
+    const subcategoryIds = p.coach_categories
+      .map(cc => cat.subcategories.find(s => s.slug === cc.subcategory?.slug)?.id)
+      .filter((id): id is string => !!id);
+    const primarySubcategoryId = cat.subcategories.find(s => s.slug === primaryCat?.subcategory?.slug)?.id ?? null;
+    setCategorySelection(prev => ({
+      ...prev,
+      categoryId: cat.id,
+      subcategoryIds,
+      primarySubcategoryId,
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEditMode, categories.length]);
+
+  useEffect(() => {
+    if (!isEditMode || !editCoach?.coach_profile || serviceAreas.length === 0) return;
+    const p = editCoach.coach_profile;
+    const areaIds = p.service_areas
+      .map(sa => serviceAreas.find(a => a.name === sa.area?.name && a.city === sa.area?.city)?.id)
+      .filter((id): id is string => !!id);
+    setServiceAreaSelection(prev => ({ ...prev, areaIds }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEditMode, serviceAreas.length]);
+
   // --- Helper validation checks ---
   const isEmailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   const isPhoneValid = phone.length === 10;
@@ -186,15 +334,15 @@ export function CoachOnboardingWizard({
   const hasSpecial = /[^A-Za-z0-9]/.test(password);
   const isPasswordValid = hasLength && hasUppercase && hasNumber && hasSpecial;
 
-  const isStep1Valid = firstName.trim() !== '' && 
-                       lastName.trim() !== '' && 
-                       isEmailValid && 
-                       isPhoneValid && 
+  const isStep1Valid = firstName.trim() !== '' &&
+                       lastName.trim() !== '' &&
+                       (isEditMode || isEmailValid) &&
+                       isPhoneValid &&
                        gender !== '' &&
                        dob !== '' &&
                        !isDobTooYoung &&
                        country.trim() !== '' &&
-                       stateName.trim() !== '' && 
+                       stateName.trim() !== '' &&
                        cityName.trim() !== '';
 
   const isStep2Valid = categorySelection.primarySubcategoryId !== null &&
@@ -208,7 +356,7 @@ export function CoachOnboardingWizard({
 
   const isStep3Valid = true; // Documents step validation (optional, can submit empty if not strict)
   const isStep4Valid = isPaymentPricingValid(paymentPricing);
-  const isStep5Valid = isPasswordValid;
+  const isStep5Valid = isEditMode || isPasswordValid;
 
   const STEPS_LIST = [
     { id: 1, name: 'Personal Information', desc: 'Basic details & location' },
@@ -370,7 +518,60 @@ export function CoachOnboardingWizard({
     try {
       let userId = '';
 
-      if (isAdminMode) {
+      if (isEditMode && editCoach) {
+        // --- 0. Admin Edits Existing Coach ---
+        const payload = {
+          coachId: editCoach.id,
+          firstName,
+          lastName,
+          phone: phone ? `+91${phone}` : null,
+          primarySubcategoryId: categorySelection.primarySubcategoryId,
+          subcategoryIds: categorySelection.subcategoryIds,
+          tagIds: categorySelection.tagIds,
+          ageGroups: categorySelection.ageGroups,
+          skillLevels: categorySelection.skillLevels,
+          serviceAreaIds: serviceAreaSelection.areaIds,
+          serviceCommunityIds: serviceAreaSelection.communities.map(c => c.id),
+          experienceYears: Number(experienceYears),
+          serviceTypes,
+          classTypes,
+          languagesKnown,
+          qualification: qualification || null,
+          certificationsSummary: certificationsSummary || null,
+          joiningDate,
+          bio: bio || null,
+          country,
+          state: stateName || null,
+          city: cityName || null,
+          area: areaName || null,
+          address: addressLine || null,
+          gender: gender || null,
+          dateOfBirth: dob || null,
+          salaryType,
+          fixedSalary: Number(fixedSalary),
+          perClassRate: Number(perClassRate),
+          revenueSharePct: Number(revenueSharePct),
+          bankName: bankName || null,
+          bankAccountNumber: bankAccountNumber || null,
+          bankIfscCode: bankIfscCode || null,
+          upiId: upiId || null,
+          panNumber: panNumber || null,
+          pricingPolicies: paymentPricing.policies,
+          allowStudentOverrides: paymentPricing.allowStudentOverrides,
+        };
+
+        const res = await fetch('/api/v1/coaches', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+
+        const result = await res.json();
+        if (!res.ok) {
+          throw new Error(result.error ?? result.message ?? 'Failed to save coach profile.');
+        }
+        userId = editCoach.id;
+      } else if (isAdminMode) {
         // --- 1. Admin Onboards Coach ---
         const payload = {
           email,
@@ -543,14 +744,18 @@ export function CoachOnboardingWizard({
         }
       }
 
-      // --- 5. Auto-Status Upgrades ---
-      const hasAadhaar = docFiles['Aadhaar Card'] !== null;
-      const hasPan = docFiles['PAN Card'] !== null;
-      const hasQual = docFiles['Qualification Certificate'] !== null;
-      const hasAllMandatory = hasAadhaar && hasPan && hasQual;
+      // --- 5. Auto-Status Upgrades --- (never runs in edit mode — editing a
+      // coach's profile must not silently change their approval status;
+      // that's governed solely by the Approve/Reject/Pause/etc. actions)
+      if (!isEditMode) {
+        const hasAadhaar = docFiles['Aadhaar Card'] !== null;
+        const hasPan = docFiles['PAN Card'] !== null;
+        const hasQual = docFiles['Qualification Certificate'] !== null;
+        const hasAllMandatory = hasAadhaar && hasPan && hasQual;
 
-      const finalStatus = hasAllMandatory ? 'Pending Verification' : 'Document Upload Pending';
-      await supabase.from('coaches').update({ account_status: finalStatus }).eq('id', userId);
+        const finalStatus = hasAllMandatory ? 'Pending Verification' : 'Document Upload Pending';
+        await supabase.from('coaches').update({ account_status: finalStatus }).eq('id', userId);
+      }
 
       onSuccess(userId);
     } catch (err: any) {
@@ -649,7 +854,7 @@ export function CoachOnboardingWizard({
               <h3 className={`text-sm font-semibold ${isDark ? 'text-slate-200' : 'text-slate-900'}`}>Step {step} of {STEPS_LIST.length}</h3>
               <p className={`text-xs mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{STEPS_LIST[step - 1].name}</p>
             </div>
-            {(isAdminMode || testMode) && (step === 1 || step === 2 || step === 3 || step === 4 || step === 5) && (
+            {!isEditMode && (isAdminMode || testMode) && (step === 1 || step === 2 || step === 3 || step === 4 || step === 5) && (
               <button
                 type="button"
                 onClick={fillRandomData}
@@ -767,23 +972,27 @@ export function CoachOnboardingWizard({
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium mb-1">Email Address <span className="text-red-500 ml-1">*</span></label>
+                  <label className="block text-xs font-medium mb-1">
+                    Email Address {!isEditMode && <span className="text-red-500 ml-1">*</span>}
+                    {isEditMode && <span className={`font-normal text-[10px] ml-1 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>(cannot be changed)</span>}
+                  </label>
                   <div className="relative">
                     <input
                       required
                       type="email"
+                      disabled={isEditMode}
                       placeholder="name@example.com"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       onBlur={() => setEmailTouched(true)}
                       className={`rounded-xl px-3 py-2 pr-8 text-xs w-full outline-none focus:ring-1 focus:ring-indigo-500 border ${
                         isDark ? 'glass-input border-white/10 bg-[#060814]/40 text-slate-200' : 'border-slate-200 bg-white text-slate-800'
-                      } ${emailTouched && !isEmailValid ? 'border-red-400 bg-red-50/10' : ''}`}
+                      } ${emailTouched && !isEmailValid && !isEditMode ? 'border-red-400 bg-red-50/10' : ''} ${isEditMode ? 'opacity-60 cursor-not-allowed' : ''}`}
                     />
-                    {email && isEmailValid && (
+                    {!isEditMode && email && isEmailValid && (
                       <Check className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-emerald-500 stroke-[3]" />
                     )}
-                    {emailTouched && !isEmailValid && email && (
+                    {!isEditMode && emailTouched && !isEmailValid && email && (
                       <AlertCircle className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-red-400" />
                     )}
                   </div>
@@ -1131,7 +1340,21 @@ export function CoachOnboardingWizard({
           )}
 
           {/* STEP 5: Account Security */}
-          {step === 5 && (
+          {step === 5 && isEditMode && (
+            <div className="space-y-4">
+              <div>
+                <h3 className={`text-sm font-bold ${isDark ? 'text-slate-100' : 'text-slate-900'}`}>Account Security</h3>
+                <p className={`text-xs mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>The coach's password is unchanged by editing this profile.</p>
+              </div>
+              <div className={`p-3.5 rounded-xl border flex items-start gap-2.5 text-xs ${
+                isDark ? 'border-indigo-500/10 bg-indigo-950/20 text-indigo-300' : 'border-indigo-100 bg-indigo-50 text-indigo-800'
+              }`}>
+                <ShieldAlert className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>Password unchanged — use the Reset Password action from Coach Management if the coach needs a new one.</span>
+              </div>
+            </div>
+          )}
+          {step === 5 && !isEditMode && (
             <div className="space-y-4">
               <div>
                 <h3 className={`text-sm font-bold ${isDark ? 'text-slate-100' : 'text-slate-900'}`}>Secure Your Account</h3>
@@ -1326,7 +1549,9 @@ export function CoachOnboardingWizard({
               }`}>
                 <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
                 <span>
-                  {isAdminMode
+                  {isEditMode
+                    ? 'Changes are saved to the coach\'s profile immediately — this does not affect their approval/activation status.'
+                    : isAdminMode
                     ? 'Once submitted, the coach profile will be created and the coach can log in with the provided credentials.'
                     : 'Once submitted, your profile will be reviewed by the academy admin. You will be notified once your account is activated.'
                   }
@@ -1380,7 +1605,7 @@ export function CoachOnboardingWizard({
                 ) : (
                   <Check className="w-3.5 h-3.5 mr-1 font-bold" />
                 )}
-                {isAdminMode ? 'Onboard Coach Profile' : 'Complete Onboarding'}
+                {isEditMode ? 'Save Changes' : isAdminMode ? 'Onboard Coach Profile' : 'Complete Onboarding'}
               </button>
             )}
           </div>

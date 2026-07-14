@@ -77,12 +77,27 @@ export async function POST(req: Request) {
     }
 
     // Verify coach belongs to tenant (unless superadmin)
-    const coachQuery = db.from('users').select('id, tenant_id').eq('id', coachId).eq('role', 'coach');
+    const coachQuery = db
+      .from('users')
+      .select('id, tenant_id, coach:coaches(account_status)')
+      .eq('id', coachId)
+      .eq('role', 'coach');
     if (ctx.role !== 'superadmin') {
       coachQuery.eq('tenant_id', ctx.tenantId);
     }
     const { data: coach, error: coachErr } = await coachQuery.maybeSingle();
     if (coachErr || !coach) return err('Coach not found in your tenant', 404);
+
+    // A coach self-requesting a batch must be Active — Paused/Suspended/etc.
+    // coaches keep a valid session but can't take on new batches.
+    if (ctx.role === 'coach') {
+      const status: string | undefined = Array.isArray(coach.coach)
+        ? coach.coach[0]?.account_status
+        : (coach.coach as any)?.account_status;
+      if (status !== 'Active') {
+        return err('Your coach account is not active. Batch assignment requests are not allowed.', 403);
+      }
+    }
 
     // Verify batch belongs to tenant (unless superadmin)
     const batchQuery = db.from('batches').select('id, tenant_id').eq('id', batchId);

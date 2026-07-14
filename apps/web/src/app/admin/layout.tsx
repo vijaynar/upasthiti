@@ -210,13 +210,19 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const isCoach = profile?.role === 'coach';
   const isAdmin = profile?.role === 'admin' || profile?.role === 'superadmin';
   const isCoachActive = !isCoach || coachStatus === 'Active';
+  // A Paused coach keeps a valid session and should still see Dashboard and
+  // Fines & Payments — only Attendance/Leaves/Announcements/Reports stay
+  // blocked, same as any other non-Active status (isCoachActive below).
+  const isCoachPaused = isCoach && coachStatus === 'Paused';
 
   const coachActions = isCoachActive ? [
     { name: 'Mark Attendance', href: '/admin/attendance', icon: Camera },
     { name: 'Upload Group Photo', href: '/admin/attendance/group-scan', icon: Camera },
   ] : [];
 
-  const isBlockedPath = isCoach && coachStatus !== 'Active' && (
+  const isFinesPath = pathname === '/admin/fines' || pathname.startsWith('/admin/fines/');
+
+  const isBlockedPath = isCoach && coachStatus !== 'Active' && !(isCoachPaused && isFinesPath) && (
     pathname === '/admin/attendance' ||
     pathname.startsWith('/admin/attendance/') ||
     pathname === '/admin/leaves' ||
@@ -225,8 +231,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     pathname.startsWith('/admin/announcements/') ||
     pathname === '/admin/reports' ||
     pathname.startsWith('/admin/reports/') ||
-    pathname === '/admin/fines' ||
-    pathname.startsWith('/admin/fines/')
+    isFinesPath
   );
 
   const hasPermission = (module: string, action: string) => {
@@ -264,15 +269,15 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     ] : []),
   ];
 
-  const reportsSubItems = isCoachActive ? [
-    ...(hasPermission('payments', 'view') ? [{ name: 'Fines & Payments', href: '/admin/fines' }] : []),
-    ...(hasPermission('reports', 'view') ? [
+  const reportsSubItems = [
+    ...((isCoachActive || isCoachPaused) && hasPermission('payments', 'view') ? [{ name: 'Fines & Payments', href: '/admin/fines' }] : []),
+    ...(isCoachActive && hasPermission('reports', 'view') ? [
       { name: 'Batch attendance', href: '/admin/reports?tab=batch' },
       { name: 'Coach Performance', href: '/admin/reports?tab=coach' },
       { name: 'Student Progress', href: '/admin/reports?tab=student' },
       { name: 'Fine collection', href: '/admin/reports?tab=collection' },
     ] : []),
-  ] : [];
+  ];
 
   const isReportsActive = pathname === '/admin/fines' || pathname.startsWith('/admin/reports');
 
