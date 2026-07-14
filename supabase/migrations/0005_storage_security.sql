@@ -586,19 +586,19 @@ BEGIN
     FOREACH bucket IN ARRAY ARRAY['student-portraits', 'avatars', 'coach-documents', 'coach-certificates', 'attendance-photos']
     LOOP
         EXECUTE format(
-            'CREATE POLICY %L ON storage.objects FOR SELECT USING (bucket_id = %L)',
+            'CREATE POLICY %I ON storage.objects FOR SELECT USING (bucket_id = %L)',
             'Public Access ' || bucket, bucket
         );
         EXECUTE format(
-            'CREATE POLICY %L ON storage.objects FOR INSERT TO authenticated WITH CHECK (bucket_id = %L)',
+            'CREATE POLICY %I ON storage.objects FOR INSERT TO authenticated WITH CHECK (bucket_id = %L)',
             'Authenticated Insert ' || bucket, bucket
         );
         EXECUTE format(
-            'CREATE POLICY %L ON storage.objects FOR UPDATE TO authenticated USING (bucket_id = %L)',
+            'CREATE POLICY %I ON storage.objects FOR UPDATE TO authenticated USING (bucket_id = %L)',
             'Authenticated Update ' || bucket, bucket
         );
         EXECUTE format(
-            'CREATE POLICY %L ON storage.objects FOR DELETE TO authenticated USING (bucket_id = %L)',
+            'CREATE POLICY %I ON storage.objects FOR DELETE TO authenticated USING (bucket_id = %L)',
             'Authenticated Delete ' || bucket, bucket
         );
     END LOOP;
