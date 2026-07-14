@@ -6,13 +6,27 @@ import { createClient } from '@supabase/supabase-js';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
-process.loadEnvFile(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../apps/web/.env.local'));
+// Defaults to local Supabase. Pass --staging or --prod to target a hosted project.
+const isProd = process.argv.includes('--prod');
+const isStaging = process.argv.includes('--staging');
+const envFile = isProd
+  ? '../.env.production.local'
+  : isStaging
+    ? '../.env.staging.local'
+    : '../.env.development.local';
+process.loadEnvFile(path.resolve(path.dirname(fileURLToPath(import.meta.url)), envFile));
+
+if (isProd) {
+  console.warn('⚠️  Running against PRODUCTION Supabase. Ctrl+C now to abort.\n');
+} else if (isStaging) {
+  console.warn('⚠️  Running against STAGING Supabase.\n');
+}
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
-  console.error('❌ Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in apps/web/.env.local');
+  console.error(`❌ Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in ${envFile}`);
   process.exit(1);
 }
 

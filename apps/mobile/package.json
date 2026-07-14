@@ -19,10 +19,11 @@
     "typescript": "~6.0.3"
   },
   "scripts": {
-    "start": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
-    "web": "expo start --web"
+    "start": "dotenv -e ../../.env.development.local -- expo start",
+    "android": "dotenv -e ../../.env.development.local -- expo start --android",
+    "ios": "dotenv -e ../../.env.development.local -- expo start --ios",
+    "web": "dotenv -e ../../.env.development.local -- expo start --web",
+    "start:staging": "dotenv -e ../../.env.staging.local -- expo start"
   },
   "private": true
 }
