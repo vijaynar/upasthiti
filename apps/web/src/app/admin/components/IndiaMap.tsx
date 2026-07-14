@@ -121,7 +121,7 @@ export default function IndiaMap({ mapData = [] }: IndiaMapProps) {
           border: none !important;
           overflow: visible !important;
         }
-        /* Custom stylings for Leaflet controls to fit Upasthiti aesthetics */
+        /* Custom stylings for Leaflet controls */
         .leaflet-bar {
           border: 1px solid ${isLight ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.08)'} !important;
           box-shadow: ${isLight ? '0 1px 3px rgba(0,0,0,0.05)' : '0 4px 12px rgba(0,0,0,0.25)'} !important;
