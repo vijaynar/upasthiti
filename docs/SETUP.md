@@ -89,7 +89,24 @@ Copy the `anon key` and `service_role key` into `.env.development.local`.
 npm run supabase:reset
 ```
 
-This recreates the local database from scratch by replaying every file in `supabase/migrations/` in order — extensions, schema, indexes, functions/triggers, RLS/storage policies, and seed reference data. Safe to run anytime you want a clean slate.
+This recreates the local database from scratch by replaying every file in `supabase/migrations/` in order — extensions, schema, indexes, functions/triggers, RLS/storage policies, and seed reference data — then applies `supabase/seed.sql`. Safe to run anytime you want a clean slate.
+
+`supabase/seed.sql` is local-only test data (never applied to staging/production). It seeds one ready-to-use superadmin account:
+
+```
+email:    admin@abhyas.local
+password: admin123
+```
+
+The app's login page only offers Google OAuth (not configured locally) or a passwordless email magic link — there's no password field in the UI. To log in as the seeded admin, enter `admin@abhyas.local` on the login page and click **Continue**; it'll show "Check Your Email". Since that's not a real inbox, local Supabase catches all outgoing mail in **Mailpit** instead of sending it:
+
+1. Open **http://127.0.0.1:54324**
+2. Open the "Your sign-in link" email addressed to `admin@abhyas.local`
+3. Click the sign-in link inside — it logs you in and redirects to the dashboard
+
+This works for any email you use locally (magic links for freshly-registered test accounts land here too, not in a real inbox).
+
+To bootstrap the first real admin on a **new** staging/production project instead, run `node scripts/bootstrap-superadmin.mjs --staging` (or `--prod`) — it prompts for an email interactively and creates a real account via the Supabase Admin API. No password is set (the app only supports magic-link/Google login); sign in afterward the same way any user does.
 
 ### 5. Generate TypeScript Types
 

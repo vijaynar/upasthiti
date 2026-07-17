@@ -15,6 +15,13 @@ INSERT INTO public.tenants (id, name, slug)
 VALUES ('022c1494-057e-4c80-80dd-88fa4b1287b5', 'VidyaSopan Sports school', 'vidyasopan-sports-school')
 ON CONFLICT (id) DO NOTHING;
 
+-- Platform-level placeholder tenant (nil UUID). Present in production but
+-- never referenced by any trigger/function — VidyaSopan above is the real
+-- default. Seeded here purely so a fresh reset matches production's data.
+INSERT INTO public.tenants (id, name, slug)
+VALUES ('00000000-0000-0000-0000-000000000000', 'Global System Default', 'global-system-default')
+ON CONFLICT (id) DO NOTHING;
+
 -- ────────────────────────────────────────────────────────────
 -- SECTION B: RBAC — permission catalogue + system roles
 -- ────────────────────────────────────────────────────────────
