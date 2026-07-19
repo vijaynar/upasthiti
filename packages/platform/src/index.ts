@@ -5,6 +5,8 @@
 export * as db from './db';
 export * as queue from './queue';
 export * as auth from './auth';
+export { supabaseAuthAdapter } from './auth/supabase';
+export * as jwt from './auth/jwt';
 export * as storage from './storage';
 export * as notify from './notify';
 export * as payments from './payments';

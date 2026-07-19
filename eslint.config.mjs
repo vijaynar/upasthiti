@@ -11,26 +11,43 @@ import js from '@eslint/js';
 import tsParser from '@typescript-eslint/parser';
 import tsPlugin from '@typescript-eslint/eslint-plugin';
 
+// apps/web paths rebuilt so far (Phase 2 — auth). Extend this list as more
+// of apps/web is rebuilt phase-by-phase; everything else there stays
+// ignored until it's touched.
+const V2_WEB_PATHS = [
+  'apps/web/src/app/api/v1/auth/**/*.{ts,tsx}',
+  'apps/web/src/app/api/v1/me/**/*.{ts,tsx}',
+  'apps/web/src/app/auth/login/**/*.{ts,tsx}',
+  'apps/web/src/app/onboarding/**/*.{ts,tsx}',
+  'apps/web/src/lib/v2-session.ts',
+];
+
 const V2_TREE = [
   'packages/platform/**/*.{ts,tsx}',
   'packages/kernel/**/*.{ts,tsx}',
   'packages/modules/**/*.{ts,tsx}',
   'packages/db-types/**/*.{ts,tsx}',
   'apps/worker/**/*.{ts,tsx}',
+  ...V2_WEB_PATHS,
 ];
 
 const PROVIDER_SDK_GROUPS = ['@supabase/*', 'pg', 'razorpay', 'twilio', '@aws-sdk/*'];
 
 export default [
   {
-    // Global ignore — everything not explicitly in V2_TREE is out of scope
-    // for now (see scope note above), plus the usual build artifacts.
+    // Global ignore — build artifacts, plus legacy packages/apps that have
+    // no V2_TREE entries at all (so nothing under them is ever matched by a
+    // `files:` glob anyway — see scope note above). apps/web is deliberately
+    // NOT globally ignored here: gitignore-style negation can't reliably
+    // re-include nested paths once a parent glob like `apps/web/**` excludes
+    // them (verified empirically), so instead its legacy (not-yet-rebuilt)
+    // files are simply never matched by any `files:` pattern below — same
+    // effect (unlinted), without fighting ignore-pattern semantics.
     ignores: [
       '**/node_modules/**',
       '**/dist/**',
       '**/.next/**',
       '**/.turbo/**',
-      'apps/web/**',
       'apps/mobile/**',
       'packages/common/**',
       'packages/database/**',

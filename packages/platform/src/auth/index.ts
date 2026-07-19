@@ -19,12 +19,28 @@ export interface ProviderIdentity {
   verifiedEmail?: string;
 }
 
-export interface AuthAdapter {
-  startOAuth(provider: 'google'): Promise<OAuthStartResult>;
-  verifyOAuthCallback(provider: 'google', callbackParams: Record<string, string>): Promise<ProviderIdentity>;
+// Both OAuth and magic-link are PKCE flows: the "start" call sets a
+// code-verifier cookie, and the "callback" call (a DIFFERENT HTTP request —
+// the provider or the emailed link redirects the browser back) must read
+// that same cookie to complete the exchange. `packages/platform` doesn't
+// import `next/headers` (Doc 14 §7 — no framework coupling here), so the
+// caller (an apps/web route handler, which does have request/response
+// cookie access) injects a CookieJar instead.
+export interface CookieJar {
+  getAll(): Array<{ name: string; value: string }>;
+  setAll(cookies: Array<{ name: string; value: string; options?: Record<string, unknown> }>): void;
+}
 
-  startMagicLink(email: string): Promise<void>;
-  verifyMagicLink(token: string): Promise<ProviderIdentity>;
+export interface AuthAdapter {
+  startOAuth(provider: 'google', cookies: CookieJar): Promise<OAuthStartResult>;
+  verifyOAuthCallback(
+    provider: 'google',
+    callbackParams: Record<string, string>,
+    cookies: CookieJar
+  ): Promise<ProviderIdentity>;
+
+  startMagicLink(email: string, cookies: CookieJar): Promise<void>;
+  verifyMagicLink(token: string, cookies: CookieJar): Promise<ProviderIdentity>;
 
   /** @deferred Phone OTP — not implemented in v1 (see scope decision above). */
   startOtp(phone: string): Promise<never>;

@@ -21,4 +21,9 @@ export const SERVICE_ROLE_MANIFEST: ServiceRoleUse[] = [
     justification:
       'One-off admin scripts (bootstrap-superadmin, seed data) run outside any request context; each is env-flagged and defaults to local (Doc 17).',
   },
+  {
+    path: 'packages/modules/identity-auth/src/service.ts',
+    justification:
+      'resolve-or-create identity, session issuance, and refresh all run before a validated session/user_id exists to scope RLS to (Doc 05 §3/§6 chicken-and-egg). Everything with an existing session (listSessions, revokeSession, consents, linking) uses withRequestContext instead.',
+  },
 ];
