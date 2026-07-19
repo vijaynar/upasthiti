@@ -28,6 +28,10 @@ supabase/.temp
 # Local scratch / one-off scripts — not for version control
 scratch/
 
+# Docs vaults — not for version control
+docs/
+docsv2/
+
 # OS
 .DS_Store
 Thumbs.db
