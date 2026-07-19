@@ -1,0 +1,19 @@
+{
+  "name": "@abhyas/module-identity-auth",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./src/service.ts",
+  "types": "./src/service.ts",
+  "scripts": {
+    "type-check": "tsc --noEmit",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "@abhyas/kernel": "^0.1.0",
+    "@abhyas/platform": "^0.1.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2",
+    "rimraf": "^6.0.1"
+  }
+}

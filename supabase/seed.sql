@@ -1,0 +1,9 @@
+-- supabase/seed.sql
+-- LOCAL-ONLY test data, applied automatically after migrations on every
+-- `supabase db reset` (never applied to hosted projects — Doc 17 §4).
+--
+-- V1's fixture seed lived here (superseded — see supabase/migrations_v1_legacy/seed.sql.bak).
+-- V2 fixture seed lands with the identity/org core (Phase 2-3): the
+-- undeletable seed super admin and the canonical isolation fixture — two
+-- orgs, two branches, cross-org parent, multi-role independent coach
+-- (Doc 07 §19, Doc 17 step 4). Left empty until then so `db reset` stays green.

@@ -1,0 +1,67 @@
+name: CI
+
+# Doc 14 §10. Deploy stages (preview/staging/prod) are not yet wired up —
+# no hosting project exists — added when Phase 17 (Cutover) needs them.
+
+on:
+  push:
+    branches: [AbhyasV2, main]
+  pull_request:
+    branches: [AbhyasV2, main]
+
+jobs:
+  lint-and-typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run type-check
+
+  migrate-and-verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg15
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+
+      # Every migration must apply cleanly to an empty DB, in order
+      # (Doc 17 rule 2) — same guarantee `npm run db:reset` gives locally.
+      - name: Apply migrations
+        run: |
+          for f in supabase/migrations/*.sql; do
+            echo "Applying $f"
+            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$f"
+          done
+
+      # Doc 13 §2.1 — fails the build if any table lacks RLS coverage.
+      - name: RLS coverage gate
+        run: npm run db:check-rls
+
+      # Doc 13 §2.2 — lands once the Phase 3-4 isolation fixture exists.
+      - name: Isolation test suite
+        run: npm run test:isolation
+
+      - name: Unit tests
+        run: npm run test

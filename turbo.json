@@ -7,7 +7,10 @@
     "SUPABASE_SERVICE_ROLE_KEY",
     "NEXT_PUBLIC_APP_URL",
     "NEXT_PUBLIC_APP_NAME",
-    "DATABASE_URL"
+    "DATABASE_URL",
+    "JWT_PRIVATE_KEY",
+    "JWT_PUBLIC_KEY",
+    "WORKER_NAME"
   ],
   "tasks": {
     "build": {
