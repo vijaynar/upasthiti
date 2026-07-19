@@ -1,24 +1,24 @@
 {
   "main": {
-    "id": "3ba435b719323944",
+    "id": "ccabbaed14eff0ba",
     "type": "split",
     "children": [
       {
-        "id": "6d6f0b6f858a9b06",
+        "id": "59374aa6731cd281",
         "type": "tabs",
         "children": [
           {
-            "id": "7687ffbd4198a6a4",
+            "id": "8744dc17837d6159",
             "type": "leaf",
             "state": {
               "type": "markdown",
               "state": {
-                "file": "issues-and-recommendations.md",
+                "file": "02-organization-setup.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "issues-and-recommendations"
+              "title": "02-organization-setup"
             }
           }
         ]
@@ -27,15 +27,15 @@
     "direction": "vertical"
   },
   "left": {
-    "id": "34223a1db45b0c21",
+    "id": "2d28a2fec57200e8",
     "type": "split",
     "children": [
       {
-        "id": "1d182bb79a7c43c2",
+        "id": "a07b0773289c44b1",
         "type": "tabs",
         "children": [
           {
-            "id": "0b8da19024ecfea5",
+            "id": "4ec7f4a26043c3e6",
             "type": "leaf",
             "state": {
               "type": "file-explorer",
@@ -48,7 +48,7 @@
             }
           },
           {
-            "id": "65e7d38688c22bb9",
+            "id": "d8853127b1c6f6cb",
             "type": "leaf",
             "state": {
               "type": "search",
@@ -65,7 +65,7 @@
             }
           },
           {
-            "id": "f9e914100a5b5d48",
+            "id": "a7435cf69961c286",
             "type": "leaf",
             "state": {
               "type": "bookmarks",
@@ -78,23 +78,23 @@
       }
     ],
     "direction": "horizontal",
-    "width": 200
+    "width": 300
   },
   "right": {
-    "id": "ee68fa15ab2e0555",
+    "id": "e1ee5afe8e3796e7",
     "type": "split",
     "children": [
       {
-        "id": "c1266d5e84c99d01",
+        "id": "a6fb5ce4fae01eeb",
         "type": "tabs",
         "children": [
           {
-            "id": "50e0af2a30e476c8",
+            "id": "e04f75d116841337",
             "type": "leaf",
             "state": {
               "type": "backlink",
               "state": {
-                "file": "implementation_plan.md",
+                "file": "02-organization-setup.md",
                 "collapseAll": false,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -104,25 +104,25 @@
                 "unlinkedCollapsed": true
               },
               "icon": "links-coming-in",
-              "title": "Backlinks for implementation_plan"
+              "title": "Backlinks for 02-organization-setup"
             }
           },
           {
-            "id": "be2dcefcba48acdd",
+            "id": "4dc67da65f82cd77",
             "type": "leaf",
             "state": {
               "type": "outgoing-link",
               "state": {
-                "file": "implementation_plan.md",
+                "file": "02-organization-setup.md",
                 "linksCollapsed": false,
                 "unlinkedCollapsed": true
               },
               "icon": "links-going-out",
-              "title": "Outgoing links from implementation_plan"
+              "title": "Outgoing links from 02-organization-setup"
             }
           },
           {
-            "id": "a8c188df2533b701",
+            "id": "49b2a21b8105032e",
             "type": "leaf",
             "state": {
               "type": "tag",
@@ -137,7 +137,7 @@
             }
           },
           {
-            "id": "d18cfde1b30db826",
+            "id": "56d2af2f30db0d36",
             "type": "leaf",
             "state": {
               "type": "all-properties",
@@ -151,18 +151,18 @@
             }
           },
           {
-            "id": "eeb1bc0cd8379694",
+            "id": "17041db9bdcd0927",
             "type": "leaf",
             "state": {
               "type": "outline",
               "state": {
-                "file": "implementation_plan.md",
+                "file": "02-organization-setup.md",
                 "followCursor": false,
                 "showSearch": false,
                 "searchQuery": ""
               },
               "icon": "lucide-list",
-              "title": "Outline of implementation_plan"
+              "title": "Outline of 02-organization-setup"
             }
           }
         ]
@@ -183,50 +183,22 @@
       "bases:Create new base": false
     }
   },
-  "active": "7687ffbd4198a6a4",
+  "active": "8744dc17837d6159",
   "lastOpenFiles": [
-    "user-guide/sedcHIMbx",
-    "user-guide/sedDaVJ9t",
-    "user-guide/sedXjurNu",
-    "user-guide/sedwboZhG",
-    "user-guide/sed47NjB1",
-    "user-guide/sedvMJH0d",
-    "user-guide/sedO4qP3i",
-    "system_architecture.md",
-    "issues-and-recommendations.md",
-    "demo-data-summary.md",
-    "demo-data-summary.md.tmp.14984.8e5315861f6b",
-    "user-guide/07-communication.md",
-    "user-guide/09-marketplace.md",
-    "user-guide/08-reports-analytics.md",
-    "user-guide/08-reports-analytics.md.tmp.14984.7e770f2312c2",
-    "user-guide/06-payments-fines.md",
-    "user-guide/06-payments-fines.md.tmp.14984.7c6430f3c402",
-    "user-guide/05-attendance.md",
-    "user-guide/04-batch-management.md",
-    "user-guide/04-batch-management.md.tmp.14984.14462dd2de34",
-    "user-guide/03-user-management.md",
-    "screenshots/09-marketplace/04-explore-academies-placeholder.png",
-    "screenshots/09-marketplace/03-public-coach-profile.png",
-    "screenshots/09-marketplace/02-explore-coaches-filtered-sports-hyderabad.png",
-    "screenshots/09-marketplace/01-explore-coaches-default.png",
-    "screenshots/05-attendance/06-coach-leave-request-result.png",
-    "screenshots/05-attendance/05-coach-leave-request-filled.png",
-    "screenshots/05-attendance/04-coach-my-leaves-page.png",
-    "screenshots/05-attendance/03-coach-dashboard-view.png",
-    "screenshots/05-attendance/02-coach-check-email.png",
-    "screenshots/05-attendance/01-coach-login-page.png",
-    "user-guide/02-organization-setup.md",
-    "user-guide/01-platform-administration.md",
-    "user-guide/README.md",
-    "SETUP.md",
-    "implementation_plan.md",
-    "feature_plan.md",
-    "directory_structure.md",
-    "database.md",
-    "coach_service_areas.md",
-    "coach_pricing_policies.md",
-    "api-guidelines.md",
-    "vision.md"
+    "01-platform-administration.md",
+    "02-organization-setup.md",
+    "03-user-management.md",
+    "sedfRBpoX",
+    "sedcHIMbx",
+    "sedDaVJ9t",
+    "sedXjurNu",
+    "sedwboZhG",
+    "sedyZ8p1g",
+    "sedvMJH0d",
+    "sedO4qP3i",
+    "09-marketplace.md",
+    "08-reports-analytics.md",
+    "07-communication.md",
+    "06-payments-fines.md"
   ]
 }

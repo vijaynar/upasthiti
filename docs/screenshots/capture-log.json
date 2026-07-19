@@ -1,0 +1,127 @@
+[
+  {
+    "name": "A1. Superadmin login + academy dashboard (role=admin default)",
+    "status": "ok"
+  },
+  {
+    "name": "A2. Switch role to Super Admin + platform analytics + tenant registry",
+    "status": "ok"
+  },
+  {
+    "name": "A3. Superadmin onboards a brand-new academy (tenant provisioning)",
+    "status": "ok"
+  },
+  {
+    "name": "A4. Superadmin system governance tab",
+    "status": "ok"
+  },
+  {
+    "name": "A5. Look up newly provisioned tenant id for later steps",
+    "status": "FAILED",
+    "error": "tenant with slug rising-champions-multi-sport was not created — provisioning form submit likely failed"
+  },
+  {
+    "name": "B1. Academy self-registration (public, new independent tenant)",
+    "status": "ok"
+  },
+  {
+    "name": "B2. Admin adds a new student directly (using an existing working academy — academy self-registration above is currently broken, see bug report)",
+    "status": "ok"
+  },
+  {
+    "name": "B3. Owner creates their first class & batch",
+    "status": "ok"
+  },
+  {
+    "name": "B4. Coach self-registration under the newly onboarded academy (invite-link flow)",
+    "status": "ok"
+  },
+  {
+    "name": "C1. Student login + dashboard",
+    "status": "ok"
+  },
+  {
+    "name": "C2. Student submits payment proof for an unpaid fine",
+    "status": "ok"
+  },
+  {
+    "name": "C3. Student reports page",
+    "status": "ok"
+  },
+  {
+    "name": "D1. Admin login (VidyaSopan Sports School)",
+    "status": "ok"
+  },
+  {
+    "name": "D2. Approve a pending coach application",
+    "status": "ok"
+  },
+  {
+    "name": "D3. Approve the student payment proof submitted in step C2",
+    "status": "ok"
+  },
+  {
+    "name": "D4. Issue a manual fine",
+    "status": "ok"
+  },
+  {
+    "name": "D5. Assign an approved coach to a batch",
+    "status": "ok"
+  },
+  {
+    "name": "D6. Mark attendance manually (override)",
+    "status": "ok"
+  },
+  {
+    "name": "D7. Group-photo attendance scan — Simulator Mode",
+    "status": "ok"
+  },
+  {
+    "name": "D8. Reports & analytics tabs",
+    "status": "ok"
+  },
+  {
+    "name": "D9. Coach leave approvals",
+    "status": "ok"
+  },
+  {
+    "name": "D10. Governance — add a new admin user",
+    "status": "ok"
+  },
+  {
+    "name": "D11. Governance — create a custom role",
+    "status": "ok"
+  },
+  {
+    "name": "D12. Governance — audit logs",
+    "status": "ok"
+  },
+  {
+    "name": "D13. Tenant settings — attendance & fine rules",
+    "status": "ok"
+  },
+  {
+    "name": "D14. Announcements page (local-only mock feature)",
+    "status": "ok"
+  },
+  {
+    "name": "E1. Coach login + dashboard",
+    "status": "ok"
+  },
+  {
+    "name": "E2. Coach files a leave request",
+    "status": "ok"
+  },
+  {
+    "name": "F1. Marketplace — coach search with filters",
+    "status": "ok"
+  },
+  {
+    "name": "F2. Public coach profile page",
+    "status": "ok"
+  },
+  {
+    "name": "F3. Marketplace — explore academies (placeholder)",
+    "status": "ok"
+  }
+]
