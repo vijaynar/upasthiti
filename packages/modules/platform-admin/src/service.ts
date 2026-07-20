@@ -28,7 +28,7 @@
 // "schema follows the module that needs it" precedent as org_domains
 // (Phase 3) and coach_assignments.batch_id (Phase 4).
 
-import { db } from '@abhyas/platform';
+import { db, queue } from '@abhyas/platform';
 import type { SessionContext } from '@abhyas/kernel';
 import { writeAuditLog } from '@abhyas/module-audit';
 
@@ -216,6 +216,19 @@ export async function decideOrganizationVerification(
     organizationId,
     detail: note ? { note } : null,
   });
+
+  // Phase 11 (Marketplace) hook: a listing published before its org
+  // finished verification sits `pending_verification` until the org itself
+  // goes active (Doc 02 §9 / PRD US-1 AC5). Enqueued rather than a direct
+  // table write into marketplace's schema — cross-module reactions go
+  // through the queue (this file's own header comment), same pattern
+  // Attendance's absence_confirmed event already established for Finance/
+  // Notifications. Marketplace has no listing yet for most orgs, so this is
+  // a safe no-op far more often than not; activateOrgListings() only
+  // touches rows still pending_verification.
+  if (decision === 'approved') {
+    await queue.enqueue('platform.org_verified', { organizationId }, { idempotencyKey: `platform.org_verified:${organizationId}` });
+  }
 }
 
 export type OrgLifecycleAction = 'suspend' | 'reinstate';

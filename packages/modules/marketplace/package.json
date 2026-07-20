@@ -10,7 +10,9 @@
   },
   "dependencies": {
     "@abhyas/kernel": "^0.1.0",
-    "@abhyas/platform": "^0.1.0"
+    "@abhyas/platform": "^0.1.0",
+    "@abhyas/module-audit": "^0.1.0",
+    "@abhyas/module-platform-admin": "^0.1.0"
   },
   "devDependencies": {
     "typescript": "^5.7.2",

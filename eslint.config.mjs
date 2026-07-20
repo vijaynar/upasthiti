@@ -20,6 +20,7 @@ const V2_WEB_PATHS = [
   'apps/web/src/app/api/v1/orgs/**/*.{ts,tsx}',
   'apps/web/src/app/api/v1/invitations/**/*.{ts,tsx}',
   'apps/web/src/app/api/v1/platform/**/*.{ts,tsx}',
+  'apps/web/src/app/api/v1/public/**/*.{ts,tsx}',
   'apps/web/src/app/auth/login/**/*.{ts,tsx}',
   'apps/web/src/app/onboarding/**/*.{ts,tsx}',
   'apps/web/src/app/workspace/**/*.{ts,tsx}',
@@ -31,6 +32,8 @@ const V2_WEB_PATHS = [
   'apps/web/src/app/finance/**/*.{ts,tsx}',
   'apps/web/src/app/notifications/**/*.{ts,tsx}',
   'apps/web/src/app/me/**/*.{ts,tsx}',
+  'apps/web/src/app/marketplace/**/*.{ts,tsx}',
+  'apps/web/src/app/explore/**/*.{ts,tsx}',
   'apps/web/src/lib/v2-session.ts',
 ];
 

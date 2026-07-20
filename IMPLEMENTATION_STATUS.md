@@ -1185,7 +1185,207 @@ allow-listed) all pass.
   org-staff `/notifications` log (gated on `notify.log.read`, which no student/parent role
   holds per Doc 04 §5's matrix — same "—" cells Attendance/Scheduling left for those roles).
 
-## Next: Phase 11 — Marketplace
+## Phase 11 — Marketplace: ✅ DONE, verified live-DB smoke test (33/33) + live in-browser
+
+Scope built: `taxonomy_sports`/`geo_cities`/`geo_areas` (platform reference data),
+`listings`/`leads`/`reviews` (Doc 07 §11, literal), and `referrals` (Doc 07 §15) —
+folded in here per the marketplace module's own Phase-1 stub comment, which
+already scoped referrals into this phase ("listings, leads, reviews, taxonomy,
+geography, referrals (M9, Doc 07 §11)"), not a later phase. Public/anonymous
+discovery (`/explore`, listing detail, lead capture) is real and SEO-facing;
+featured placement is schema-only (`featured_until`, staff-settable, no paid
+checkout — same "no gateway configured" posture as Finance's payouts).
+
+What exists (don't recreate):
+- `supabase/migrations/0013_marketplace.sql` — all 7 new tables + RLS +
+  `is_org_owner()`/`activate_org_listings()`/`get_or_create_user_ledger_account()`/
+  `get_or_create_platform_ledger_account()` (SECURITY DEFINER) + a new
+  `platform.referral.manage` permission key + taxonomy/geography seed data.
+  Several interpretive calls and **two real RLS bugs found and fixed while
+  smoke-testing**, all explained in the migration's own header — re-read it
+  before touching this schema:
+  1. **No literal Postgres `anon` role exists in this app** — `withRequestContext`
+     always drops to `authenticated`, so public/anonymous reads (search, listing
+     detail, reviews, taxonomy) and the anonymous lead-capture write go through
+     `getServiceClient()` with an explicit `status = 'live'` filter, the exact
+     precedent `resolveOrgBySlug` (Phase 3) already set — not RLS `anon` policies.
+  2. **One listing per organization** (`listings.organization_id` UNIQUE) — Doc 08
+     §7 names the org route singular (`GET/PATCH /org/listing`), not N-per-org.
+  3. **Listing publish→live is gated on the org's OWN verification status** (Doc 02
+     §9 / PRD US-1 AC5): `publishListing()` sets `live` immediately if the org is
+     already `active`, else `pending_verification`. A listing published before its
+     org finishes verification is promoted later by `activateOrgListings()`, wired
+     as a queue consumer of a new `platform.org_verified` event — enqueued by a
+     small, additive edit to **Phase 5's already-shipped**
+     `platform-admin.decideOrganizationVerification()` (on approval only), per
+     Doc 14 §2 rule 2 (cross-module reactions go through the queue, not a direct
+     table write from platform-admin into marketplace's tables).
+  4. **Referral reward approval is a manual platform action**, not an automatic
+     post-subscription trigger — `subscriptions` is still schema-only (Phase 9's
+     own documented gap), so there's no real subscription-succeeded event to
+     consume; `approveReferralReward()` takes an explicit `amountMinor` from
+     platform staff instead (`platform.referral.manage`, a new key — Doc 04's
+     catalogue has no referral-specific key, same "add one, documented" precedent
+     as Phase 9's `finance.payout.manage`).
+  5. **Self/circular referral rejection (US-8 AC2)** is a `BEFORE UPDATE` trigger
+     (`enforce_referral_attribution`, fires on attribution) using a new
+     `is_org_owner()` helper — matches Doc 07 §15's own comment. WHO may attempt an
+     attribution (RLS: caller must be working in the target org and hold
+     `org.settings.update`) and WHETHER the attribution is valid (the trigger) are
+     deliberately separate concerns, same split as `batches_update_staff` RLS vs.
+     `enforce_batch_archive_perm`'s trigger.
+  6. **Real bug #1**: Postgres ANDs a table's **SELECT** policy onto **UPDATE** row
+     visibility *in addition to* the UPDATE policy's own USING clause, when a
+     SELECT policy exists on the same table — confirmed via `EXPLAIN`, not
+     prominently documented. Since `referrals_select_self` only lets the
+     *referrer* see a row, the party being *referred* (who must attribute someone
+     else's code) could never even see the row to update it. Fixed with a second
+     SELECT policy, `referrals_select_unattributed` (`referred_org_id is null`).
+  7. **Real bug #2**, same root cause one step further: Postgres ALSO ANDs a
+     SELECT policy onto the **WITH CHECK** validation of the *new* (post-update)
+     row. After attribution, `referred_org_id` is no longer null (so bug #1's fix
+     stops matching) and the attributing party still isn't the referrer — so
+     `attributeReferral()` always failed its own WITH CHECK with a real 42501.
+     Fixed with a third SELECT policy, `referrals_select_referred_org`, mirroring
+     the WITH CHECK's own condition. **Any future cross-actor UPDATE RLS policy on
+     a table that also has a self-scoped SELECT policy needs to budget for this —
+     add matching SELECT policies for both the pre- and post-update row shapes, or
+     the UPDATE will silently affect zero rows (old-row case) or throw 42501
+     (new-row case) even when the UPDATE policy's own USING/WITH CHECK looks
+     correct in isolation.**
+  8. GIN has no default operator class for a plain scalar `text` column — a
+     composite `(city_key, sport_keys)` GIN index (as Doc 07 §18's phrasing might
+     suggest) doesn't work; split into a btree on `city_key` + a GIN on
+     `sport_keys` alone.
+  9. Lead-spam mitigation (captcha + rate limit, Doc 08 §10) is **not built** — no
+     captcha vendor and no request-IP-tracking infra anywhere in this codebase,
+     same "designed, not configured" category as Google OAuth/Razorpay/WhatsApp.
+     `submitPublicLead()` validates the listing exists and is live; nothing else
+     guards against abuse. Documented gap, not a silent skip.
+- `packages/modules/marketplace/src/service.ts` — full implementation: listing
+  CRUD (`upsertMyListing`/`getMyListing`/`publishListing`/`pauseListing`/
+  `removeListing`), `activateOrgListings()` (queue consumer, service-role), lead
+  triage (`listLeads`/`updateLead`) + anonymous capture (`submitPublicLead`,
+  service-role), reviews (`createReview`/`listOrgReviews`/`respondToReview`),
+  public reads (`searchPublicListings`/`getPublicListing`/
+  `getPublicListingReviews`/`getPublicTaxonomy` — all service-role + explicit
+  filtering, real `avg(rating)`/`count(*)` aggregates over `reviews` computed
+  per-query, not denormalized onto `listings`), and referrals
+  (`createReferral`/`listMyReferrals`/`attributeReferral`/`listPlatformReferrals`/
+  `approveReferralReward` — the last two import `hasPlatformPerm` from
+  `@abhyas/module-platform-admin` rather than duplicating the platform-perm-check
+  pattern). `approveReferralReward()` is the one write in this file that DOES call
+  `writeAuditLog()` (a platform-staff financial action, same category
+  platform-admin already audits) — every other write here follows every prior
+  phase's documented not-yet-retrofitted-audit-logging precedent.
+- `packages/modules/platform-admin/src/service.ts` — `decideOrganizationVerification()`
+  gained one small addition: on approval, enqueues `platform.org_verified` (idempotency-keyed by org id). This is the only edit to an already-shipped
+  (Phase 5) file this phase made.
+- `apps/worker/src/registry.ts` — new one-shot consumer,
+  `platform.org_verified` → `activateOrgListings()`. `apps/worker` now depends
+  on `@abhyas/module-marketplace`.
+- Routes (all new): `GET/PATCH /api/v1/orgs/{id}/listing` +
+  `POST .../listing/{publish,pause,remove}`, `GET /api/v1/orgs/{id}/leads` +
+  `PATCH .../{leadId}`, `GET/POST /api/v1/orgs/{id}/reviews` +
+  `POST .../{reviewId}/respond`, `POST /api/v1/orgs/{id}/referral-attribution`,
+  `GET/POST /api/v1/me/referrals`, `GET /api/v1/platform/referrals` +
+  `POST .../{id}/approve-reward`, and the fully anonymous
+  `GET /api/v1/public/{listings,listings/{slug},listings/{slug}/reviews,taxonomy}`
+  + `POST /api/v1/public/leads`.
+- `apps/web/src/app/marketplace/page.tsx` — staff console (listing editor with
+  city/sport pickers from real taxonomy, publish/pause, leads triage, review
+  respond), same plain-fetch client component style as `/finance`/`/attendance`.
+- `apps/web/src/app/explore/page.tsx` + `explore/[slug]/page.tsx` — the public
+  discovery surface, styled after the "Wireframes - Marketplace.dc.html"
+  reference doc added mid-phase (hero search + category chips + result cards
+  with a real review-rating aggregate + featured badge; listing detail with a
+  sticky lead panel, a lead-capture modal, and a success screen with a soft
+  "create free account" nudge). **Deleted the superseded V1 `/explore` tree**
+  (`page.tsx`/`layout.tsx`/`coaches/`/`academies/`) — it queried V1 tables
+  (`categories`, `coaches` via `adminDb()`) that don't exist on this branch,
+  same "deleted, referenced the archived V1 schema" precedent Phase 2 set for
+  the old auth routes; user-confirmed before deleting. The wireframe's filter
+  rail goes well beyond this phase's schema (radius search, availability, fee
+  ranges, batch type, coach demographics) — explicitly out of scope, documented
+  in `marketplace/src/service.ts`'s header, same "narrower than the full
+  wireframe" precedent Phase 5's platform console already set. "Send a
+  message"/"Show phone" CTAs and a live batches/timings section from the
+  wireframe are also not built — no public phone field on listings, and pulling
+  live Scheduling data into an anonymous page is out of scope.
+- `apps/web/src/app/me/referrals/page.tsx` — self-service referral code
+  generation + copy-link (BR4/US-8, "any user" identity right, no permission
+  gate), same standalone-settings-page shape as `/me/notifications`. No
+  platform-side reward-approval UI — service+routes are real and smoke-tested,
+  same "service+routes real, UI deferred" precedent every prior phase's
+  platform-only actions have used.
+- `eslint.config.mjs` — `V2_WEB_PATHS` gained `api/v1/public/**`,
+  `app/marketplace/**`, `app/explore/**`.
+- `packages/platform/src/db/service-role-manifest.ts` — new entry for
+  `marketplace/src/service.ts` (public reads/lead-capture, `activateOrgListings`,
+  `approveReferralReward`/`listPlatformReferrals` — everything else is RLS-gated
+  via `withRequestContext`).
+
+**Verified two ways, matching every prior phase's precedent:**
+1. **Live-DB smoke test** (`npx tsx`, run against local `supabase start`, not
+   committed) — 33/33 assertions: draft→live publish for an already-verified org,
+   draft→pending_verification for an unverified one; an outsider denied updating
+   another org's listing; a real `decideOrganizationVerification()` approval
+   enqueues `platform.org_verified`, `activateOrgListings()` promotes the pending
+   listing to live; public search/detail/reviews find only live listings and
+   respect the city filter; `submitPublicLead` succeeds against a live listing and
+   rejects an unknown/non-live slug; staff lead triage RLS (owner sees/updates,
+   outsider sees zero); an enrolled student creates a review, a non-enrolled user
+   is denied, staff responds, the public review read shows the response, and
+   `searchPublicListings` aggregates the real rating; referral self-referral
+   rejected, valid cross-org attribution succeeds, a reciprocal/circular referral
+   rejected, a non-platform-staff caller denied `listPlatformReferrals`, and
+   `approveReferralReward` posts a real, balanced ledger credit to the referrer.
+   This smoke test is also where both RLS bugs above were caught — the first
+   attribution attempt against a real cross-actor scenario failed exactly the way
+   the fixes describe, not a hypothetical.
+2. **Live in-browser**: real magic-link sign-in, created an `independent_coach`
+   org (lands `pending`), built a listing on `/marketplace` (slug/headline/
+   description/city/sport, persisted correctly via a direct API check), published
+   it — correctly landed `pending_verification` (org not yet verified). Generated
+   a referral code on `/me/referrals`. Separately, on `/explore`, found the smoke
+   test's seeded listings by city/sport, opened a listing detail page (real
+   review + org response rendering, `5.0 · 1 reviews`), and ran the full lead-
+   capture flow through the actual modal — submit → `POST /api/v1/public/leads`
+   → real `201 Created` → success screen with the soft account nudge, no console
+   errors.
+
+`npm run type-check` (22 packages incl. the new module + worker's new
+dependency), `npm run lint` (one raw-SQL-interpolation violation caught and
+fixed — a `LIMIT ${PAGE_SIZE + 1}` template literal moved to a real `$6`
+parameter instead), `npm run db:reset` (13 migrations apply clean), and
+`npm run db:check-rls` (55 tables, 1 allow-listed) all pass.
+
+**Known gaps / not built (deliberately, in scope for later phases):**
+- Featured placement has no paid checkout — `featured_until` is staff-settable
+  only (no route/UI to set it this phase either, though the column and the
+  search/display logic honoring it are real) — same "no gateway configured"
+  category as Finance's payouts and Google OAuth.
+- The wireframe's expanded filter rail (radius search, availability, fee-range,
+  batch type, coach gender/language/experience, verified-only/verified-reviews
+  trust toggles) is not built — none of it has backing columns in Doc 07 §11's
+  literal schema or this migration; search only exposes city/sport/area/text.
+- No "Send a message"/"Show phone" lead CTAs (no public phone field on
+  listings/organizations) and no live batches/timings section on the public
+  listing page (would require pulling Scheduling data into an anonymous public
+  route — out of scope this phase).
+- No platform-console UI for reviewing/approving referral rewards — the
+  `GET /api/v1/platform/referrals` + `POST .../approve-reward` routes and the
+  underlying service are real and smoke-tested, only the `/platform` console
+  page wasn't extended with a Referrals tab.
+- Audit logging is retrofitted onto exactly one write this phase
+  (`approveReferralReward`) — every other new write (listing CRUD, lead triage,
+  review create/respond, referral create/attribution) doesn't call
+  `writeAuditLog()`, same acknowledged debt every phase since Phase 5 has
+  flagged, now one phase larger.
+- No automated recurring-charge-driven fee-due reminders, gateway payments, or
+  WhatsApp/SMS — all pre-existing, unrelated gaps, unchanged by this phase.
+
+## Next: Phase 12 — Staff HR
 
 ## How to resume without re-reading everything
 
@@ -1245,3 +1445,21 @@ allow-listed) all pass.
   account (`packages/platform/src/notify/channels/push.ts`) — reuse this pattern (self-generated
   keypair, no paid vendor dependency) before reaching for FCM/APNs if a future phase needs
   another vendor-gated capability and a self-hosted alternative exists.
+- **A cross-actor UPDATE RLS policy needs matching SELECT policies for BOTH the pre- and
+  post-update row shapes, or it silently breaks** — Phase 11 hit this for real (twice) building
+  referral attribution: Postgres ANDs an applicable table SELECT policy onto UPDATE row
+  visibility *in addition to* the UPDATE policy's own USING (confirmed via `EXPLAIN`), and
+  separately ANDs a SELECT policy onto the WITH CHECK validation of the *new* row too. A
+  self-scoped SELECT policy (`referrer_user_id = current_user_id()`) alone made
+  `attributeReferral()` structurally impossible for the party actually attributing someone
+  else's code — first silently affecting zero rows (old-row case), then a real 42501 once the
+  first gap was patched (new-row case). Needed two additional narrow SELECT policies, one for
+  each row shape. Any future table with a self-scoped SELECT policy AND a cross-actor UPDATE
+  policy (anywhere a different user than the row's own "owner" needs to legitimately update it)
+  should budget for this from the start, not discover it via a live 42501.
+- This app has no literal Postgres `anon` role — genuinely anonymous public reads/writes
+  (Marketplace's `/explore`, `/public/leads`) go through `getServiceClient()` with an explicit
+  status filter in the query text, the same pattern `resolveOrgBySlug` (Phase 3) already
+  established, not RLS policies scoped `to anon`. Doc 07's occasional "RLS for the anon role"
+  phrasing describes the literal PostgREST/Supabase-native shape, not how this app's own
+  Next.js API layer actually authenticates unauthenticated requests.

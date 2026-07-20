@@ -1,271 +1,198 @@
-import Link from 'next/link';
-import { Search, MapPin, Star, ArrowRight, ChevronRight } from 'lucide-react';
-import { adminDb } from '@/lib/api';
+'use client';
 
-// ─── Category card colour palette (cycled by position — categories themselves
-// come from the DB, see getCategories()) ───────────────────────────────────────
+// Public discovery marketplace (Doc 01 vision; Doc 08 §10 `/public/*`,
+// anonymous, SEO-critical; PRD M9 "listings + leads"). Styled after the
+// "Wireframes - Marketplace.dc.html" reference (frames 5a discovery landing
+// + 5b search results, combined into one page for v1) — hero search,
+// category quick-filters from the real taxonomy, result cards with a
+// verified-review star rating, featured gold badge, and empty-state
+// recovery (frame 5g's spirit: widen the search rather than dead-end).
+//
+// The wireframe's filter rail goes well beyond what this phase's schema can
+// back (radius, availability, fee ranges, batch type, coach demographics —
+// see marketplace/src/service.ts's header) — this page only exposes the
+// facets `listings` actually stores: city, sport, area, free text.
 
-const CATEGORY_COLORS = [
-  { bg: 'from-indigo-500/15 to-indigo-600/5',  border: 'border-indigo-500/20',  text: 'text-indigo-300' },
-  { bg: 'from-purple-500/15 to-purple-600/5',  border: 'border-purple-500/20',  text: 'text-purple-300' },
-  { bg: 'from-pink-500/15 to-pink-600/5',      border: 'border-pink-500/20',    text: 'text-pink-300' },
-  { bg: 'from-rose-500/15 to-rose-600/5',      border: 'border-rose-500/20',    text: 'text-rose-300' },
-  { bg: 'from-emerald-500/15 to-emerald-600/5', border: 'border-emerald-500/20', text: 'text-emerald-300' },
-  { bg: 'from-amber-500/15 to-amber-600/5',    border: 'border-amber-500/20',   text: 'text-amber-300' },
-  { bg: 'from-cyan-500/15 to-cyan-600/5',      border: 'border-cyan-500/20',    text: 'text-cyan-300' },
-  { bg: 'from-slate-500/15 to-slate-600/5',    border: 'border-slate-500/20',   text: 'text-slate-300' },
-];
+import { useEffect, useState } from 'react';
+import { Search, MapPin, Star, Sparkles } from 'lucide-react';
 
-// ─── Data fetching ────────────────────────────────────────────────────────────
-
-async function getCategories() {
-  try {
-    const db = adminDb();
-    const { data } = await db
-      .from('categories')
-      .select('id, name, slug, icon')
-      .eq('is_active', true)
-      .order('display_order');
-    return data ?? [];
-  } catch {
-    return [];
-  }
+async function api<T>(url: string): Promise<T> {
+  const res = await fetch(url);
+  const body = await res.json();
+  if (!res.ok) throw new Error(body.error?.message ?? 'Something went wrong.');
+  return body.data as T;
 }
 
-async function getTopCoaches() {
-  try {
-    const db = adminDb();
-    const { data } = await db
-      .from('coaches')
-      .select(
-        `id, public_profile_slug, city, area, state,
-         avg_rating, experience_years, service_types,
-         user_data:users(first_name, last_name, avatar_url),
-         coach_categories(is_primary, subcategory:subcategories(name))`
-      )
-      .not('public_profile_slug', 'is', null)
-      .order('avg_rating', { ascending: false, nullsFirst: false })
-      .limit(8);
-    return (data ?? []).map((c: any) => ({
-      ...c,
-      primarySubcategoryName: (c.coach_categories ?? []).find((cc: any) => cc.is_primary)?.subcategory?.name ?? null,
-    }));
-  } catch {
-    return [];
-  }
+interface ListingSummary {
+  slug: string;
+  headline: string | null;
+  cityKey: string;
+  sportKeys: string[];
+  priceDisplay: unknown;
+  featured: boolean;
+  avgRating: number | null;
+  reviewCount: number;
 }
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
+interface Sport {
+  key: string;
+  label: string;
+}
 
-export default async function ExploreLandingPage() {
-  const [topCoaches, categories] = await Promise.all([getTopCoaches(), getCategories()]);
+interface City {
+  key: string;
+  label: string;
+}
+
+function priceLabel(priceDisplay: unknown): string | null {
+  if (priceDisplay && typeof priceDisplay === 'object' && 'amountMinor' in (priceDisplay as Record<string, unknown>)) {
+    const amountMinor = (priceDisplay as { amountMinor?: number }).amountMinor;
+    const per = (priceDisplay as { per?: string }).per ?? 'mo';
+    if (typeof amountMinor === 'number') return `₹${(amountMinor / 100).toLocaleString('en-IN')}/${per}`;
+  }
+  return null;
+}
+
+export default function ExplorePage() {
+  const [listings, setListings] = useState<ListingSummary[]>([]);
+  const [sports, setSports] = useState<Sport[]>([]);
+  const [cities, setCities] = useState<City[]>([]);
+  const [city, setCity] = useState('');
+  const [sport, setSport] = useState('');
+  const [q, setQ] = useState('');
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api<{ sports: Sport[]; cities: City[] }>('/api/v1/public/taxonomy').then((t) => {
+      setSports(t.sports);
+      setCities(t.cities);
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    setLoading(true);
+    const params = new URLSearchParams();
+    if (city) params.set('city', city);
+    if (sport) params.set('sport', sport);
+    if (q) params.set('q', q);
+    api<{ listings: ListingSummary[] }>(`/api/v1/public/listings?${params.toString()}`)
+      .then((r) => setListings(r.listings))
+      .catch(() => setListings([]))
+      .finally(() => setLoading(false));
+  }, [city, sport, q]);
 
   return (
-    <div className="text-slate-100">
-
-      {/* ── HERO ─────────────────────────────────────────────────────── */}
-      <section className="relative py-20 lg:py-32 overflow-hidden">
-        {/* Ambient glow blobs */}
-        <div className="absolute top-0 left-1/4 w-[600px] h-[400px] bg-indigo-500/[0.08] rounded-full blur-[120px] pointer-events-none" />
-        <div className="absolute top-10 right-1/4 w-[400px] h-[300px] bg-purple-500/[0.06] rounded-full blur-[100px] pointer-events-none" />
-
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 text-center relative z-10">
-          {/* Trust badge */}
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/25 text-indigo-300 text-xs font-semibold tracking-wide mb-8">
-            <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" />
-            Trusted by 500+ Academies Across India
-          </div>
-
-          {/* Headline */}
-          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black tracking-tight text-white mb-5 leading-tight">
-            Find the{' '}
-            <span className="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
-              Best Coaches
-            </span>
-            {' '}&amp;{' '}
-            <br className="hidden sm:block" />
-            Academies Near You
+    <div className="min-h-screen bg-[#f0eee9]">
+      {/* hero (wireframe 5a) */}
+      <div className="border-b border-neutral-900/10 bg-gradient-to-b from-white to-[#f7f5f0] px-6 py-14 text-center">
+        <div className="mx-auto max-w-2xl">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
+            <Sparkles className="h-3 w-3" /> Real students, real reviews, real attendance
+          </span>
+          <h1 className="mt-4 text-3xl font-semibold text-neutral-900">
+            Find the <span className="text-blue-600">Best Coaches</span> &amp; Academies Near You
           </h1>
-          <p className="text-slate-400 text-base sm:text-lg mb-10 max-w-2xl mx-auto">
-            Search city/area-wise and discover top-rated professionals across
-            sports, education, music, dance and more.
-          </p>
+          <p className="mt-2 text-sm text-neutral-500">Search by city and sport to discover verified coaches and academies.</p>
 
-          {/* Search bar */}
-          <form action="/explore/coaches" method="GET">
-            <div className="flex flex-col sm:flex-row gap-2 max-w-2xl mx-auto glass-panel rounded-2xl p-2 border border-indigo-500/15">
-              <div className="flex items-center gap-2 flex-1 px-3 py-1">
-                <MapPin className="w-4 h-4 text-indigo-400 shrink-0" />
-                <input
-                  name="city"
-                  placeholder="City or Area (e.g. Hyderabad)"
-                  className="bg-transparent text-sm text-slate-200 placeholder-slate-500 outline-none w-full min-w-0"
-                />
-              </div>
-              <div className="w-px bg-white/10 hidden sm:block self-stretch" />
-              <div className="flex items-center gap-2 flex-1 px-3 py-1">
-                <Search className="w-4 h-4 text-slate-500 shrink-0" />
-                <input
-                  name="search"
-                  placeholder="Sports, coaching, music..."
-                  className="bg-transparent text-sm text-slate-200 placeholder-slate-500 outline-none w-full min-w-0"
-                />
-              </div>
-              <button
-                type="submit"
-                className="btn-premium px-6 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-2 shrink-0"
-              >
-                <Search className="w-4 h-4" /> Search
-              </button>
+          <div className="mt-6 flex flex-col gap-2 sm:flex-row">
+            <select value={city} onChange={(e) => setCity(e.target.value)} className="rounded-lg border border-neutral-300 bg-white px-3 py-2.5 text-sm outline-none sm:w-48">
+              <option value="">📍 Any city</option>
+              {cities.map((c) => (
+                <option key={c.key} value={c.key}>{c.label}</option>
+              ))}
+            </select>
+            <div className="relative flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
+              <input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="sport, coaching, music…"
+                className="w-full rounded-lg border border-neutral-300 bg-white py-2.5 pl-9 pr-3 text-sm outline-none"
+              />
             </div>
-          </form>
+          </div>
         </div>
-      </section>
+      </div>
 
-      {/* ── POPULAR CATEGORIES ────────────────────────────────────────── */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mb-16">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-lg font-bold text-slate-100">
-            Popular Categories
-          </h2>
-          <Link
-            href="/explore/coaches"
-            className="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1 transition-colors"
+      {/* category quick-filters (real taxonomy_sports) */}
+      <div className="mx-auto max-w-4xl px-6 pt-6">
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => setSport('')}
+            className={`rounded-full border px-3 py-1.5 text-xs font-medium ${!sport ? 'border-neutral-900 bg-neutral-900 text-white' : 'border-neutral-300 bg-white text-neutral-600'}`}
           >
-            View all <ArrowRight className="w-3 h-3" />
-          </Link>
+            All sports
+          </button>
+          {sports.map((s) => (
+            <button
+              key={s.key}
+              onClick={() => setSport(s.key)}
+              className={`rounded-full border px-3 py-1.5 text-xs font-medium ${sport === s.key ? 'border-neutral-900 bg-neutral-900 text-white' : 'border-neutral-300 bg-white text-neutral-600'}`}
+            >
+              {s.label}
+            </button>
+          ))}
         </div>
-        <div className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-11 gap-3">
-          {categories.map((cat, i) => {
-            const color = CATEGORY_COLORS[i % CATEGORY_COLORS.length];
-            return (
-              <Link
-                key={cat.id}
-                href={`/explore/coaches?categoryId=${cat.id}`}
-                className={`flex flex-col items-center gap-2 p-3 sm:p-4 rounded-2xl bg-gradient-to-b ${color.bg} ${color.border} border ${color.text} hover:scale-105 transition-all duration-200 text-center`}
+      </div>
+
+      {/* results */}
+      <div className="mx-auto max-w-4xl px-6 py-6">
+        {loading && <p className="text-sm text-neutral-400">Loading…</p>}
+
+        {!loading && listings.length === 0 && (
+          <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-neutral-300 bg-white/60 py-14 text-center">
+            <Search className="h-7 w-7 text-neutral-300" />
+            <p className="text-sm font-medium text-neutral-700">No listings match yet.</p>
+            <p className="max-w-xs text-xs text-neutral-500">Try a different city, or clear the sport filter to see everything nearby.</p>
+            {(city || sport || q) && (
+              <button
+                onClick={() => { setCity(''); setSport(''); setQ(''); }}
+                className="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-50"
               >
-                <span className="text-2xl">{cat.icon}</span>
-                <span className="text-xs font-semibold">{cat.name}</span>
-              </Link>
-            );
-          })}
-        </div>
-      </section>
-
-      {/* ── TOP PICKS ─────────────────────────────────────────────────── */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-20">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h2 className="text-lg font-bold text-slate-100">
-              Top Picks For You
-            </h2>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Highly rated coaches across all categories
-            </p>
-          </div>
-          <Link
-            href="/explore/coaches"
-            className="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1 font-medium transition-colors"
-          >
-            View all coaches <ArrowRight className="w-3.5 h-3.5" />
-          </Link>
-        </div>
-
-        {topCoaches.length === 0 ? (
-          <div className="text-center py-16 text-slate-600">
-            <p className="text-4xl mb-3">🔍</p>
-            <p className="text-sm">No coaches found. Check back soon!</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {topCoaches.map((coach: any) => {
-              const u = coach.user_data as any;
-              const name =
-                `${u?.first_name ?? ''} ${u?.last_name ?? ''}`.trim();
-              const location = [coach.area, coach.city]
-                .filter(Boolean)
-                .join(', ');
-              const rating = Number(coach.avg_rating || 4.8).toFixed(1);
-
-              return (
-                <Link
-                  key={coach.id}
-                  href={`/coaches/${coach.public_profile_slug}`}
-                  className="glass-panel glass-panel-hover rounded-2xl overflow-hidden group transition-all duration-200"
-                >
-                  {/* Avatar area */}
-                  <div className="relative h-36 bg-gradient-to-br from-indigo-900/40 to-slate-900/60 flex items-center justify-center overflow-hidden">
-                    {u?.avatar_url ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={u.avatar_url}
-                        alt={name}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <div className="w-20 h-20 rounded-full bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-200 font-black text-2xl">
-                        {u?.first_name?.[0]}
-                        {u?.last_name?.[0]}
-                      </div>
-                    )}
-                    {/* Rating badge */}
-                    <div className="absolute top-2 right-2 flex items-center gap-1 bg-black/60 backdrop-blur-sm px-2 py-0.5 rounded-full">
-                      <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
-                      <span className="text-amber-300 text-xs font-bold">
-                        {rating}
-                      </span>
-                    </div>
-                    {/* Skill badge */}
-                    <div className="absolute bottom-2 left-2 px-2 py-0.5 rounded-full bg-indigo-600/80 backdrop-blur-sm text-[10px] font-semibold text-white">
-                      {coach.primarySubcategoryName ?? 'Coach'}
-                    </div>
-                  </div>
-
-                  {/* Card body */}
-                  <div className="p-4">
-                    <h3 className="text-sm font-bold text-slate-100 truncate group-hover:text-indigo-300 transition-colors">
-                      Coach {name}
-                    </h3>
-                    <div className="flex items-center gap-1 mt-1">
-                      <MapPin className="w-3 h-3 text-slate-500 shrink-0" />
-                      <span className="text-xs text-slate-500 truncate">
-                        {location || 'India'}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between mt-3">
-                      <span className="text-xs text-slate-500">
-                        {coach.experience_years}+ yrs exp
-                      </span>
-                      <span className="text-xs font-medium text-indigo-400 flex items-center gap-0.5">
-                        View Profile <ChevronRight className="w-3 h-3" />
-                      </span>
-                    </div>
-                  </div>
-                </Link>
-              );
-            })}
+                Clear filters
+              </button>
+            )}
           </div>
         )}
 
-        {/* CTA banner */}
-        <div className="mt-12 glass-panel rounded-3xl p-8 sm:p-12 text-center border border-indigo-500/15 bg-indigo-500/[0.03] relative overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 via-transparent to-purple-500/5 pointer-events-none" />
-          <h3 className="text-2xl sm:text-3xl font-black text-white mb-3 relative">
-            Are you a Coach or Academy?
-          </h3>
-          <p className="text-slate-400 text-sm mb-6 max-w-md mx-auto relative">
-            List your profile on Abhyas and reach thousands of students looking
-            for quality coaching in your city.
-          </p>
-          <Link
-            href="/auth/login"
-            className="btn-premium px-8 py-3 rounded-xl text-sm font-semibold inline-flex items-center gap-2"
-          >
-            Get Listed Free <ArrowRight className="w-4 h-4" />
-          </Link>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {listings.map((listing) => {
+            const price = priceLabel(listing.priceDisplay);
+            return (
+              <a
+                key={listing.slug}
+                href={`/explore/${listing.slug}`}
+                className={`rounded-xl border bg-white p-4 shadow-sm transition hover:shadow-md ${listing.featured ? 'border-amber-400' : 'border-neutral-200'}`}
+              >
+                {listing.featured && (
+                  <span className="mb-1.5 inline-block rounded-full border border-amber-400 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700">★ Featured</span>
+                )}
+                <h2 className="font-semibold text-neutral-900">{listing.headline ?? listing.slug}</h2>
+                <p className="mt-1 flex items-center gap-1 text-xs text-neutral-500">
+                  <MapPin className="h-3 w-3" /> {cities.find((c) => c.key === listing.cityKey)?.label ?? listing.cityKey}
+                </p>
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {listing.sportKeys.slice(0, 3).map((key) => (
+                    <span key={key} className="rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] text-neutral-600">
+                      {sports.find((s) => s.key === key)?.label ?? key}
+                    </span>
+                  ))}
+                </div>
+                <div className="mt-2 flex items-center justify-between">
+                  {listing.avgRating !== null ? (
+                    <span className="flex items-center gap-1 text-xs text-neutral-600">
+                      <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" /> {listing.avgRating.toFixed(1)} ({listing.reviewCount})
+                    </span>
+                  ) : (
+                    <span className="text-xs text-neutral-400">No reviews yet</span>
+                  )}
+                  {price && <span className="text-sm font-semibold text-neutral-900">{price}</span>}
+                </div>
+              </a>
+            );
+          })}
         </div>
-      </section>
-
+      </div>
     </div>
   );
 }
