@@ -26,4 +26,9 @@ export const SERVICE_ROLE_MANIFEST: ServiceRoleUse[] = [
     justification:
       'resolve-or-create identity, session issuance, and refresh all run before a validated session/user_id exists to scope RLS to (Doc 05 §3/§6 chicken-and-egg). Everything with an existing session (listSessions, revokeSession, consents, linking) uses withRequestContext instead.',
   },
+  {
+    path: 'packages/modules/tenancy-rbac/src/service.ts',
+    justification:
+      'resolveOrgBySlug reads a non-member org for the join-by-slug flow (Doc 02 §9), before any membership exists to scope RLS to. acceptInvitation and the approval half of decideJoinRequest write ANOTHER user\'s membership row (the invitee/requester, not the caller) — a cross-actor write with no self-insert RLS path (migration 0004). Everything else (createOrganization, branches, invitations create/list/revoke, join_requests create/list/decide-status) uses withRequestContext.',
+  },
 ];

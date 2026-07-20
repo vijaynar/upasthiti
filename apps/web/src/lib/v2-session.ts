@@ -55,6 +55,18 @@ export function setSessionCookies(response: NextResponse, tokens: AuthTokens): N
   return response;
 }
 
+/** Sets only the access-token cookie — for flows like workspace switching that reissue the access token without rotating the refresh token. */
+export function setAccessTokenCookie(response: NextResponse, accessToken: string): NextResponse {
+  response.cookies.set(ACCESS_COOKIE, accessToken, {
+    httpOnly: true,
+    secure: isProd,
+    sameSite: 'lax',
+    path: '/',
+    maxAge: 15 * 60, // matches access token TTL, Doc 05 §6
+  });
+  return response;
+}
+
 export function clearSessionCookies(response: NextResponse): NextResponse {
   response.cookies.delete(ACCESS_COOKIE);
   response.cookies.delete(REFRESH_COOKIE);
@@ -95,4 +107,15 @@ export function jsonData<T>(data: T, status = 200): NextResponse {
 
 export function jsonError(code: string, message: string, status = 400): NextResponse {
   return NextResponse.json({ error: { code, message } }, { status });
+}
+
+// ── RLS-denial detection (Doc 02 §5) ────────────────────────────
+// Several tenancy-rbac writes (branches, invitations, join-request
+// decisions, branding) have no dedicated "not authorized" error class —
+// authorization IS the RLS policy, so a denied write just throws Postgres's
+// generic insufficient_privilege error (42501). Routes check for that
+// specifically (never a blanket catch-all) so a real 500 doesn't get
+// silently reported as a 403.
+export function isRlsDenied(err: unknown): boolean {
+  return typeof err === 'object' && err !== null && 'code' in err && (err as { code?: string }).code === '42501';
 }

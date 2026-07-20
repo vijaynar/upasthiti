@@ -17,9 +17,7 @@ export async function GET(req: NextRequest) {
       jar,
       { platform: 'web', ip: req.headers.get('x-forwarded-for') ?? undefined }
     );
-    // Phase 3 (memberships) will decide real post-login routing (Doc 05 §7);
-    // for now everyone lands on the app root.
-    const response = NextResponse.redirect(new URL(result.isNewUser ? '/onboarding' : '/', req.url));
+    const response = NextResponse.redirect(new URL(result.isNewUser ? '/onboarding' : '/workspace', req.url));
     applyPendingCookies(response, pending);
     return setSessionCookies(response, result);
   } catch (err) {

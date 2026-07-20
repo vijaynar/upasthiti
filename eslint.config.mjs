@@ -17,8 +17,11 @@ import tsPlugin from '@typescript-eslint/eslint-plugin';
 const V2_WEB_PATHS = [
   'apps/web/src/app/api/v1/auth/**/*.{ts,tsx}',
   'apps/web/src/app/api/v1/me/**/*.{ts,tsx}',
+  'apps/web/src/app/api/v1/orgs/**/*.{ts,tsx}',
+  'apps/web/src/app/api/v1/invitations/**/*.{ts,tsx}',
   'apps/web/src/app/auth/login/**/*.{ts,tsx}',
   'apps/web/src/app/onboarding/**/*.{ts,tsx}',
+  'apps/web/src/app/workspace/**/*.{ts,tsx}',
   'apps/web/src/lib/v2-session.ts',
 ];
 

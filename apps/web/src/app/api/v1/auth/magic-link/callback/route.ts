@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
       platform: 'web',
       ip: req.headers.get('x-forwarded-for') ?? undefined,
     });
-    const response = NextResponse.redirect(new URL(result.isNewUser ? '/onboarding' : '/', req.url));
+    const response = NextResponse.redirect(new URL(result.isNewUser ? '/onboarding' : '/workspace', req.url));
     applyPendingCookies(response, pending);
     return setSessionCookies(response, result);
   } catch (err) {

@@ -63,8 +63,9 @@ async function resolveOrCreateIdentity(
     );
     if (existing.rows[0]) {
       await client.query(
-        'update auth_methods set last_used_at = now() where provider = $1 and provider_uid = $2',
-        [provider, providerUid]
+        `update auth_methods set last_used_at = now(), verified_identifier = coalesce($3, verified_identifier)
+         where provider = $1 and provider_uid = $2`,
+        [provider, providerUid, verifiedEmail ?? null]
       );
       await client.query('COMMIT');
       return { userId: existing.rows[0].user_id, isNewUser: false };
@@ -77,9 +78,9 @@ async function resolveOrCreateIdentity(
     );
     const userId = created.rows[0].id;
     await client.query(
-      `insert into auth_methods (user_id, provider, provider_uid, verified_at, last_used_at)
-       values ($1, $2, $3, now(), now())`,
-      [userId, provider, providerUid]
+      `insert into auth_methods (user_id, provider, provider_uid, verified_identifier, verified_at, last_used_at)
+       values ($1, $2, $3, $4, now(), now())`,
+      [userId, provider, providerUid, verifiedEmail ?? null]
     );
     await client.query('COMMIT');
     return { userId, isNewUser: true };
@@ -163,6 +164,39 @@ export async function refreshSession(refreshToken: string): Promise<AuthResult> 
   } finally {
     client.release();
   }
+}
+
+// ── Workspace switch (Doc 05 §7) ────────────────────────────────
+// The active org is a JWT claim (`org`), not just a DB column, so switching
+// workspace means reissuing the access token — the refresh token/cookie is
+// left untouched (unlike refreshSession, this doesn't rotate it).
+// tenancy-rbac's membership check must happen in the caller (route handler)
+// BEFORE this is called — this function only persists the choice and mints
+// the token; it has no way to validate the target org itself (Doc 14 §2
+// rule 2, no reaching into tenancy-rbac's tables from here).
+
+export async function switchActiveOrg(
+  session: SessionContext & { sessionId: string },
+  orgId: string | null
+): Promise<{ accessToken: string }> {
+  return db.withRequestContext(session, async (client) => {
+    const result = await client.query<{ mfa_verified_at: string | null }>(
+      `update sessions set active_org_id = $1, last_seen_at = now()
+       where id = $2 and revoked_at is null
+       returning mfa_verified_at`,
+      [orgId, session.sessionId]
+    );
+    const row = result.rows[0];
+    if (!row) throw new InvalidSessionError();
+    const accessToken = platformJwt.signAccessToken({
+      sub: session.userId,
+      sid: session.sessionId,
+      org: orgId,
+      amr: [],
+      mfa: Boolean(row.mfa_verified_at),
+    });
+    return { accessToken };
+  });
 }
 
 // ── Google OAuth / magic link entrypoints ──────────────────────

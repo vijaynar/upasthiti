@@ -153,20 +153,140 @@ rejection, and the deferred last-verified-method trigger.
   checks only) — fine for now, worth tightening whenever `packages/kernel/schemas` gets its
   first real content.
 
-## Next: Phase 3 — Multi-Tenancy & Organization Core
+## Phase 3 — Multi-Tenancy & Organization Core: ✅ DONE, verified live in-browser
 
-Scope (from the roadmap): `organizations`/`branches`/`memberships`/`invitations`/
-`join_requests`/`org_branding`/`org_domains` + RLS; workspace switcher; all 4 provisioning
-flows (Doc 02 §9); session-context wiring for `current_org()`/`my_branch_scope()` (extends
-the helper-function pattern started in migration 0003). Also: add the FK from
-`consents.organization_id` → `organizations(id)` once the table exists (noted in migration
-0003's comments). Read `docsV2/02_multi_tenancy_identity.md` before starting.
+What exists (don't recreate):
+- `supabase/migrations/0004_tenancy.sql` — `organizations`/`branches`/`memberships`/
+  `invitations`/`join_requests`/`org_branding`/`org_domains` + RLS + grants + indexes.
+  `current_org()`/`my_branch_scope()`/`is_org_wide_member()` helper functions (Doc 07 §17).
+  Adds the `consents.organization_id` FK deferred from migration 0003.
+  **RBAC (`roles`/`permissions`/`membership_roles`/`has_perm()`) does not exist yet** — an
+  interim gate, `is_org_wide_member()` (caller's own membership has `branch_id is null`,
+  `status='active'`), stands in for "admin-ish" until Phase 4 replaces it. Read the
+  migration's header comment before touching any policy here.
+  `organizations.created_by` is a **schema addition not in Doc 07's literal table** — needed
+  to make org bootstrap (creator becomes first member) work as a self-service RLS insert
+  chain (org → org-wide membership → Main branch, one transaction, no service-role needed)
+  instead of a service-role bypass.
+- `supabase/migrations/0005_auth_methods_verified_identifier.sql` — adds
+  `auth_methods.verified_identifier` (bugfix, see "Known gaps fixed" below).
+- `packages/modules/tenancy-rbac/src/service.ts` — full implementation: `createOrganization`
+  (self-service RLS transaction), `listMyMemberships` (workspace switcher data),
+  `getOrganization`, `resolveOrgBySlug` (service-role, join-by-slug flow, no membership
+  needed), branches (`listBranches`/`createBranch`), invitations
+  (`createInvitation`/`listInvitations`/`revokeInvitation`/`acceptInvitation` — the last is
+  service-role since it writes the invitee's own membership row across actors, matches
+  emails via `auth_methods.verified_identifier`), join requests
+  (`createJoinRequest`/`listJoinRequests`/`decideJoinRequest` — status update is
+  self-service RLS, the resulting membership grant on approval is service-role),
+  `isActiveMember` (used by the workspace switcher before reissuing the access token),
+  `getBranding`/`updateBranding`. `NotAuthorizedError` covers the case a bare `UPDATE`'s RLS
+  `USING` clause silently filters a row to zero-rows-affected instead of raising — callers
+  must check `rowCount`, Postgres doesn't error on that path the way it does for a
+  WITH CHECK/INSERT failure (only `revokeInvitation` needed this; `decideJoinRequest`
+  already re-checks via its own SELECT).
+- `packages/modules/identity-auth/src/service.ts` — added `switchActiveOrg` (reissues the
+  access token with a new `org` JWT claim, persists `sessions.active_org_id`; does NOT
+  rotate the refresh token, unlike `refreshSession`). `resolveOrCreateIdentity` now also
+  populates `auth_methods.verified_identifier`.
+- Routes: `POST/GET /api/v1/orgs` (create/list-mine), `GET /api/v1/orgs/resolve?slug=`,
+  `GET /api/v1/orgs/{id}`, `GET/POST /api/v1/orgs/{id}/branches`,
+  `GET/POST /api/v1/orgs/{id}/invitations` + `DELETE .../{invId}` (revoke),
+  `POST /api/v1/invitations/accept`, `GET/POST /api/v1/orgs/{id}/join-requests` +
+  `POST .../{reqId}/decide`, `GET/PUT /api/v1/orgs/{id}/branding`,
+  `GET/POST /api/v1/me/workspace` (read active org / switch workspace).
+  `apps/web/src/lib/v2-session.ts` gained `setAccessTokenCookie` (access-token-only cookie
+  write, for workspace switch) and `isRlsDenied` (detects Postgres 42501 so a genuine RLS
+  denial maps to 403, never swallowed into a blanket catch that would also hide real 500s).
+- `apps/web/src/app/onboarding/page.tsx` — rebuilt: the 4 provisioning flows (Doc 02 §9) —
+  "I'm a coach" / "I run an academy" (org creation, type picker), "I have an invite" (token
+  → accept), "I'm a parent/student" (slug search → join request). Ends by activating the new
+  workspace and routing to `/workspace`.
+- `apps/web/src/app/workspace/page.tsx` — new: workspace switcher, lists memberships, click
+  to switch active org, link to add another workspace.
+- `eslint.config.mjs`: `V2_WEB_PATHS` extended with `api/v1/orgs/**`,
+  `api/v1/invitations/**`, `app/workspace/**`.
+- `packages/platform/src/db/service-role-manifest.ts`: added tenancy-rbac's entry
+  (`resolveOrgBySlug`, `acceptInvitation`, the approval half of `decideJoinRequest`).
+
+**Known gaps fixed during this phase (pre-existing, not newly introduced, but blocking
+Phase 3 work so fixed here):**
+1. **RLS was silently inert.** `DATABASE_URL` connects as `postgres`, which has
+   `rolbypassrls=true` — every policy since migration 0003 (Phase 2) was being skipped
+   entirely, on both `withRequestContext` and `getServiceClient`. Fixed by adding
+   `set local role authenticated` in `withRequestContext` (`packages/platform/src/db/index.ts`)
+   — `postgres` is already a member of `authenticated` locally (verified), so this is exactly
+   the pattern Supabase's own PostgREST layer uses. **This retroactively makes Phase 2's
+   self-only policies (sessions, auth_methods, etc.) actually enforce for the first time** —
+   worth knowing if something that "worked" in Phase 2 testing behaves differently now (it
+   was returning unfiltered rows before; RLS was never actually gating it, the app-layer
+   queries just happened not to leak anything in the single-user test paths used).
+2. **`apps/web/src/proxy.ts`** (legacy V1 edge middleware, still runs on every request)
+   redirected `/auth/*` → `/admin/dashboard` whenever a Supabase session existed. V2's own
+   magic-link/OAuth flows create a transient Supabase session as a side effect of the PKCE
+   exchange, which made `/auth/login` permanently unreachable after any V2 login (blocking,
+   e.g., a second person signing in on the same browser). Removed that redirect; `/admin/*`'s
+   guard (unauthenticated → `/auth/login`) is untouched.
+3. **Returning-user login landed on `/`**, a V1 page that redirects based on Supabase's
+   session, not V2 state. Both auth callbacks (`magic-link/callback`, `oauth/google/callback`)
+   now send a returning user to `/workspace` instead (new users still go to `/onboarding`).
+4. **`auth_methods.provider_uid` for `email_otp` is Supabase's `auth.users.id` (a UUID), not
+   the email** — invitation-acceptance email matching (Doc 07 §3) can't use it. Added
+   `auth_methods.verified_identifier` (migration 0005) instead of reaching into `auth.users`
+   directly, per this project's own stated principle that `auth_methods` is "ours, not
+   Supabase's" (Doc 02 §11 portability).
+
+**Verified live in a real browser**, three separate identities, one session each: Alice
+creates an `independent_coach` org via the UI → lands on `/workspace` with it active and
+checked. Alice creates a second, `academy`-type org via the UI. Alice invites `bob@test.com`
+via a direct API call (no admin UI yet, see below); Bob logs in fresh, pastes the token into
+the onboarding "I have an invite" form, and is correctly rejected once (email-mismatch
+against a *different* test) and correctly accepted with a matching email — lands on
+`/workspace` with the org listed. Carol uses "I'm a parent/student" → resolves
+`alice-coaching` by slug → sends a join request → Alice approves it via API → Carol logs in
+again, sees the org, clicks it, and `GET /api/v1/me/workspace` confirms the switch took
+effect. Also unit-smoke-tested directly against a live DB (25 assertions covering every
+service function including negative paths: duplicate slug, non-member writes, email
+mismatch, token reuse, revoked invitation, double-decide) and a dedicated 10-assertion raw-SQL
+RLS test (bootstrap ordering, cross-org isolation, column-grant locks on `memberships`/
+`organizations`).
+
+**Known gaps / not built (deliberately, in scope for later phases):**
+- No admin UI for creating/listing/revoking invitations or approving join requests — verified
+  via direct API calls above. Needs a real admin dashboard, which doesn't exist until later
+  phases (Platform Admin / People). The service + routes are there; only the UI is missing.
+- Guardian-requests-for-a-ward (Doc 02 §9's parent-requesting-for-a-child case) is NOT
+  implemented — `join_requests.subject_user_id` is locked to the requester themselves (RLS
+  `with check`), because allowing an arbitrary subject would let a requester name a victim
+  who never consented, and there's no `is_my_ward()`-backed RLS yet. Lands with guardianship-
+  aware policies (People module, Phase 6).
+- `invitations.role_keys` and `join_requests.requested_role` are recorded but **not applied**
+  to any actual role grant — there is no `membership_roles` table until Phase 4. Every org
+  bootstrap/invite-accept/join-approve in this phase produces a membership with no role
+  attached (`rbac.can()` still throws by design, so this doesn't create a functional gap yet).
+- `org_domains` is schema + a read-only SELECT policy only (Doc 02 §10 Tier 2 — v1 schema,
+  V2 build). No write path, no custom-domain routing.
+- No automated tests (Phase 16) — verified via the live-DB smoke scripts above plus the
+  in-browser pass, not committed as a test suite (matches Phase 2's precedent).
+
+## Next: Phase 4 — RBAC & Schema Completion
+
+Scope (from the roadmap): `roles`/`permissions`/`role_permissions`/`membership_roles`/
+`platform_role_assignments`/`coach_assignments`/`support_access_grants` (Doc 04 §12) +
+last-Owner-protection trigger + seed-super-admin protection trigger (Doc 07 §5). Real
+`has_perm()`/`has_perm_branch()` replacing every `is_org_wide_member()` interim check added
+in Phase 3 (migration 0004's header comment lists every policy that needs revisiting).
+`kernel/rbac.ts`'s `can()` stops throwing and does real membership → role → permission
+resolution. Read `docsV2/04_rbac_access_matrix.md` before starting.
 
 ## How to resume without re-reading everything
 
-- Don't re-read all of `docsV2/` — this file plus `docsV2/05_authentication_architecture.md`
-  and `docsV2/07_database_design.md` §3 are enough for Phase 2.
+- Don't re-read all of `docsV2/` — this file plus `docsV2/04_rbac_access_matrix.md` and
+  `docsV2/07_database_design.md` §5 are enough for Phase 4.
 - Don't re-derive the gap analysis or ask the scope-change questions again — they're
   answered above.
 - Do check `git status`/`git diff` against this file's "what exists" list before assuming
   something isn't built — this file is a snapshot, code is ground truth if they disagree.
+- Every `is_org_wide_member(...)`-based policy in migration 0004 is a marked interim stand-in
+  for `has_perm()` — grep that function name in the migration to find every policy Phase 4
+  needs to revisit, don't rely on memory.

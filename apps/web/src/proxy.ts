@@ -52,7 +52,6 @@ export async function proxy(request: NextRequest) {
     const { pathname } = request.nextUrl;
 
     // ── Auth route guards ─────────────────────────────────────
-    const isAuthRoute = pathname.startsWith('/auth');
     const isAdminRoute = pathname.startsWith('/admin');
     const isApiRoute = pathname.startsWith('/api');
 
@@ -61,10 +60,16 @@ export async function proxy(request: NextRequest) {
       return response;
     }
 
-    // Redirect authenticated users away from login/register pages
-    if (isAuthRoute && user) {
-      return NextResponse.redirect(new URL('/admin/dashboard', request.url));
-    }
+    // NOTE (V2 rebuild, Phase 3): this used to also bounce `/auth/*` away to
+    // `/admin/dashboard` whenever `supabase.auth.getUser()` found a session.
+    // That's now the wrong signal — `/auth/login` is V2's rebuilt login page
+    // (Doc 05), which authenticates against our own JWT
+    // (`abhyas_access_token`), not a Supabase session. The V2 magic-link/
+    // OAuth flows use Supabase's GoTrue transiently (PKCE exchange) and can
+    // leave a Supabase session cookie behind as a side effect, which used to
+    // make `/auth/login` permanently unreachable afterwards — even for a
+    // second person signing in on the same browser. `/admin/*` (still
+    // V1-live, unrebuilt) keeps its guard below unchanged.
 
     // Redirect unauthenticated users to login for protected routes
     if (isAdminRoute && !user) {
