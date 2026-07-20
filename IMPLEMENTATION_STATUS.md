@@ -721,21 +721,179 @@ correctly denied archiving a batch while the Owner succeeds; coach assignment re
   called `materializeSessions()`/`materializeBatchSessions()` directly and via the batch
   create/update paths.
 
-## Next: Phase 8 — Attendance
+## Phase 8 — Attendance: ✅ DONE, verified live in-browser + live-DB smoke test
 
-Scope (from the roadmap): `face_enrollments`, `attendance_events`, `attendance_review_queue`
-(Doc 07 §8, literal schema already sketched there), face-api.js 128-dim embeddings (this
-project's locked scope decision — not Doc 07's literal `vector(512)`, see "User-approved scope
-changes" above), absence-alert evaluation (grace-period expiry off `class_sessions`/
-`batches.grace_minutes`, now available from Phase 7). Doc 04 §5's "Attendance record/override",
-"Attendance read", "Review queue", and "Face enrollment (consented)" matrix rows are the
-RBAC-relevant parts to re-read; reuse `is_guardian_of`/`has_consent_authority`/`is_my_ward`
-(Phase 6) and `my_batch_ids()` (Phase 4, real consumer since Phase 7) rather than inventing new
-guardian/coach-scope checks.
+Scope built: `face_enrollments` (+ Doc 07 §21.2's `membership_id` staff-enrollment extension,
+folded in now rather than deferred), `attendance_events`, `attendance_review_queue`,
+`staff_attendance_events` (§21.2, also folded in now), face matching (`match_face()`), the
+face check-in engine (US-3), append-only corrections, the review queue resolve flow, staff
+self-attendance, and both Doc 14 §8 background jobs (grace-period absence evaluation, 5-min
+cadence; consent-withdrawal embedding purge, 6h cadence). face-api.js 128-dim embeddings per
+this project's locked scope decision (not Doc 07's literal `vector(512)`) — reused the archived
+V1 build's already-working face-api.js integration wholesale (same model weight files at
+`apps/web/public/models/`, same descriptor extraction call), not rebuilt from scratch.
+
+What exists (don't recreate):
+- `supabase/migrations/0010_attendance.sql` — all four tables (Doc 07 §8 + §21.2) + RLS +
+  `match_face()`. Two real, non-obvious design points, both explained in the migration's header
+  — re-read it before touching this schema:
+  1. `face_enrollments.embedding` is **nullable**, deviating from Doc 07's literal `not null` —
+     required to support the tombstone-on-withdrawal behavior the doc's own prose describes one
+     line below the schema ("embedding nulled + row tombstoned"). A `not null` column can't
+     later be nulled.
+  2. `match_face(p_batch_id, p_embedding, p_match_count)` is `SECURITY DEFINER` and takes **no**
+     org/tenant parameter — it derives scope from `current_org()` plus a caller-supplied
+     `batch_id` it independently verifies belongs to that org. This closes a real gap in the
+     archived V1 function of the same purpose
+     (`migrations_v1_legacy/0004_functions_triggers.sql`'s `match_face_embedding`), which took
+     `p_tenant_id` as a caller-supplied parameter with no ownership check — any authenticated
+     caller could pass an arbitrary tenant and search its enrolled faces. Doc 07 §17 names this
+     gap explicitly ("fixes gap G-`match_face_embedding`"); this migration is where the fix
+     lands.
+  Low-confidence face matches never write `attendance_events` directly (US-3 AC2, "never
+  auto-fine") — they land in `attendance_review_queue` instead; only a human confirmation (or a
+  high-confidence match) produces a real attendance event. Corrections are append-only via
+  `superseded_by`: a new `method='override'` row is inserted, then every currently-live row for
+  that (session, enrollment) is updated to point at it — never edited in place.
+  **One real bug found and fixed while smoke-testing this migration**, not pre-existing:
+  `enforce_face_enrollment_consent()` (the "no consent row → no embedding" BEFORE INSERT
+  trigger) was originally plain `plpgsql`, not `SECURITY DEFINER` — its internal `SELECT`s
+  against `consents`/`enrollments` ran under the *enrolling staff member's* RLS, and
+  `consents_select_related` (migration 0003) only allows the subject or the granter to read a
+  consent row. A coach enrolling a face on a guardian-granted consent isn't either of those, so
+  every legitimate enrollment was being rejected with "requires an active biometric_face
+  consent" even though the consent genuinely existed. Fixed the same way `has_perm()`/
+  `is_guardian_of()`/`is_batch_participant()` needed `SECURITY DEFINER` for their own internal
+  reads (migrations 0006/0008/0009) — worth remembering as a general rule for any future
+  trigger function (not just RLS policy) that reads a table gated by someone else's RLS.
+  RBAC-wise, no new permission keys were needed — migration 0006 (Phase 4) had already seeded
+  `attendance.record`/`.read`/`.override`/`.review_queue.resolve`/`.face.enroll`/`.self_record`
+  with role grants matching Doc 04 §5's matrix exactly (verified by smoke test: Front Desk can
+  record but not override; Assistant Coach/Owner can't self-record or can respectively, per
+  Doc 04 §21.2's literal "granted to Coach, Assistant Coach, Front Desk" — Owner deliberately
+  does NOT hold `attendance.self_record`, confirmed live in-browser, not a bug).
+- `packages/modules/attendance/src/service.ts` — full implementation: face enrollment
+  (`enrollFace`/`listFaceEnrollments`/`deleteFaceEnrollment`), matching + check-in
+  (`matchFace`/`checkInByFace`), manual record + append-only override
+  (`recordAttendance`/`overrideAttendance`), listings (`listAttendanceEvents`/
+  `listMyAttendance`/`listWardAttendance`), review queue (`listReviewQueue`/
+  `resolveReviewQueueItem`), staff self-attendance (`recordStaffAttendance`/
+  `listStaffAttendance`), and the two background jobs (`evaluateAbsences`/
+  `purgeWithdrawnFaceEmbeddings`) with idempotent bootstrap helpers
+  (`ensureAbsenceEvalJobScheduled`/`ensurePurgeJobScheduled`) called opportunistically from
+  `recordAttendance`/`enrollFace` — same self-bootstrapping shape as Phase 7's
+  `ensureMaterializationJobScheduled`, but triggered from this module's own write paths instead
+  of `scheduling.createBatch`, so attendance stays independent of scheduling's internals (Doc 14
+  §2 rule 2). `evaluateAbsences()` enqueues `attendance.absence_confirmed` (Doc 14 §8's literal
+  event-kind name) per newly-marked absence — no consumer exists yet (Notifications/Finance are
+  Phases 9-10), so these dead-letter after 5 attempts (migration 0002's default) until a later
+  phase registers a handler; harmless, the underlying signal (the `absent` `attendance_events`
+  row) is real and queryable regardless.
+- `apps/worker/src/registry.ts` — two new self-rescheduling job handlers:
+  `attendance.evaluate_absences` (+5min, matching Doc 14 §8's "time-critical absence alerts get
+  a dedicated per-5-min cron") and `attendance.purge_withdrawn_face_embeddings` (+6h,
+  comfortably inside Doc 14 §8's 24h consent-withdrawal-deletion SLA). `apps/worker` now depends
+  on `@abhyas/module-attendance`.
+- Routes (all new): `GET/POST /api/v1/orgs/{id}/batches/{batchId}/sessions/{sessionId}/attendance`
+  (list live events / manual record), `.../attendance/override` (append-only correction),
+  `.../attendance/face-check-in` (US-3 engine), `GET/POST /api/v1/orgs/{id}/attendance/
+  face-enrollments` + `DELETE .../{faceEnrollmentId}`, `GET /api/v1/orgs/{id}/attendance/
+  review-queue` + `POST .../{reviewQueueId}/resolve`, `GET/POST /api/v1/orgs/{id}/attendance/
+  staff-check-in`, `GET /api/v1/me/attendance`, `GET /api/v1/me/wards/{wardUserId}/attendance`.
+- `apps/web/src/app/attendance/page.tsx` — staff console: batch/session picker, roster with
+  manual mark/override buttons, a live face-scan panel, the review queue (confirm/reject), and a
+  face-enrollment panel. `apps/web/src/app/attendance/face-scanner.tsx` — shared face-api.js
+  camera capture component, ported from the archived V1 build's already-working
+  `admin/enroll-face` page (same model loading, same `detectSingleFace().withFaceLandmarks()
+  .withFaceDescriptor()` call) but simplified from V1's decorative HUD overlay down to a plain
+  functional widget matching this codebase's console style.
+  **Face enrollment is a genuine two-actor flow, not a UI simplification** — Doc 04 §5's matrix
+  marks Parent as "consent only" for the "Face enrollment" row, meaning a guardian can never
+  hold `attendance.face.enroll` (staff-only) and staff can never see a guardian's `consents` row
+  via RLS (`consents_select_related` is subject-or-granter-only). `apps/web/src/app/family/
+  page.tsx` gained a "Grant biometric consent" button (`BiometricConsentButton`) that calls the
+  existing `POST /api/v1/me/consents` and displays the resulting consent id for the guardian to
+  hand to staff (shown on-screen — a real, verified-working handoff pattern, not a stub).
+- `eslint.config.mjs` — `V2_WEB_PATHS` gained `app/attendance/**` (`api/v1/orgs/**`/
+  `api/v1/me/**` already covered the new nested attendance routes).
+- `packages/platform/src/db/service-role-manifest.ts` — new entry for
+  `attendance/src/service.ts` (the two background jobs only; everything else is RLS-gated via
+  `withRequestContext`).
+
+**Verified two ways, matching every prior phase's precedent:**
+1. **Live-DB smoke test** (`npx tsx`, run against local `supabase start`, not committed) — 27/27
+   assertions: unrelated staff denied face enrollment; coach enrolls successfully; a consent for
+   the wrong subject is rejected (the trigger fix above, confirmed working); `match_face` finds
+   an exact-embedding match at ~1.0 similarity; a confident face check-in records attendance
+   directly; a nudged (lower-confidence) embedding either records or queues for review, never
+   silently drops; an unrelated embedding reports `no_match`; the review queue lists a queued
+   item, a role without `attendance.review_queue.resolve` is denied resolving it, and confirming
+   writes a real `attendance_events` row; front desk records manually but is denied overriding
+   (no `attendance.override`); an owner's override supersedes the prior row (confirmed via
+   `superseded_by`, not an edit) and `listAttendanceEvents` returns only the live row; the
+   student reads their own attendance, the guardian reads their ward's, an unrelated user reads
+   zero rows; coach self-checks-in, is denied an `admin_override` self-insert, and the owner
+   successfully `admin_override`s the coach's row instead; `evaluateAbsences` marks an unattended
+   past-grace-period session absent and enqueues `attendance.absence_confirmed`; withdrawing a
+   consent and running `purgeWithdrawnFaceEmbeddings` nulls the embedding, tombstones the row,
+   and writes an `audit_log` entry; manually deleting a face enrollment tombstones it.
+2. **Live in-browser**: signed in, created an academy org, built a program/batch/enrollment via
+   `/scheduling`/`/people` (Phase 7/6 UIs), granted biometric consent for a guardian-added ward
+   via `/family`'s new button (real consent id returned and displayed), and drove the full
+   `/attendance` console — manual "Present" mark, override to "Late" (roster badge updated
+   correctly), a correctly-denied self-check-in for the Owner role (RLS working as documented,
+   not a bug), and the face-scan/enrollment panels: face-api.js's models loaded successfully
+   (`GET /models/*` all 200, confirmed via network log) and the camera-permission-denied state
+   rendered gracefully (the Browser pane sandbox blocks `getUserMedia`, a known environment
+   limitation — the model pipeline itself is confirmed working, live device capture is not
+   testable in this environment).
+
+`npm run type-check` (22 packages incl. the two new/changed workspace deps), `npm run lint`
+(fixed 12 raw-SQL-interpolation violations the same way Phase 5-7 did — column-list `${}`
+template literals moved into pre-built `const ..._SQL` variables before the `.query()` call),
+`npm run db:reset` (10 migrations apply clean), and `npm run db:check-rls` (36 tables, 1
+allow-listed) all pass.
+
+**Known gaps / not built (deliberately, in scope for later phases):**
+- `attendance.absence_confirmed` has no consumer yet — Notifications (Phase 10, the real
+  <5min-latency alert dispatch) and Finance (Phase 9, fine assessment per Doc 14 §2 rule 2
+  "attendance never inserts into charges; it calls `finance.assessFine()`") both land later. The
+  signal
+  (the `absent` attendance_events row + the queued event) is real now; only the reaction is
+  deferred.
+- No admin-facing "consent id" lookup — the guardian must copy/relay the id to staff manually
+  (shown on `/family`, copy-to-clipboard button). A QR-code handoff or a staff-side "pending
+  consents" inbox would be a real UX improvement but isn't required for the flow to work
+  correctly; same "service+routes real, UI polish later" precedent as every prior phase's
+  raw-ID pickers.
+- No student/guardian-facing attendance history page — `listMyAttendance`/`listWardAttendance`
+  and their routes are real and RLS-gated, only the consuming UI is deferred, same "RLS complete
+  now, UI later" precedent as Phase 7's `batches_select_participant`.
+- Audit logging is retrofitted onto exactly one new write path this phase (the purge job's
+  `write_audit_log()` call) — every other new write (enrollFace, recordAttendance,
+  overrideAttendance, resolveReviewQueueItem, recordStaffAttendance) does not call
+  `writeAuditLog()`, same acknowledged debt every phase since Phase 5 has flagged, now one phase
+  larger.
+- Live device capture (camera + face-api.js in a real browser tab) is confirmed working via the
+  model-loading network trace, but this environment's Browser pane sandbox blocks
+  `getUserMedia`, so an actual face-match round trip was verified only via the live-DB smoke
+  test (synthetic embeddings), not with a real captured face. Worth a manual pass in a
+  non-sandboxed browser (or staging) before treating the face-scan UX itself as fully verified,
+  though the engine it calls is.
+
+## Next: Phase 9 — Finance
+
+Scope (from the roadmap): `fee_policies`, `charges`, `ledger_entries` and the accounting-truth
+trigger pairing (Doc 07 §9, already sketched there), payment recording, proof submission/
+approval, refunds, payouts. `finance.assessFine()` is the real consumer Doc 14 §2 names for
+`attendance.absence_confirmed` (emitted, unconsumed, since this phase) — wire that up here
+rather than having attendance reach into `charges` directly. Doc 04 §5's "Fee policies & fines",
+"Charges & payments", "Proof approval / waivers / refunds", and "Payouts & ledger" matrix rows
+are the RBAC-relevant parts to re-read.
 
 ## How to resume without re-reading everything
 
-- Don't re-read all of `docsV2/` — this file plus the Phase 8 doc pointers above should be
+- Don't re-read all of `docsV2/` — this file plus the Phase 9 doc pointers above should be
   enough to start.
 - Don't re-derive the gap analysis or ask the scope-change questions again — they're
   answered above (see "User-approved scope changes").
@@ -758,6 +916,16 @@ guardian/coach-scope checks.
   ANY future multi-identity browser testing in this environment, not just Platform Admin —
   sign out (or use separate browser profiles) between identities, don't assume two open tabs
   are two independent sessions.
+- `SECURITY DEFINER` matters for trigger functions too, not just RLS-policy helper functions —
+  Phase 8 hit a real bug where a BEFORE INSERT trigger's own internal `SELECT`s got silently
+  RLS-filtered by the *inserting caller's* session rather than seeing the full table, because
+  the trigger function was plain `plpgsql` instead of `SECURITY DEFINER`. Any future trigger
+  that reads a table gated by someone else's RLS (not just the row being inserted/updated) needs
+  the same treatment as `has_perm()`/`is_guardian_of()`/`is_batch_participant()`.
+- This environment's Browser pane sandbox blocks `getUserMedia` — any future feature needing
+  live camera capture (this phase's face-scan UI, a future QR/barcode scanner, etc.) can only be
+  verified up to "the model/library loads and the permission-denied state renders correctly,"
+  not an actual captured-frame round trip. Don't mistake that limitation for a code bug.
 - `date`-typed columns now come back from `pg` as plain `YYYY-MM-DD` strings, not JS `Date`
   objects (`packages/platform/src/db/pool.ts`, Phase 6) — don't reintroduce a per-query
   `::text` cast workaround for this, the platform-wide parser override already handles it.

@@ -41,4 +41,9 @@ export const SERVICE_ROLE_MANIFEST: ServiceRoleUse[] = [
     justification:
       'materializeSessions() is the Doc 07 §7 rolling 30-day-window job — it runs across every active batch in every org on a schedule (apps/worker), not inside one caller\'s request context, so there is no session to scope withRequestContext to. Every other export in this file (programs/batches/coach assignments/roster/holidays/class-session CRUD) uses withRequestContext and is RLS-gated, per migration 0009.',
   },
+  {
+    path: 'packages/modules/attendance/src/service.ts',
+    justification:
+      'evaluateAbsences() (grace-period expiry job, Doc 14 §8) and purgeWithdrawnFaceEmbeddings() (consent-withdrawal deletion job, 24h SLA) both run across every org on a schedule (apps/worker), not inside one caller\'s request context. Every other export (face enrollment, matchFace/checkInByFace, recordAttendance/overrideAttendance, review queue resolution, staff self-attendance) uses withRequestContext and is RLS-gated, per migration 0010.',
+  },
 ];

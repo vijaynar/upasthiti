@@ -7,7 +7,7 @@
 // level relationship a parent revisits over time.
 
 import { useEffect, useState } from 'react';
-import { Users, UserPlus, Search, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Users, UserPlus, Search, CheckCircle2, AlertCircle, Fingerprint, Copy } from 'lucide-react';
 
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, { ...init, headers: { 'Content-Type': 'application/json', ...init?.headers } });
@@ -109,6 +109,67 @@ function AddWardForm({ onAdded }: { onAdded: () => void }) {
   );
 }
 
+// Doc 04 §5 "Face enrollment" row: Parent's role is "consent only" — the
+// actual embedding capture happens on the org's /attendance staff console
+// (requires attendance.face.enroll, which guardians never hold). This just
+// grants the consents row and surfaces its id for the guardian to hand to
+// staff (shown on-screen, e.g. read aloud or shown on the phone).
+function BiometricConsentButton({ ward }: { ward: Ward }) {
+  const [consentId, setConsentId] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  async function grant() {
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await api<{ consentId: string }>('/api/v1/me/consents', {
+        method: 'POST',
+        body: JSON.stringify({ subjectUserId: ward.wardUserId, kind: 'biometric_face', evidence: { method: 'family_portal' } }),
+      });
+      setConsentId(result.consentId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not grant consent.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function copy() {
+    if (!consentId) return;
+    await navigator.clipboard.writeText(consentId).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }
+
+  if (!ward.consentAuthority) return null;
+
+  return (
+    <div className="mt-2">
+      {error && <p className="mb-1 text-xs text-red-600">{error}</p>}
+      {consentId ? (
+        <div className="flex items-center gap-1.5 rounded-lg bg-neutral-50 px-2 py-1.5 text-[11px]">
+          <code className="truncate text-neutral-700">{consentId}</code>
+          <button onClick={copy} className="shrink-0 text-neutral-400 hover:text-neutral-700">
+            <Copy className="h-3 w-3" />
+          </button>
+          {copied && <span className="shrink-0 text-emerald-600">Copied</span>}
+        </div>
+      ) : (
+        <button
+          disabled={busy}
+          onClick={grant}
+          className="flex items-center gap-1 text-xs font-medium text-neutral-600 hover:underline disabled:opacity-50"
+        >
+          <Fingerprint className="h-3.5 w-3.5" /> Grant biometric (face) consent
+        </button>
+      )}
+      {consentId && <p className="mt-1 text-[10px] text-neutral-400">Show this ID to staff to enroll {ward.displayName}&apos;s face for attendance.</p>}
+    </div>
+  );
+}
+
 function EnrollWardCard({ ward }: { ward: Ward }) {
   const [open, setOpen] = useState(false);
   const [slug, setSlug] = useState('');
@@ -163,6 +224,8 @@ function EnrollWardCard({ ward }: { ward: Ward }) {
           {open ? 'Close' : 'Request enrollment'}
         </button>
       </div>
+
+      <BiometricConsentButton ward={ward} />
 
       {open && (
         <div className="mt-3 space-y-2 rounded-lg border border-neutral-200 p-3">
