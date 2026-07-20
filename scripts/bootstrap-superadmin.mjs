@@ -1,91 +1,90 @@
-// One-time bootstrap: create the first real superadmin account on a NEW
-// staging/production Supabase project. Uses the Admin API (not raw SQL) so
-// email confirmation and identity provisioning are handled correctly by
-// GoTrue itself. No password is set — the app only supports magic-link
-// and Google OAuth login, so the account signs in the same way any user
-// does: request a magic link for this email.
+#!/usr/bin/env node
+// Grants the seed Super Admin platform role (Doc 02 §9, Doc 07 §5) to an
+// already-existing V2 identity. Deliberately NOT a user-creation script —
+// V2 has no admin-create-user path (unlike V1's old Supabase Admin API
+// flow this file used to run): identities are only ever created by
+// resolveOrCreateIdentity as a side effect of a real magic-link/OAuth login
+// (packages/modules/identity-auth/src/service.ts). Sign in once with the
+// target email through the normal /auth/login flow FIRST, then run this.
 //
-// Run with: node scripts/bootstrap-superadmin.mjs --staging   (or --prod)
-// Prompts interactively, or set ADMIN_EMAIL (and optionally ADMIN_FIRST_NAME/
-// ADMIN_LAST_NAME) env vars to skip the prompts for scripted runs.
+// The seed row (platform_role_assignments.seed = true) is protected by
+// migration 0006's triggers — it can never be revoked or have its user
+// deleted through the app. Refuses to run if a seed super admin already
+// exists (bootstrap is a one-time action; use the platform console's role
+// grant/revoke, once you're signed in as super admin, for everything after).
+//
+// Usage: node scripts/bootstrap-superadmin.mjs <email> [--env=.env.development.local]
 
-import { createClient } from '@supabase/supabase-js';
+import pg from 'pg';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import readline from 'node:readline/promises';
 
-const DEFAULT_TENANT_ID = '022c1494-057e-4c80-80dd-88fa4b1287b5'; // VidyaSopan Sports school
+const args = process.argv.slice(2);
+const email = args.find((a) => !a.startsWith('--'))?.trim().toLowerCase();
+const envArg = args.find((a) => a.startsWith('--env='));
+const envFile = envArg ? envArg.slice('--env='.length) : '.env.development.local';
 
-const isProd = process.argv.includes('--prod');
-const isStaging = process.argv.includes('--staging');
-
-if (!isProd && !isStaging) {
-  console.error('❌ Refusing to run without an explicit target. Pass --staging or --prod.');
-  console.error('   (This script creates real login credentials — never run it against local Supabase.)');
+if (!email || !email.includes('@')) {
+  console.error('Usage: node scripts/bootstrap-superadmin.mjs <email> [--env=.env.development.local]');
   process.exit(1);
 }
 
-const envFile = isProd ? '../.env.production.local' : '../.env.staging.local';
-process.loadEnvFile(path.resolve(path.dirname(fileURLToPath(import.meta.url)), envFile));
+process.loadEnvFile(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', envFile));
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
-  console.error(`❌ Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in ${envFile}`);
+const connectionString = process.env.DATABASE_URL;
+if (!connectionString) {
+  console.error(`[bootstrap-superadmin] Missing DATABASE_URL in ${envFile}.`);
   process.exit(1);
 }
 
-console.warn(`⚠️  Bootstrapping a superadmin on ${isProd ? 'PRODUCTION' : 'STAGING'} (${SUPABASE_URL}).\n`);
+async function main() {
+  const client = new pg.Client({ connectionString });
+  await client.connect();
+  try {
+    const existingSeed = await client.query(`select user_id from platform_role_assignments where seed = true limit 1`);
+    if (existingSeed.rows.length > 0) {
+      console.error(
+        `[bootstrap-superadmin] A seed super admin already exists (user ${existingSeed.rows[0].user_id}). ` +
+          'Grant/revoke further platform roles from the platform console (or grantPlatformRole) instead of re-running this script.'
+      );
+      process.exit(1);
+    }
 
-let email = process.env.ADMIN_EMAIL?.trim();
-let firstName = process.env.ADMIN_FIRST_NAME?.trim();
-let lastName = process.env.ADMIN_LAST_NAME?.trim();
+    const user = await client.query(
+      `select distinct u.id, u.display_name
+       from users u
+       join auth_methods am on am.user_id = u.id
+       where lower(am.verified_identifier) = $1 and am.verified_at is not null and u.deleted_at is null`,
+      [email]
+    );
+    if (user.rows.length === 0) {
+      console.error(
+        `[bootstrap-superadmin] No verified V2 identity found for ${email}. ` +
+          'Sign in once with this email via the normal magic-link/Google login flow first, then re-run this script.'
+      );
+      process.exit(1);
+    }
+    const userId = user.rows[0].id;
 
-if (!email) {
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-  email = (await rl.question('Admin email: ')).trim();
-  firstName = (await rl.question('First name: ')).trim();
-  lastName = (await rl.question('Last name: ')).trim();
-  rl.close();
+    const role = await client.query(`select id from roles where key = 'super_admin' and scope = 'platform'`);
+    if (role.rows.length === 0) {
+      console.error('[bootstrap-superadmin] super_admin platform role not found — is migration 0006 applied?');
+      process.exit(1);
+    }
+
+    await client.query(
+      `insert into platform_role_assignments (user_id, role_id, granted_by, seed) values ($1, $2, $1, true)`,
+      [userId, role.rows[0].id]
+    );
+
+    console.log(`[bootstrap-superadmin] ${email} (user ${userId}) is now the seed Super Admin.`);
+    console.log('  Sign in as usual — the platform console becomes available with this role.');
+  } finally {
+    await client.end();
+  }
 }
-firstName ||= 'Admin';
-lastName ||= '';
 
-if (!email.includes('@')) {
-  console.error('❌ Invalid email.');
+main().catch((err) => {
+  console.error('[bootstrap-superadmin] Failed:', err.message);
   process.exit(1);
-}
-
-const db = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, { auth: { persistSession: false } });
-
-const { data: created, error: createErr } = await db.auth.admin.createUser({
-  email,
-  email_confirm: true,
-  app_metadata: { role: 'superadmin', tenant_id: DEFAULT_TENANT_ID },
-  user_metadata: { first_name: firstName, last_name: lastName },
 });
-
-if (createErr) {
-  console.error('❌ Failed to create user:', createErr.message);
-  process.exit(1);
-}
-
-const userId = created.user.id;
-console.log(`✅ Auth user created: ${userId}`);
-
-// trg_sync_auth_user_profile (0004) auto-creates the public.users row on
-// insert. Widen it to the same active-role/available-roles pattern used
-// for the existing production admin account.
-const { error: updateErr } = await db
-  .from('users')
-  .update({ role: 'admin', available_roles: ['superadmin', 'admin'] })
-  .eq('id', userId);
-
-if (updateErr) {
-  console.error('❌ User created, but failed to set admin role:', updateErr.message);
-  process.exit(1);
-}
-
-console.log(`✅ ${email} is now superadmin/admin for tenant ${DEFAULT_TENANT_ID}.`);
-console.log('   Sign in at /auth/login with this email — it uses the same magic-link flow as any other account.');

@@ -368,32 +368,141 @@ all pass.
 - No automated tests (Phase 16) — verified via the live-DB smoke script above, matching
   Phase 2/3's precedent.
 
-## Next: Phase 5 — Platform Admin
+## Phase 5 — Platform Administration: ✅ DONE, verified live in-browser
 
-Scope (from the roadmap): Super Admin/Verification Ops/Support/Platform Finance console —
-org verification review + approve/reject (the gate in US-1 AC5, `organizations.status`
-`pending`→`active`), the actual seed-super-admin creation flow, platform role
-grant/revoke UI (`platform_role_assignments`, now schema-complete from Phase 4), the
-support-access-grant request/approve/audit workflow (Doc 04 §9, `support_access_grants`
-already exists — Phase 4 only built its schema+read policy, not the write/request flow),
-subscriptions/feature-flags/announcements (Doc 07 §15's `feature_flags`/
-`org_feature_flags`/`announcements` tables — not yet created, check Doc 07 before assuming
-they exist). **There is no dedicated Platform Admin doc in `docsV2/`** (only 00, 01, 02, 04,
-05, 07, 08, 13, 14, 15, 17 exist — 03/06/09-12/16 were never written for this rebuild).
-Platform Admin's actual spec is scattered: Doc 04 §9 (support access/impersonation) + §3's
-platform role catalogue, Doc 07 §15-16 (the tables above + audit_log), and
-`docsV2/Wireframes - Login & Superadmin.dc.html` (t1/t4 wireframes, referenced by Doc 04's
-2026-07-19 addendum). Read those three, don't search for a doc number that isn't there.
+Scope was narrower than the full wireframe (4a-4l): the console built here covers org
+verification/lifecycle, platform roles, support access, feature flags, announcements, and
+audit trail — the pieces IMPLEMENTATION_STATUS.md's Phase 5 section called out as decided
+scope. Taxonomy, messaging-vendor config, payments reconciliation, plans/pricing UI, DSR
+queue, and localization (wireframe 4g-4l) are deliberately NOT built — each depends on a
+module that doesn't exist yet (Messaging, Finance, Marketplace, a DPDP compliance pass).
+
+What exists (don't recreate):
+- `supabase/migrations/0007_platform_admin.sql` — `has_platform_perm(perm)` (platform-scope
+  equivalent of `has_perm()`, `SECURITY DEFINER`, keyed on `platform_role_assignments` ->
+  `role_permissions`, no `current_org()` involvement). New tables: `feature_flags`,
+  `org_feature_flags`, `announcements`, `plans`, `subscriptions`, `audit_log` (Doc 07 §15/§16
+  core columns only — §21.5's console extras like `dlt_templates`/`dsr_requests`/
+  `plans.limits` are deferred, same "schema follows the module that needs it" precedent as
+  `org_domains`). `organizations.status` gained a 5th value, `'rejected'` — Doc 07's literal
+  enum doesn't have one; this is a documented interpretive call (migration header) to give
+  the verification queue's Reject action a real terminal state distinct from `archived`.
+  `write_audit_log()` is the ONLY insert path into `audit_log` (`SECURITY DEFINER`, actor is
+  always `current_user_id()`) — `authenticated` has no direct INSERT grant on the table.
+  `support_grant_active()` (defined but unused since migration 0006) is now wired into
+  `organizations`/`memberships` SELECT as additive permissive policies — scoped to just those
+  two tables (enough for the org-360 view under a support grant); People's real roster tables
+  (Phase 6) will need their own policies when they exist, not retrofitted here.
+- `packages/modules/audit/src/service.ts` — `writeAuditLog()`/`listAuditLog()`, thin wrappers
+  over `write_audit_log()` and a plain RLS-gated SELECT. Only Phase 5's own write paths call
+  `writeAuditLog()` so far — retrofitting Phase 2-4 call sites (role grants, invitation
+  accept, join-request decide) with audit logging is real debt per Doc 07 §16 ("every
+  privileged action logs"), not done here, not blocking.
+- `packages/modules/platform-admin/src/service.ts` — org verification/lifecycle
+  (`listOrganizations`, `getOrganizationDetail`, `decideOrganizationVerification`,
+  `setOrganizationSuspension`), platform role grant/revoke (`grantPlatformRole`/
+  `revokePlatformRole` — gated by `platform.role.grant`, which only `super_admin` holds in
+  the seeded catalogue, so no separate grant-authority table like tenancy-rbac's
+  `ORG_ROLE_GRANTORS` was needed), support access (`requestSupportAccess`/
+  `listSupportAccessGrants`/`revokeSupportAccessGrant` — schema has no separate
+  request/approve state, so a row's existence IS the grant, capped at 24h app-side), feature
+  flags (`listFeatureFlags`/`upsertFeatureFlag`/`listOrgFeatureFlags`/`setOrgFeatureFlag`),
+  announcements (`listAnnouncements`/`createAnnouncement`). Two access patterns: feature
+  flags/org-flags/announcements have real RLS write policies (`has_platform_perm()`) and use
+  `withRequestContext` throughout; org verification/suspend, platform role grant/revoke, and
+  support-access request/revoke have no self-insert RLS path (cross-actor, same shape as
+  tenancy-rbac's `acceptInvitation`) and call `assertPlatformPerm()` (a real
+  `withRequestContext` query against `has_platform_perm()`) BEFORE `getServiceClient()` —
+  that call is the only authorization gate for those paths, not RLS. Plans/subscriptions are
+  schema-only in Phase 5 (RLS + tables exist, no service functions/UI) — real billing lands
+  with Finance (Phase 9).
+- `scripts/bootstrap-superadmin.mjs` — rewritten for V2 (the old file was a V1 Supabase-
+  Admin-API script, referenced `role`/`available_roles`/`tenant_id` columns that don't exist
+  in V2). Grants the seed Super Admin role to an ALREADY-EXISTING V2 identity by email
+  (`auth_methods.verified_identifier`) — deliberately not a user-creation script, since V2 has
+  no admin-create-user path; sign in once via the normal magic-link/Google flow first. Refuses
+  to run if a seed super admin already exists. `npm run admin:bootstrap-superadmin -- <email>`.
+- Routes: `GET /api/v1/platform/organizations` (+ `?status=`/`?search=`),
+  `GET /api/v1/platform/organizations/{id}`, `POST .../{id}/verify` ({decision, note}),
+  `POST .../{id}/suspend` ({action, reason}), `GET/POST .../{id}/feature-flags`,
+  `GET/POST /api/v1/platform/roles`, `DELETE /api/v1/platform/roles/{userId}/{roleKey}`,
+  `GET/POST /api/v1/platform/support-access`, `DELETE .../{id}`,
+  `GET/POST /api/v1/platform/feature-flags`, `GET/POST /api/v1/platform/announcements`,
+  `GET /api/v1/platform/audit-log`.
+- `apps/web/src/app/platform/page.tsx` — single-page console with a tab sidebar
+  (Verification queue / Organizations / Platform roles / Support access / Feature flags /
+  Announcements / Audit trail), matching the workspace/onboarding pages' plain-fetch client
+  component style. Shows an access-denied state (not a redirect) for any signed-in user
+  without a platform role, detected by probing `GET /api/v1/platform/organizations`.
+- `eslint.config.mjs`: `V2_WEB_PATHS` extended with `api/v1/platform/**`, `app/platform/**`.
+- `packages/platform/src/db/service-role-manifest.ts`: new entry for
+  `platform-admin/src/service.ts` explaining its service-role usage is gated by
+  `assertPlatformPerm()`, not RLS.
+
+**Verified live in a real browser**: bootstrapped a seed super admin via the new script,
+signed in, hit `/platform` (200, console renders). Created a second identity, ran "I run an
+academy" onboarding (org lands `pending`) — verification queue showed it, Approve
+transitioned it to `active` (`verified_at`/`verified_by` set). Organizations tab
+suspend/reinstate round-tripped the status correctly. Granted `verification_ops` to the
+second user via Platform roles, then revoked it (seed `super_admin` row correctly has no
+revoke button). Created a feature flag and toggled it on. Published an announcement.
+Requested a support-access grant against the test org (24h cap enforced) and revoked it. The
+Audit trail tab showed all ten actions above, in order, correctly attributed. Also hit a real
+cross-tab bug during testing worth remembering: this Browser pane's tabs share ONE cookie
+jar per origin — signing in as a second identity on another tab silently overwrites the first
+tab's session cookie (got a genuine 403 `has_platform_perm` check, not a bug in the check
+itself — confirmed by testing `has_platform_perm()` directly against Postgres). Don't
+misdiagnose that pattern as an RBAC bug in a future session; it's a two-tabs-one-cookie-jar
+test artifact, not a code issue.
+
+`npm run type-check` (21 packages incl. the two new modules), `npm run lint` (one violation
+fixed — a dynamic-WHERE query for `listOrganizations` needed its SQL text built in a
+variable rather than inline in the `.query()` call to satisfy the no-raw-interpolation rule;
+same safety, the values still flow through `params`), `npm run db:reset` (7 migrations apply
+clean), and `npm run db:check-rls` (26 tables, 1 allow-listed) all pass.
+
+**Known gaps / not built (deliberately, in scope for later phases):**
+- Plans/subscriptions have schema + RLS but no service functions or UI — real billing
+  checkout lands with Finance (Phase 9).
+- Taxonomy, messaging-vendor config (WhatsApp BSP/DLT templates), payments reconciliation,
+  and localization (wireframe 4g/4h/4i/4l) are not built — each needs a module (Notifications,
+  Finance/Payments) that doesn't exist yet.
+- Audit logging is NOT retrofitted onto Phase 2-4 write paths (role grants, invitation
+  accept/decide, org branding updates) — only Phase 5's own new writes call
+  `writeAuditLog()`. Doc 07 §16 says every privileged action should log; this is real,
+  acknowledged debt.
+- `support_grant_active()` is only wired into `organizations`/`memberships` SELECT — People's
+  real roster/enrollment tables (Phase 6) need their own support-grant read policies when
+  they're created.
+- No admin UI for `plans`/`subscriptions`, org branch list, or org branding from the platform
+  side (the org-360 view shows counts only, not a drill-down) — not required by Phase 5's
+  scoped-down deliverable.
+- No automated tests (Phase 16) — verified via the live-DB smoke queries above plus the
+  in-browser pass, matching every prior phase's precedent.
+
+## Next: Phase 6 — People
+
+Scope (from the roadmap): student/staff enrollment, guardianship-aware access
+(`is_my_ward()` — deferred from Phase 4 because it needs `enrollments` to know if a ward is
+actually enrolled), consent capture flows, the guardian-requests-for-a-ward join-request path
+Phase 3 explicitly deferred. **There is no dedicated People doc in `docsV2/`** — like Platform
+Admin, its spec is scattered: Doc 02 §6-9 (guardianship, consent, provisioning), Doc 07 §6
+("People: Enrollment, Guardianship, Consent"), Doc 04 §7 ("Guardianship-Derived Access") and
+§21.2 (staff self-attendance's `face_enrollments.membership_id` addition, relevant if Progress
+touches the same table later). Read those before assuming a doc number exists.
 
 ## How to resume without re-reading everything
 
-- Don't re-read all of `docsV2/` — this file plus Doc 04 §9/§3, Doc 07 §15-16, and the
-  Login & Superadmin wireframe should be enough for Phase 5.
+- Don't re-read all of `docsV2/` — this file plus the Phase 6 doc pointers above should be
+  enough to start.
 - Don't re-derive the gap analysis or ask the scope-change questions again — they're
-  answered above.
+  answered above (see "User-approved scope changes").
 - Do check `git status`/`git diff` against this file's "what exists" list before assuming
   something isn't built — this file is a snapshot, code is ground truth if they disagree.
-- RBAC is schema-complete as of Phase 4 — `has_perm()`/`has_perm_branch()` are real and
-  `SECURITY DEFINER`. Don't reintroduce an `is_org_wide_member()`-style coarse gate for
-  anything Platform Admin builds; use real permission keys (extend the catalogue in a new
-  migration if one's missing, following migration 0006's pattern).
+- RBAC (org-scope) is schema-complete as of Phase 4; platform-scope RBAC
+  (`has_platform_perm()`) is schema-complete as of Phase 5. Don't reintroduce a coarse gate
+  for anything People builds; use real permission keys.
+- The cross-tab-shared-cookie-jar behavior noted in Phase 5's verification section applies to
+  ANY future multi-identity browser testing in this environment, not just Platform Admin —
+  sign out (or use separate browser profiles) between identities, don't assume two open tabs
+  are two independent sessions.

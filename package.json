@@ -19,6 +19,7 @@
     "test": "echo \"[test] no test runner configured yet (roadmap Phase 16)\" && exit 0",
     "test:isolation": "echo \"[test:isolation] RLS isolation suite lands with Phase 3-4 (org core + RBAC)\" && exit 0",
     "keys:generate": "node scripts/generate-keys.mjs",
+    "admin:bootstrap-superadmin": "node scripts/bootstrap-superadmin.mjs",
     "db:start": "supabase start",
     "db:stop": "supabase stop",
     "db:status": "supabase status",
