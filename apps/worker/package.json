@@ -14,7 +14,8 @@
     "@abhyas/kernel": "^0.1.0",
     "@abhyas/platform": "^0.1.0",
     "@abhyas/module-scheduling": "^0.1.0",
-    "@abhyas/module-attendance": "^0.1.0"
+    "@abhyas/module-attendance": "^0.1.0",
+    "@abhyas/module-finance": "^0.1.0"
   },
   "devDependencies": {
     "typescript": "^5.7.2",

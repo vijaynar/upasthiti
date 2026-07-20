@@ -1,13 +1,14 @@
 import { queue } from '@abhyas/platform';
 import { materializeSessions } from '@abhyas/module-scheduling';
 import { evaluateAbsences, purgeWithdrawnFaceEmbeddings } from '@abhyas/module-attendance';
+import { assessFine, ABSENCE_CONFIRMED_JOB_KIND, type AssessFineInput } from '@abhyas/module-finance';
 
 // Job-kind -> handler registry (Doc 14 §8 job inventory). Each module
 // registers its own handlers as it lands its jobs (class-session
 // materialization here in Phase 7, absence evaluation + face-embedding
-// purge in Phase 8, notification dispatch consuming
-// attendance.absence_confirmed in Phase 10, charge generation and
-// reconciliation in Phase 9, retention purges throughout).
+// purge in Phase 8, finance's assessFine() consuming
+// attendance.absence_confirmed in Phase 9, notification dispatch consuming
+// the same event in Phase 10, retention purges throughout).
 
 export type JobHandler = (job: queue.Job) => Promise<void>;
 
@@ -48,8 +49,18 @@ async function runPurgeWithdrawnFaceEmbeddings(): Promise<void> {
   });
 }
 
+// One-shot event consumer (not self-rescheduling — each absence produces
+// exactly one attendance.absence_confirmed job, unlike the cron-shaped
+// handlers above). assessFine() is itself idempotent on the event id (see
+// migration 0011's header), so a redelivered job after a transient failure
+// is safe to just re-run rather than needing dedupe here.
+async function runAssessFine(job: queue.Job): Promise<void> {
+  await assessFine(job.payload as AssessFineInput);
+}
+
 export const JOB_HANDLERS: Record<string, JobHandler> = {
   'scheduling.materialize_sessions': runMaterializeSessions,
   'attendance.evaluate_absences': runEvaluateAbsences,
   'attendance.purge_withdrawn_face_embeddings': runPurgeWithdrawnFaceEmbeddings,
+  [ABSENCE_CONFIRMED_JOB_KIND]: runAssessFine,
 };

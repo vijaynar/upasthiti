@@ -46,4 +46,9 @@ export const SERVICE_ROLE_MANIFEST: ServiceRoleUse[] = [
     justification:
       'evaluateAbsences() (grace-period expiry job, Doc 14 §8) and purgeWithdrawnFaceEmbeddings() (consent-withdrawal deletion job, 24h SLA) both run across every org on a schedule (apps/worker), not inside one caller\'s request context. Every other export (face enrollment, matchFace/checkInByFace, recordAttendance/overrideAttendance, review queue resolution, staff self-attendance) uses withRequestContext and is RLS-gated, per migration 0010.',
   },
+  {
+    path: 'packages/modules/finance/src/service.ts',
+    justification:
+      'assessFine() consumes attendance.absence_confirmed queue events (apps/worker) — no caller session exists to scope RLS to when the worker processes a queued event, same category as every other module\'s background jobs. Every other export (fee policies, charges, payments, refunds, ledger reads, payouts) uses withRequestContext and is RLS-gated, per migration 0011; routine ledger writes go through post_ledger_entries()/get_or_create_ledger_account(), SECURITY DEFINER SQL functions callable from within withRequestContext, not service-role escalation.',
+  },
 ];

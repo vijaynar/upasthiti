@@ -7,7 +7,7 @@
 // level relationship a parent revisits over time.
 
 import { useEffect, useState } from 'react';
-import { Users, UserPlus, Search, CheckCircle2, AlertCircle, Fingerprint, Copy } from 'lucide-react';
+import { Users, UserPlus, Search, CheckCircle2, AlertCircle, Fingerprint, Copy, Wallet } from 'lucide-react';
 
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, { ...init, headers: { 'Content-Type': 'application/json', ...init?.headers } });
@@ -170,6 +170,129 @@ function BiometricConsentButton({ ward }: { ward: Ward }) {
   );
 }
 
+interface WardCharge {
+  id: string;
+  description: string;
+  amountMinor: number;
+  currency: string;
+  dueOn: string;
+  status: 'open' | 'pending_verification' | 'paid' | 'waived' | 'cancelled' | 'refunded';
+}
+
+function formatMinor(amountMinor: number, currency = 'INR'): string {
+  return new Intl.NumberFormat('en-IN', { style: 'currency', currency }).format(amountMinor / 100);
+}
+
+// Doc 04 §5 "Charges & payments" row: Parent is "🔷 wards + pay" — a
+// guardian can see a ward's charges (is_my_ward()-backed RLS, migration
+// 0011) and submit proof of a payment they've made outside the app; a
+// finance.proof.approve holder later confirms it on the org's /finance
+// console. No gateway checkout exists yet (see migration 0011's header).
+function WardFeesSection({ ward }: { ward: Ward }) {
+  const [open, setOpen] = useState(false);
+  const [charges, setCharges] = useState<WardCharge[] | null>(null);
+  const [proofCharge, setProofCharge] = useState<WardCharge | null>(null);
+  const [organizationId, setOrganizationId] = useState('');
+  const [proofPath, setProofPath] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  function load() {
+    api<WardCharge[]>(`/api/v1/me/wards/${ward.wardUserId}/finance/charges`)
+      .then(setCharges)
+      .catch((err) => setError(err.message));
+  }
+
+  useEffect(() => {
+    if (open) load();
+  }, [open]);
+
+  async function submitProof() {
+    if (!proofCharge || !organizationId.trim() || !proofPath.trim()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api('/api/v1/me/finance/payments', {
+        method: 'POST',
+        body: JSON.stringify({ organizationId: organizationId.trim(), amountMinor: proofCharge.amountMinor, currency: proofCharge.currency, proofPath: proofPath.trim() }),
+      });
+      setNotice('Proof submitted — staff will review and confirm it.');
+      setProofCharge(null);
+      setProofPath('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not submit proof.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const openCharges = (charges ?? []).filter((c) => c.status === 'open' || c.status === 'pending_verification');
+
+  return (
+    <div className="mt-2">
+      <button onClick={() => setOpen((v) => !v)} className="flex items-center gap-1 text-xs font-medium text-neutral-600 hover:underline">
+        <Wallet className="h-3.5 w-3.5" /> {open ? 'Hide fees' : 'View fees'}
+      </button>
+      {open && (
+        <div className="mt-2 space-y-2 rounded-lg border border-neutral-100 bg-neutral-50 p-3">
+          {error && <p className="text-xs text-red-600">{error}</p>}
+          {notice && <p className="text-xs text-emerald-600">{notice}</p>}
+          {charges === null ? (
+            <p className="text-xs text-neutral-400">Loading…</p>
+          ) : openCharges.length === 0 ? (
+            <p className="text-xs text-neutral-500">No open charges.</p>
+          ) : (
+            <ul className="space-y-1.5">
+              {openCharges.map((c) => (
+                <li key={c.id} className="flex items-center justify-between gap-2 text-xs">
+                  <span className="text-neutral-700">
+                    {c.description} — {formatMinor(c.amountMinor, c.currency)} <span className="text-neutral-400">(due {c.dueOn})</span>
+                  </span>
+                  {c.status === 'open' && (
+                    <button onClick={() => setProofCharge(c)} className="shrink-0 rounded bg-neutral-200 px-2 py-1 text-[10px] font-medium text-neutral-700 hover:bg-neutral-300">
+                      Submit proof
+                    </button>
+                  )}
+                  {c.status === 'pending_verification' && <span className="shrink-0 text-[10px] text-blue-600">pending review</span>}
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {proofCharge && (
+            <div className="space-y-1.5 rounded-lg border border-neutral-200 bg-white p-2">
+              <p className="text-[11px] text-neutral-500">
+                Proof of payment for &quot;{proofCharge.description}&quot; ({formatMinor(proofCharge.amountMinor, proofCharge.currency)})
+              </p>
+              <input
+                value={organizationId}
+                onChange={(e) => setOrganizationId(e.target.value)}
+                placeholder="organization ID"
+                className="w-full rounded border border-neutral-300 px-2 py-1 text-xs outline-none"
+              />
+              <input
+                value={proofPath}
+                onChange={(e) => setProofPath(e.target.value)}
+                placeholder="proof file path / reference"
+                className="w-full rounded border border-neutral-300 px-2 py-1 text-xs outline-none"
+              />
+              <div className="flex gap-1.5">
+                <button disabled={busy} onClick={submitProof} className="rounded bg-neutral-900 px-2 py-1 text-[10px] font-medium text-white hover:bg-neutral-800 disabled:opacity-50">
+                  Submit
+                </button>
+                <button onClick={() => setProofCharge(null)} className="rounded bg-neutral-100 px-2 py-1 text-[10px] font-medium text-neutral-600 hover:bg-neutral-200">
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function EnrollWardCard({ ward }: { ward: Ward }) {
   const [open, setOpen] = useState(false);
   const [slug, setSlug] = useState('');
@@ -226,6 +349,7 @@ function EnrollWardCard({ ward }: { ward: Ward }) {
       </div>
 
       <BiometricConsentButton ward={ward} />
+      <WardFeesSection ward={ward} />
 
       {open && (
         <div className="mt-3 space-y-2 rounded-lg border border-neutral-200 p-3">

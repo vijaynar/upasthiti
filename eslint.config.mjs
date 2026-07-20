@@ -28,6 +28,7 @@ const V2_WEB_PATHS = [
   'apps/web/src/app/family/**/*.{ts,tsx}',
   'apps/web/src/app/scheduling/**/*.{ts,tsx}',
   'apps/web/src/app/attendance/**/*.{ts,tsx}',
+  'apps/web/src/app/finance/**/*.{ts,tsx}',
   'apps/web/src/lib/v2-session.ts',
 ];
 

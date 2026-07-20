@@ -881,15 +881,165 @@ allow-listed) all pass.
   non-sandboxed browser (or staging) before treating the face-scan UX itself as fully verified,
   though the engine it calls is.
 
-## Next: Phase 9 — Finance
+## Phase 9 — Finance: ✅ DONE, verified live-DB smoke test (27/27) + live in-browser
 
-Scope (from the roadmap): `fee_policies`, `charges`, `ledger_entries` and the accounting-truth
-trigger pairing (Doc 07 §9, already sketched there), payment recording, proof submission/
-approval, refunds, payouts. `finance.assessFine()` is the real consumer Doc 14 §2 names for
-`attendance.absence_confirmed` (emitted, unconsumed, since this phase) — wire that up here
-rather than having attendance reach into `charges` directly. Doc 04 §5's "Fee policies & fines",
-"Charges & payments", "Proof approval / waivers / refunds", and "Payouts & ledger" matrix rows
-are the RBAC-relevant parts to re-read.
+Scope built: `fee_policies`/`charges`/`payments`/`payment_allocations`/`ledger_accounts`/
+`ledger_entries`/`payouts`/`org_bank_accounts` (Doc 07 §9, literal schema), the
+accounting-truth constraint-trigger pairing, payment recording (cash/waiver instant-settle,
+manual-proof submit + staff approve/reject), refunds, payouts (manual settlement — no
+gateway configured), and `finance.assessFine()` as the real consumer of
+`attendance.absence_confirmed` (Doc 14 §2 rule 2), emitted-but-unconsumed since Phase 8.
+
+What exists (don't recreate):
+- `supabase/migrations/0011_finance.sql` — all 8 tables + RLS + `batches.default_fee_policy_id`
+  (Doc 07 §21.3, folded in — see below) + two SECURITY DEFINER SQL functions +
+  a deferred constraint trigger + a new `finance.payout.manage` permission key. Several
+  interpretive calls, all explained in the migration's own header — re-read it before
+  touching this schema, don't re-derive from memory:
+  1. **`fine_policy` jsonb is reused for two distinct fine concepts.** Doc 07 §9's own
+     comment ("late-fee rules: grace days, flat/percent, cap") only covers late-PAYMENT
+     fines; Doc 14 §2 separately names `finance.assessFine()` as the
+     `attendance.absence_confirmed` consumer with no fine-amount shape given anywhere.
+     Rather than add a second column/table, this migration keys `fine_policy` two ways:
+     `{ lateFee: {...}, absenceFine: { amountMinor } }`. `assessFine()` no-ops (never
+     auto-fines) when a batch's `default_fee_policy_id` is unset or `fine_policy.absenceFine`
+     is absent — same never-fine-without-explicit-signal posture as Attendance's US-3 AC2.
+  2. **No automated recurring charge generation** — `fee_policies.kind` implies a schedule
+     but nothing in this phase's named deliverables (fee policies, charges, payment
+     recording, proof approval, refunds, payouts) calls for a generator job, unlike
+     Scheduling/Attendance's explicitly named background jobs. Charges are staff-created
+     (`createCharge`) this phase; a scheduled generator is a real, deliberate gap.
+  3. **`payments.method = 'gateway'` is schema-complete but not wired** — no RLS insert
+     path, no service function. `packages/platform/src/payments` is still a typed
+     interface only (Phase 1) with no merchant account to configure against, same
+     "designed, not verified end-to-end" shape as Phase 2's Google OAuth. The three real
+     v1 methods — `manual_proof`/`cash`/`waiver` — need no gateway and are fully built.
+  4. **New permission key `finance.payout.manage`** (Owner + Accountant) — Doc 04 §5's
+     "Payouts & ledger" row needs to distinguish "can request/settle" from "can only view",
+     but the one seeded key (`finance.payout.read`) is held by Owner/Org Admin/Accountant
+     alike and no other existing key (e.g. `org.billing.manage`) lines up with exactly
+     Owner+Accountant. Same category as migration 0006's own `people.join_request.read`/
+     `finance.proof.submit` additions.
+  5. **`charges.status` transitions each require a different permission** than one RLS
+     WITH CHECK can express (can't compare OLD vs NEW status there) —
+     `enforce_charge_status_transition()`, a BEFORE UPDATE trigger, same shape as migration
+     0009's `enforce_batch_archive_perm()`. The current seed happens to grant all four
+     finance permissions to the same roles together so this doesn't change today's
+     behavior, but Doc 04 §5 treats "Charges & payments" and "Proof approval / waivers /
+     refunds" as separate rows and a future role split shouldn't need this trigger touched.
+  6. **`ledger_entries`/`ledger_accounts` have NO write grant to `authenticated` at all**
+     (Doc 07 §9's literal invariant) — the only insert path is `post_ledger_entries()`,
+     mirroring migration 0007's `write_audit_log()` exactly: SECURITY DEFINER, callable
+     from inside any `withRequestContext` transaction, no service-role escalation needed
+     for routine finance writes. A **deferred constraint trigger**,
+     `check_ledger_entry_group_balanced()`, is the real DB-enforced "sum(entry_group) = 0"
+     guarantee Doc 07 §9 names — unlike the status-transition rules above (service-layer
+     trust boundary, same precedent as Attendance's append-only corrections), this one
+     gets real PL/pgSQL enforcement regardless of application-code correctness. Verified
+     two ways in the smoke test: `post_ledger_entries()`'s own fast-fail check, AND a
+     direct service-role insert bypassing that function entirely (the trigger catches it
+     independently at COMMIT).
+  7. **This phase's ledger only books the SETTLEMENT leg** — charge creation posts nothing
+     (Doc 07 §9's invariant is scoped to `payments.status → succeeded`, not charge
+     creation); `org_receivable` functions as the clearing/offset leg for collected cash
+     rather than a running accrual balance. A full accrual model (charge creation posting
+     its own entry) isn't required by any Phase 9 named deliverable.
+  8. **`batches.default_fee_policy_id`** (Doc 07 §21.3, otherwise a later wireframe
+     follow-up) is folded in — without it there's no path from an attendance-triggered
+     absence back to "which fee_policy's fine rules apply here", which `assessFine()`
+     needs to do anything. The rest of §21.3 (packages/trials/registration kinds,
+     `enrollment_fee_overrides`, `package_balances`) is NOT built — not required.
+  - **Real node-postgres bug hit and fixed while smoke-testing**, worth remembering for
+    any future jsonb *array* parameter: pg auto-`JSON.stringify`s a plain JS **object**
+    bound to a query param (already relied on elsewhere, e.g. `batches.schedule`), but a
+    top-level JS **array** gets serialized as a Postgres ARRAY literal instead, which
+    breaks a `jsonb` function parameter expecting a JSON array. `post_ledger_entries(p_entries jsonb)`
+    callers must `JSON.stringify()` the array explicitly — object params still pass
+    through raw. Don't "clean up" an explicit `JSON.stringify()` on an array param in this
+    codebase without checking which case it is.
+- `packages/modules/finance/src/service.ts` — fee policy CRUD, charge CRUD + waive/cancel,
+  payment recording (`recordManualPayment` for cash/waiver — settles instantly, no separate
+  approval step; `submitPaymentProof` + `approvePayment`/`rejectPayment` for the
+  proof-of-payment path), `issueRefund`, `listLedgerEntries`, payouts
+  (`requestPayout`/`settlePayout`/`markPayoutFailed`, manual settlement) + bank accounts,
+  and `assessFine()` — service-role (added to `SERVICE_ROLE_MANIFEST`), idempotent on a
+  redelivered `attendance.absence_confirmed` event via a description-string match (no
+  dedicated reference column). Every other export uses `withRequestContext` and is
+  RLS-gated; routine ledger writes go through `post_ledger_entries()`/
+  `get_or_create_ledger_account()` from inside that same request context, not service-role.
+- `apps/worker/src/registry.ts` — new one-shot (not self-rescheduling) event-consumer
+  handler wired to `ABSENCE_CONFIRMED_JOB_KIND` (`'attendance.absence_confirmed'`, exported
+  from `@abhyas/module-finance` rather than left as a magic string on the worker side) →
+  `assessFine()`. `apps/worker` now depends on `@abhyas/module-finance`.
+- Routes (all new): `GET/POST /api/v1/orgs/{id}/finance/fee-policies` +
+  `PATCH .../{feePolicyId}`, `GET/POST .../finance/charges` +
+  `POST .../{chargeId}/{waive,cancel,refund}`, `GET/POST .../finance/payments` +
+  `POST .../{paymentId}/{approve,reject}`, `GET .../finance/ledger`,
+  `GET/POST .../finance/payouts` + `POST .../{payoutId}/{settle,fail}`,
+  `GET/POST .../finance/bank-accounts`, `GET /api/v1/me/finance/charges`,
+  `GET/POST /api/v1/me/finance/payments`, `GET /api/v1/me/wards/{wardUserId}/finance/charges`.
+- `apps/web/src/app/finance/page.tsx` — staff console (fee policies, charges, payments +
+  pending-proof review, payouts, ledger), same plain-fetch client component style as
+  `/scheduling`/`/attendance`. `apps/web/src/app/family/page.tsx` gained a per-ward
+  `WardFeesSection` (view open charges, submit proof of payment) — same "consent-only
+  guardian action, staff does the privileged half" shape as Phase 8's
+  `BiometricConsentButton`, reused deliberately.
+- `eslint.config.mjs` — `V2_WEB_PATHS` gained `app/finance/**` (`api/v1/orgs/**`/
+  `api/v1/me/**` already covered the new nested finance routes).
+- `packages/platform/src/db/service-role-manifest.ts` — new entry for
+  `finance/src/service.ts` (`assessFine()` only; everything else is RLS-gated).
+
+**Verified two ways, matching every prior phase's precedent:**
+1. **Live-DB smoke test** (`npx tsx`, run against local `supabase start`, not committed) —
+   27/27 assertions: fee policy create (owner) / denied (coach, no `finance.policy.manage`);
+   charge create + student self-read + guardian ward-read + outsider sees zero; cash payment
+   settles a charge to `paid` and posts exactly 2 balanced ledger legs; refund flips the
+   charge to `refunded` and posts a balanced reversing group; manual-proof submit by a
+   guardian + denied-approve by Coach (no `finance.proof.approve`) + approve by Accountant
+   settles it; waive; `assessFine()` creates a fine charge when a batch's
+   `default_fee_policy_id` has `absenceFine` configured, is idempotent on a redelivered
+   event id, and no-ops when no fee policy is configured; payout request (denied for Coach,
+   succeeds for Accountant via the new `finance.payout.manage` key) + settle posts a
+   balanced ledger group; the ledger balance invariant rejects an unbalanced leg set both
+   via `post_ledger_entries()`'s own fast-fail check and via the deferred constraint trigger
+   independently (direct service-role insert bypassing the function).
+2. **Live in-browser**: signed in via real magic-link flow, created an academy org (lands
+   as Owner), opened `/finance`, created a fee policy through the actual form — confirmed
+   rendering (`₹2,500.00`, correctly formatted) with no console errors and no failed
+   network requests.
+
+`npm run type-check` (22 packages incl. the new module + worker's new dependency),
+`npm run lint` (one real bug caught and fixed — see the node-postgres jsonb-array note
+above), `npm run db:reset` (11 migrations apply clean), and `npm run db:check-rls`
+(44 tables, 1 allow-listed) all pass.
+
+**Known gaps / not built (deliberately, in scope for later phases):**
+- No automated recurring charge generation (see header point 2 above) — Notifications
+  (Phase 10) is a natural place to also drive fee-due reminders off the same generator
+  when it's eventually built.
+- `payments.method = 'gateway'` / `packages/platform/src/payments` real Razorpay wiring —
+  same "designed, not configured" gap as Google OAuth since Phase 2.
+- No admin UI for `org_bank_accounts` beyond the raw add-form on `/finance` (no masked
+  display polish, no KYC verification flow) — schema + RLS real, UI is functional but
+  minimal, matching every prior phase's "service+routes real, UI polish later" precedent.
+- Audit logging is not retrofitted onto this phase's writes (payment approve/reject,
+  refund issue, charge waive, payout settle) despite finance being the paradigm case for
+  Doc 07 §16 — same acknowledged debt every phase since Phase 5 has flagged, now one
+  phase larger.
+- No student/guardian-facing full payment history page beyond `/family`'s compact
+  `WardFeesSection` (open charges + proof submission only) — `listMyCharges`/
+  `listMyPayments` and their routes are real, a fuller self-service view is UI polish.
+
+## Next: Phase 10 — Notifications
+
+Scope (from the roadmap): `notification_templates`/`notification_preferences`/
+`notification_deliveries` (Doc 07 §10, already sketched there). Real v1 channels are
+email + push (Doc 08's WhatsApp/SMS channel stubs from Phase 1 stay `not_configured`,
+per the locked scope decision). This phase's natural first consumer is
+`attendance.absence_confirmed` (Doc 14 §8's <5min parent-alert latency target) — Finance
+(Phase 9) also consumes it now via `assessFine()`, so both consumers coexist on the same
+event. Doc 04 §5's "Notifications (manual/templates)" matrix row is the RBAC-relevant part
+to re-read.
 
 ## How to resume without re-reading everything
 
