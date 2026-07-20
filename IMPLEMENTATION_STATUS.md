@@ -594,18 +594,148 @@ apply clean), and `npm run db:check-rls` (27 tables, 1 allow-listed) all pass.
 - Doc 04 §7's "Enable/disable ward login (≥13)" consent-gated action is not built — same
   phone-OTP dependency already documented as deferred (Doc 05 §9), not a new gap.
 
-## Next: Phase 7 — Scheduling
+## Phase 7 — Scheduling: ✅ DONE, verified live in-browser
 
-Scope (from the roadmap): programs, batches, class sessions, holidays (Doc 07 §7, literal
-schema already sketched there), coach assignment (`coach_assignments.batch_id` FK — deferred
-from Phase 4 because `batches` didn't exist yet, now unblocked), and `batch_enrollments` (Doc
-07 §6's join table, deferred from this phase for the same reason). Doc 04 §5's "Scheduling"
-matrix row and Doc 04 Addendum §1 (per-day coach assignment, wireframe 3b — the `role`/`days`
-mask on `coach_assignments`, UX-only scoping) are the RBAC-relevant parts to re-read.
+Scope built: programs, batches, class_sessions, holidays (Doc 07 §7), plus the two joins
+deferred into this phase for lack of a `batches` table — `coach_assignments.batch_id`'s FK
+(deferred from Phase 4) and `batch_enrollments` (Doc 07 §6, deferred from Phase 6) — and the
+Doc 07 §7 "rolling 30-day window" class-session materialization job.
+
+What exists (don't recreate):
+- `supabase/migrations/0009_scheduling.sql` — `programs`/`batches`/`batch_enrollments`/
+  `class_sessions`/`holidays` (Doc 07 §7, literal) + the `coach_assignments.batch_id` FK +
+  real write-path RLS (was schema-only since migration 0006). `programs.sport_key` stays a
+  plain `text` column, not Doc 07's literal FK to `taxonomy_sports` — that table doesn't exist
+  (Marketplace/taxonomy deferred), same "schema follows the module that needs it" precedent as
+  `org_domains`/`coach_assignments.batch_id` itself. Program insert/update reuses
+  `schedule.batch.create`/`.update` — Doc 04 §4's catalogue has no dedicated
+  `schedule.program.*` key and nothing in the matrix calls out programs as a separate row; an
+  interpretive call, documented in the migration header.
+  **Two real bugs found and fixed while building/smoke-testing this migration, not
+  pre-existing:**
+  1. **RLS policy cycle** — `batches`' student/guardian select policies originally queried
+     `batch_enrollments` directly, and `batch_enrollments`' staff policies queried `batches`
+     directly back → "infinite recursion detected in policy for relation batches" on ANY
+     `batches` insert/select (RETURNING requires the SELECT policy too). Fixed the same way
+     migration 0006's `has_perm()`/`has_perm_branch()` avoid recursion, but for a cross-table
+     cycle rather than a self-referencing function: `is_batch_participant(batch_id)`, a
+     `SECURITY DEFINER` function whose internal query runs as the owning role (bypasses RLS
+     entirely, not just re-scopes it) — `batches_select_participant` uses it instead of an
+     inline `EXISTS` subquery. `class_sessions`' and `coach_assignments`' inline subqueries into
+     `batch_enrollments`/`batches` are fine as-is (one-directional, no cycle back) now that
+     `batches`' own policies no longer touch `batch_enrollments`.
+  2. **`schedule.batch.archive` vs `schedule.batch.update`** — migration 0006 seeds Coach with
+     `.update` but deliberately NOT `.archive` (Owner/Org Admin/Branch Admin get both). A single
+     `batches_update_staff` RLS policy gated on just `.update` would have let a Coach archive a
+     batch they merely have edit rights on — RLS's `WITH CHECK` can't cheaply compare
+     `OLD.status` vs `NEW.status` in one clause. Fixed with a `BEFORE UPDATE` trigger
+     (`enforce_batch_archive_perm`, same shape as this migration's own Last-Owner/seed-admin
+     protection triggers), not a second policy. Verified in the smoke test: an Assistant Coach
+     membership (update, no archive) gets a genuine rejection archiving a batch; the Owner
+     succeeds.
+  - "Own batches" (`my_batch_ids()`, built in migration 0006, unused until now) is NOT layered
+    into the staff RLS policies as an extra restriction — same precedent migration 0008 already
+    set for Coach's `people.student.read` (branch-scoped permission is sufficient at the RLS
+    layer even though the matrix says "🔷 own batches"; the narrowing is an app-layer/UI scope).
+    `my_batch_ids()` gets its first real consumer here: `listMyBatches` in the scheduling
+    service.
+  - Student/Parent read access (matrix: "👁 own"/"👁 wards") is real RLS
+    (`batches_select_participant`, `class_sessions_select_self`/`_guardian`) even though no
+    dedicated student/guardian schedule page is built this phase — same "RLS complete now, UI
+    later" precedent as Phase 6's `listWardEnrollments`.
+- `packages/modules/scheduling/src/service.ts` — full CRUD for programs/batches/holidays,
+  coach assignment (`assignCoach`/`listCoachAssignments`/`removeCoachAssignment`), batch roster
+  (`addToBatchRoster`/`listBatchRoster`/`removeFromBatchRoster` over `batch_enrollments`), class
+  session listing/status override (`listClassSessions`/`setClassSessionStatus`), and the
+  materialization job (`materializeSessions`, `materializeBatchSessions` for a single batch).
+  `createBatch`/`updateBatch` (when `schedule` changes) call `materializeBatchSessions`
+  immediately — a coach/admin creating or editing a batch sees its upcoming sessions right
+  away, not after the next nightly job run — and `createBatch` also idempotently enqueues the
+  recurring rolling-window job (`ensureMaterializationJobScheduled`, keyed by date so the
+  bootstrap enqueue and the job's own self-reschedule converge on one job/day instead of
+  racing). `materializeSessions`/`materializeBatchSessions` use `getServiceClient()` (no single
+  caller's session to scope to — registered in `SERVICE_ROLE_MANIFEST`); every other export
+  uses `withRequestContext` and is RLS-gated.
+- `packages/modules/scheduling/src/tz.ts` — zoned-time → UTC conversion
+  (`zonedTimeToUtc`/`isoDayOfWeek`/`addDays`) for materialization, hand-rolled via
+  `Intl.DateTimeFormat` (no date library exists in this monorepo yet) — a two-pass offset
+  lookup, DST-safe for any IANA zone though v1 orgs are India-only (`Asia/Kolkata`, no DST).
+  Verified live in-browser against the real `Asia/Kolkata` conversion (16:00 local → 10:30 UTC).
+- `apps/worker/src/registry.ts` — first real job handler:
+  `scheduling.materialize_sessions` → `materializeSessions()` then self-reschedules +24h
+  (the queue has no native recurrence; idempotency-keyed by date, same convergence logic as
+  `ensureMaterializationJobScheduled`). `apps/worker` now depends on `@abhyas/module-scheduling`.
+- Routes (all new): `GET/POST /api/v1/orgs/{id}/programs`, `GET/POST .../batches`,
+  `GET/PATCH .../batches/{batchId}`, `GET/POST .../batches/{batchId}/coaches` +
+  `DELETE .../{membershipId}`, `GET/POST .../batches/{batchId}/roster` +
+  `DELETE .../{enrollmentId}` (marks `left`, not a hard delete),
+  `GET .../batches/{batchId}/sessions` + `PATCH .../{sessionId}` (ad-hoc status override),
+  `GET/POST .../holidays` + `DELETE .../{holidayId}`.
+- `apps/web/src/app/scheduling/page.tsx` — staff console: programs, batch create form
+  (day-of-week picker, start/end time, branch/program selects), an expandable per-batch panel
+  (coaches / roster / upcoming sessions with cancel), and holidays. Same plain-fetch client
+  component style as `/people`/`/family`. No student/guardian schedule view — RLS is real,
+  page is deferred (see gap above).
+- `eslint.config.mjs` — `V2_WEB_PATHS` gained `app/scheduling/**` (`api/v1/orgs/**` already
+  covered the new org sub-routes).
+- `packages/platform/src/db/service-role-manifest.ts` — new entry for
+  `scheduling/src/service.ts` (materialization job only; everything else in that file is
+  RLS-gated).
+
+**Verified live in a real browser**: signed in, created an academy org, went to `/scheduling`.
+Created a program ("Swimming Level 1"). Created "Batch A" (Main branch, Mon/Wed/Fri,
+16:00-17:00 local, starting today) — 13 sessions materialized immediately, all `scheduled`,
+confirmed via direct API fetch that `startsAt` is `2026-07-20T10:30:00.000Z` for a 16:00
+`Asia/Kolkata` batch (exactly UTC+5:30, confirmed against the browser's own `Asia/Kolkata`
+timezone offset). Added a holiday on one of the batch's session dates, PATCHed the batch's
+schedule to force immediate re-materialization, and confirmed that exact date's session
+flipped from `scheduled` to `holiday` (idempotent — no duplicate rows, other sessions
+untouched) — both via a direct API check and re-rendered in the UI. Assigned a coach
+(the org's Owner membership) to the batch via the UI dropdown and confirmed it listed.
+Also unit-smoke-tested directly against a live DB (`npx tsx`, not committed, matches every
+prior phase's precedent) — 18/18 assertions: batch creation immediately materializes ~30
+sessions; holiday-triggered re-materialization flips status and is idempotent; a manual
+cancellation survives re-materialization; coach assignment + `my_batch_ids()`-backed
+`listMyBatches`; batch roster add; an enrolled student can read the batch and its sessions via
+`batches_select_participant`/`class_sessions_select_self`; an unrelated user is correctly
+denied (batch read, coach assignment); an Assistant Coach (has `.update`, not `.archive`) is
+correctly denied archiving a batch while the Owner succeeds; coach assignment removal.
+`npm run type-check` (21 packages incl. `module-scheduling` and `worker`'s new dependency),
+`npm run lint`, `npm run db:reset` (9 migrations apply clean), and `npm run db:check-rls`
+(32 tables, 1 allow-listed) all pass.
+
+**Known gaps / not built (deliberately, in scope for later phases):**
+- No student/guardian-facing schedule page — RLS (`batches_select_participant`,
+  `class_sessions_select_self`/`_guardian`) is real and smoke-tested, only the consuming UI is
+  deferred, same precedent as Phase 6's `listWardEnrollments`.
+- No search-by-name/roll-number picker beyond what `/people`'s enrollment list already returns
+  — the roster/coach pickers on `/scheduling` reuse the existing enrollments/members list
+  fetches, same interim shape as prior phases' raw-ID pickers before a real search UI exists.
+- Audit logging is still not retrofitted onto this phase's writes (batch/program/holiday
+  create-update, coach/roster assignment) — same acknowledged debt every phase since Phase 5
+  has flagged, now one phase larger.
+- The worker's `scheduling.materialize_sessions` cron path is only exercised by
+  `createBatch`'s bootstrap enqueue + the handler's own self-reschedule in this phase's
+  verification — no `apps/worker --once` cron trigger is wired up in any deployed environment
+  yet (no hosting project provisioned, per Phase 1's ground truth); local verification instead
+  called `materializeSessions()`/`materializeBatchSessions()` directly and via the batch
+  create/update paths.
+
+## Next: Phase 8 — Attendance
+
+Scope (from the roadmap): `face_enrollments`, `attendance_events`, `attendance_review_queue`
+(Doc 07 §8, literal schema already sketched there), face-api.js 128-dim embeddings (this
+project's locked scope decision — not Doc 07's literal `vector(512)`, see "User-approved scope
+changes" above), absence-alert evaluation (grace-period expiry off `class_sessions`/
+`batches.grace_minutes`, now available from Phase 7). Doc 04 §5's "Attendance record/override",
+"Attendance read", "Review queue", and "Face enrollment (consented)" matrix rows are the
+RBAC-relevant parts to re-read; reuse `is_guardian_of`/`has_consent_authority`/`is_my_ward`
+(Phase 6) and `my_batch_ids()` (Phase 4, real consumer since Phase 7) rather than inventing new
+guardian/coach-scope checks.
 
 ## How to resume without re-reading everything
 
-- Don't re-read all of `docsV2/` — this file plus the Phase 7 doc pointers above should be
+- Don't re-read all of `docsV2/` — this file plus the Phase 8 doc pointers above should be
   enough to start.
 - Don't re-derive the gap analysis or ask the scope-change questions again — they're
   answered above (see "User-approved scope changes").
@@ -614,8 +744,16 @@ mask on `coach_assignments`, UX-only scoping) are the RBAC-relevant parts to re-
 - RBAC (org-scope) is schema-complete as of Phase 4; platform-scope RBAC
   (`has_platform_perm()`) is schema-complete as of Phase 5. Guardianship-aware RLS
   (`is_guardian_of`/`has_consent_authority`/`is_my_ward`) is schema-complete as of Phase 6 —
-  reuse these three functions for any ward-facing read in Scheduling/Attendance/Progress
-  rather than inventing a parallel guardian check.
+  reuse these three functions for any ward-facing read in Attendance/Progress rather than
+  inventing a parallel guardian check. `my_batch_ids()` ("own batches") is schema-complete
+  since Phase 4 and gained its first real consumer (`listMyBatches`) in Phase 7 — reuse it for
+  any coach-scoped read/write in Attendance rather than inventing a parallel check.
+- If a new table's RLS policy needs to read a DIFFERENT RLS-enabled table (not just call an
+  existing `SECURITY DEFINER` helper), do that through a new `SECURITY DEFINER` function, not
+  an inline `EXISTS` subquery — Phase 7 hit a genuine "infinite recursion detected in policy"
+  error from two tables' policies (`batches`/`batch_enrollments`) reading each other directly.
+  One-directional cross-table reads (A reads B, B doesn't read A back) are fine inline, same as
+  `branches_select_member` (Phase 3) reading `memberships` has always been.
 - The cross-tab-shared-cookie-jar behavior noted in Phase 5's verification section applies to
   ANY future multi-identity browser testing in this environment, not just Platform Admin —
   sign out (or use separate browser profiles) between identities, don't assume two open tabs

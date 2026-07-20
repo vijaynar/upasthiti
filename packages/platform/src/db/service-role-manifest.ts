@@ -36,4 +36,9 @@ export const SERVICE_ROLE_MANIFEST: ServiceRoleUse[] = [
     justification:
       'Org verification/list/detail/suspend, platform_role_assignments grant/revoke, and support_access_grants request/revoke are all cross-actor (platform staff acting on someone else\'s org/role/grant) with no self-insert RLS path — migrations 0006/0007 grant `authenticated` only SELECT on platform_role_assignments and support_access_grants, and organizations has no platform-wide SELECT policy at all. Every one of these functions calls assertPlatformPerm() (a real withRequestContext query against has_platform_perm(), the same function RLS itself uses elsewhere) BEFORE opening the service-role client — that call is the only authorization gate for this file\'s service-role usage, not RLS. Feature flags / org feature flags / announcements have real RLS write policies (migration 0007) instead and use withRequestContext throughout — no service-role there.',
   },
+  {
+    path: 'packages/modules/scheduling/src/service.ts',
+    justification:
+      'materializeSessions() is the Doc 07 §7 rolling 30-day-window job — it runs across every active batch in every org on a schedule (apps/worker), not inside one caller\'s request context, so there is no session to scope withRequestContext to. Every other export in this file (programs/batches/coach assignments/roster/holidays/class-session CRUD) uses withRequestContext and is RLS-gated, per migration 0009.',
+  },
 ];
