@@ -19,6 +19,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const body = await req.json().catch(() => null);
   const requestedRole = body?.requestedRole ?? 'student';
   const branchId = typeof body?.branchId === 'string' ? body.branchId : undefined;
+  // Guardian requesting on behalf of a ward (Doc 02 §9) — RLS
+  // (join_requests_insert_self_or_ward, migration 0008) is the real gate.
+  const subjectUserId = typeof body?.subjectUserId === 'string' ? body.subjectUserId : undefined;
 
   if (!REQUESTED_ROLES.includes(requestedRole)) {
     return jsonError('invalid_role', `requestedRole must be one of ${REQUESTED_ROLES.join(', ')}.`, 400);
@@ -29,6 +32,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       organizationId: id,
       branchId,
       requestedRole: requestedRole as RequestedRole,
+      subjectUserId,
     });
     return jsonData({ joinRequestId }, 201);
   } catch (err) {

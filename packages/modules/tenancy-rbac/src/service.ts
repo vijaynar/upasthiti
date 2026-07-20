@@ -574,9 +574,10 @@ export async function acceptInvitation(session: SessionContext, token: string): 
 }
 
 // ── Join requests (Doc 02 §9 "I'm a parent/student") ─────────────
-// subject_user_id is locked to the requester themselves in v1 (migration
-// 0004 RLS comment) — no on-behalf-of-a-ward requests until
-// guardianship-aware RLS lands (People module, Phase 6).
+// subject_user_id can now be a ward, not just the requester themselves —
+// migration 0008's join_requests_insert_self_or_ward RLS policy is the real
+// gate (is_guardian_of()); this function just forwards whatever the caller
+// asks for and lets RLS accept or reject it.
 
 export type RequestedRole = (typeof REQUESTED_ROLES)[number];
 
@@ -584,14 +585,16 @@ export interface CreateJoinRequestInput {
   organizationId: string;
   branchId?: string | null;
   requestedRole: RequestedRole;
+  subjectUserId?: string; // guardian requesting on behalf of a ward (Doc 02 §9); defaults to self
 }
 
 export async function createJoinRequest(session: SessionContext, input: CreateJoinRequestInput): Promise<string> {
+  const subjectUserId = input.subjectUserId ?? session.userId;
   return db.withRequestContext(session, async (client) => {
     const result = await client.query<{ id: string }>(
       `insert into join_requests (organization_id, branch_id, requester_user_id, subject_user_id, requested_role)
-       values ($1, $2, $3, $3, $4) returning id`,
-      [input.organizationId, input.branchId ?? null, session.userId, input.requestedRole]
+       values ($1, $2, $3, $4, $5) returning id`,
+      [input.organizationId, input.branchId ?? null, session.userId, subjectUserId, input.requestedRole]
     );
     return result.rows[0].id;
   });
@@ -631,16 +634,28 @@ export async function listJoinRequests(session: SessionContext, organizationId: 
   });
 }
 
+export interface JoinRequestDecisionResult {
+  approved: boolean;
+  organizationId: string;
+  branchId: string | null;
+  subjectUserId: string;
+  requestedRole: RequestedRole;
+}
+
 // The join_requests status UPDATE is self-service under RLS
 // (join_requests_decide_permitted), but granting the resulting membership
 // (+ its requested role) is a cross-actor write (subject_user_id, not the
-// approver) — service-role for that half only, Doc 13 §2.3.
+// approver) — service-role for that half only, Doc 13 §2.3. Returns the
+// decision context (not just void) so callers — namely the join-requests
+// decide route — can react to a student approval by also creating the
+// People module's enrollment row (Doc 07 §6), without this module reaching
+// into people's tables itself (Doc 14 §2 rule 2).
 export async function decideJoinRequest(
   session: SessionContext,
   joinRequestId: string,
   decision: 'approved' | 'rejected',
   note?: string
-): Promise<void> {
+): Promise<JoinRequestDecisionResult> {
   const decided = await db.withRequestContext(session, async (client) => {
     const result = await client.query<{
       organization_id: string;
@@ -662,7 +677,14 @@ export async function decideJoinRequest(
     return row;
   });
 
-  if (decision !== 'approved') return;
+  const result: JoinRequestDecisionResult = {
+    approved: decision === 'approved',
+    organizationId: decided.organization_id,
+    branchId: decided.branch_id,
+    subjectUserId: decided.subject_user_id,
+    requestedRole: decided.requested_role,
+  };
+  if (!result.approved) return result;
 
   const client = await db.getServiceClient();
   try {
@@ -683,6 +705,7 @@ export async function decideJoinRequest(
   } finally {
     client.release();
   }
+  return result;
 }
 
 // ── Org branding (Doc 02 §10 Tier 1 — in-app branding only in v1) ──

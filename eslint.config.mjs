@@ -24,6 +24,8 @@ const V2_WEB_PATHS = [
   'apps/web/src/app/onboarding/**/*.{ts,tsx}',
   'apps/web/src/app/workspace/**/*.{ts,tsx}',
   'apps/web/src/app/platform/**/*.{ts,tsx}',
+  'apps/web/src/app/people/**/*.{ts,tsx}',
+  'apps/web/src/app/family/**/*.{ts,tsx}',
   'apps/web/src/lib/v2-session.ts',
 ];
 

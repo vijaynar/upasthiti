@@ -1,6 +1,7 @@
 // POST /api/v1/orgs/{id}/join-requests/{reqId}/decide (Doc 02 §9)
 import type { NextRequest } from 'next/server';
-import { decideJoinRequest, JoinRequestInvalidError } from '@abhyas/module-tenancy-rbac';
+import { decideJoinRequest, listBranches, JoinRequestInvalidError } from '@abhyas/module-tenancy-rbac';
+import { enrollStudent } from '@abhyas/module-people';
 import { getSessionFromRequest, jsonData, jsonError } from '@/lib/v2-session';
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string; reqId: string }> }) {
@@ -17,7 +18,31 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
 
   try {
-    await decideJoinRequest(session, reqId, decision, note);
+    const result = await decideJoinRequest(session, reqId, decision, note);
+
+    // Doc 02 §9: an approved student join request should result in an
+    // actual enrollment, not just a bare membership — this module wiring
+    // (not tenancy-rbac, which stays People-agnostic, Doc 14 §2 rule 2) is
+    // the People module's own stated scope ("join-request approval
+    // workflows", packages/modules/people/README.md). Org-wide requests
+    // (branchId null) enroll into the org's Main branch since
+    // enrollments.branch_id is NOT NULL (Doc 07 §6).
+    if (result.approved && result.requestedRole === 'student') {
+      let branchId = result.branchId;
+      if (!branchId) {
+        const branches = await listBranches(session, result.organizationId);
+        branchId = (branches.find((b) => b.name === 'Main') ?? branches[0])?.id ?? null;
+      }
+      if (branchId) {
+        await enrollStudent(session, {
+          organizationId: result.organizationId,
+          branchId,
+          studentUserId: result.subjectUserId,
+          startedOn: new Date().toISOString().slice(0, 10),
+        });
+      }
+    }
+
     return jsonData({ decided: true });
   } catch (err) {
     if (err instanceof JoinRequestInvalidError) return jsonError('join_request_invalid', err.message, 409);

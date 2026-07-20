@@ -428,25 +428,87 @@ export async function withdrawConsent(session: SessionContext, consentId: string
   });
 }
 
-// ── Guardianship (minimal — full flow lands with `people`, Phase 6) ────
-// No RLS insert policy exists yet for guardianships by design (migration
-// 0003 comment); this is a placeholder used only by admin/seed tooling
-// until Phase 6 adds a real guardian-adds-child flow with proper checks.
+// ── Guardianship (Doc 02 §3, Doc 04 §7 — real flow, Phase 6) ────
+// guardianships has no RLS insert policy (migration 0003 comment) because
+// creating a ward's `users` row is inherently cross-actor — service-role,
+// same shape as tenancy-rbac's acceptInvitation. The only app-layer gate is
+// guardianUserId === session.userId (self-request only): a caller can only
+// ever create a guardianship where THEY are the guardian, never name an
+// arbitrary other adult as a ward's guardian.
 
-export async function createGuardianshipUnsafe(
-  guardianUserId: string,
-  wardUserId: string,
-  relationship: 'father' | 'mother' | 'guardian'
-): Promise<string> {
+export interface AddWardInput {
+  displayName: string;
+  dob?: string; // ISO date — Doc 05 §9 minor logic; optional but expected in practice
+  relationship: 'father' | 'mother' | 'guardian';
+  consentAuthority?: boolean; // default true (Doc 04 §7)
+}
+
+export interface WardSummary {
+  wardUserId: string;
+  displayName: string;
+  dob: string | null;
+  relationship: 'father' | 'mother' | 'guardian';
+  consentAuthority: boolean;
+}
+
+// Creates a profile-only identity for the ward (no auth_methods — minors
+// stay profile-only until phone OTP lands, IMPLEMENTATION_STATUS.md) plus
+// the guardianship link, in one transaction. The >=1-verified-auth-method
+// deferred trigger (migration 0003) only fires on auth_methods writes, so a
+// user row with zero auth methods never trips it.
+export async function addWard(session: SessionContext, input: AddWardInput): Promise<WardSummary> {
   const client = await db.getServiceClient();
   try {
-    const result = await client.query<{ id: string }>(
-      `insert into guardianships (guardian_user_id, ward_user_id, relationship)
-       values ($1, $2, $3) returning id`,
-      [guardianUserId, wardUserId, relationship]
+    await client.query('begin');
+    const user = await client.query<{ id: string }>(
+      `insert into users (display_name, dob) values ($1, $2) returning id`,
+      [input.displayName, input.dob ?? null]
     );
-    return result.rows[0].id;
+    const wardUserId = user.rows[0].id;
+    const consentAuthority = input.consentAuthority ?? true;
+    await client.query(
+      `insert into guardianships (guardian_user_id, ward_user_id, relationship, consent_authority)
+       values ($1, $2, $3, $4)`,
+      [session.userId, wardUserId, input.relationship, consentAuthority]
+    );
+    await client.query('commit');
+    return {
+      wardUserId,
+      displayName: input.displayName,
+      dob: input.dob ?? null,
+      relationship: input.relationship,
+      consentAuthority,
+    };
+  } catch (err) {
+    await client.query('rollback');
+    throw err;
   } finally {
     client.release();
   }
+}
+
+export async function listWards(session: SessionContext): Promise<WardSummary[]> {
+  return db.withRequestContext(session, async (client) => {
+    const result = await client.query<{
+      ward_user_id: string;
+      display_name: string;
+      dob: string | null;
+      relationship: 'father' | 'mother' | 'guardian';
+      consent_authority: boolean;
+    }>(
+      `select g.ward_user_id, u.display_name, u.dob, g.relationship, g.consent_authority
+       from guardianships g
+       join users u on u.id = g.ward_user_id
+       where g.guardian_user_id = $1 and g.status = 'active'
+       order by g.created_at`,
+      [session.userId]
+    );
+    return result.rows.map((row) => ({
+      wardUserId: row.ward_user_id,
+      displayName: row.display_name,
+      dob: row.dob,
+      relationship: row.relationship,
+      consentAuthority: row.consent_authority,
+    }));
+  });
 }

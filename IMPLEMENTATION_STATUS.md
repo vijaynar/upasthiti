@@ -480,29 +480,146 @@ clean), and `npm run db:check-rls` (26 tables, 1 allow-listed) all pass.
 - No automated tests (Phase 16) — verified via the live-DB smoke queries above plus the
   in-browser pass, matching every prior phase's precedent.
 
-## Next: Phase 6 — People
+## Phase 6 — People: ✅ DONE, verified live in-browser
 
-Scope (from the roadmap): student/staff enrollment, guardianship-aware access
-(`is_my_ward()` — deferred from Phase 4 because it needs `enrollments` to know if a ward is
-actually enrolled), consent capture flows, the guardian-requests-for-a-ward join-request path
-Phase 3 explicitly deferred. **There is no dedicated People doc in `docsV2/`** — like Platform
-Admin, its spec is scattered: Doc 02 §6-9 (guardianship, consent, provisioning), Doc 07 §6
-("People: Enrollment, Guardianship, Consent"), Doc 04 §7 ("Guardianship-Derived Access") and
-§21.2 (staff self-attendance's `face_enrollments.membership_id` addition, relevant if Progress
-touches the same table later). Read those before assuming a doc number exists.
+Scope actually built: enrollments (org-scoped student records), guardianship-aware RLS
+(`is_guardian_of`/`has_consent_authority`/`is_my_ward` — `is_my_ward()` was deferred from
+Phase 4 because it needed `enrollments` to know if a ward is actually enrolled, which this
+phase adds), the guardian-adds-child flow, the guardian-requests-for-a-ward join-request path
+Phase 3 explicitly deferred, and closing a real RLS gap in `consents` (see below). **There is
+no dedicated People doc in `docsV2/`** — spec was scattered across Doc 02 §6-9, Doc 07 §6, Doc
+04 §7; all three read and cross-referenced for this phase.
+
+What exists (don't recreate):
+- `supabase/migrations/0008_people.sql` — `enrollments` table (Doc 07 §6, literal, plus an
+  `updated_at` column the doc's snippet omits — convention #9). **`batch_enrollments` is NOT
+  built** — it FKs into `batches`, which doesn't exist until Scheduling (Phase 7); same
+  "schema follows the module that needs it" precedent as `org_domains`/
+  `coach_assignments.batch_id`. Three new `SECURITY DEFINER` functions: `is_guardian_of(ward)`
+  (bare active guardianship link), `has_consent_authority(ward)` (link +
+  `consent_authority=true`), `is_my_ward(ward, org)` (link + active enrollment in that org +
+  the org's `guardian_visibility` setting, default on) — see the migration header for why
+  they're split three ways instead of one function. Also **tightens two pre-existing RLS
+  gaps**, not just adds policies: `consents` insert/update (migration 0003) only ever checked
+  `granted_by = current_user_id()` — any authenticated user could grant a consent row for an
+  arbitrary `subject_user_id`; now requires self-subject or `has_consent_authority(subject)`.
+  `join_requests_insert_self` (migration 0004) is replaced with
+  `join_requests_insert_self_or_ward`, unlocking the guardian-on-behalf-of-a-ward path that
+  migration 0004's own comment pointed at this phase to build. New `users_select_ward` policy
+  gives a guardian read access to a ward's own `users` row (Doc 04 §7 "Read ward's profile") —
+  migration 0003's `users` policies were self-only before this.
+- `packages/modules/people/src/service.ts` — `enrollStudent` (RLS-gated insert,
+  `people.student.update` branch-scoped, upserts on conflict to reactivate a
+  cancelled/paused enrollment), `updateEnrollment`, `getEnrollment`, `listEnrollments` (staff),
+  `listMyEnrollments` (self), `listWardEnrollments` (guardian, via `is_my_ward`). Query text is
+  built into `const ... _SQL` variables before `.query()` calls — the no-raw-interpolation
+  eslint rule (Doc 13 §9 A03) flags a template literal with `${}` passed *directly* as a
+  `.query()` argument even when the interpolated value is a static column-list constant, not
+  user input; same fix shape as Phase 5's `listOrganizations`.
+- `packages/modules/identity-auth/src/service.ts` — the Phase-1-era `createGuardianshipUnsafe`
+  placeholder is gone, replaced by the real flow: `addWard` (service-role, creates a
+  profile-only `users` row + `guardianships` link in one transaction; app-layer gate is
+  `guardianUserId === session.userId` — self-request only, never name an arbitrary adult as a
+  ward's guardian) and `listWards`. A ward's `users` row has zero `auth_methods` by design
+  (Doc 05 §9 minors stay profile-only until phone OTP) — confirmed this does NOT trip the
+  deferred `assert_user_has_verified_method` trigger, since that trigger only fires on
+  `auth_methods` writes, never on a bare `users` insert.
+- `packages/modules/tenancy-rbac/src/service.ts` — `createJoinRequest` gained an optional
+  `subjectUserId` (guardian-on-behalf; RLS is the real gate, this just forwards the caller's
+  choice). `decideJoinRequest` now returns a `JoinRequestDecisionResult`
+  (`approved`/`organizationId`/`branchId`/`subjectUserId`/`requestedRole`) instead of `void`,
+  so the route layer can react to a student approval without tenancy-rbac importing people
+  (Doc 14 §2 rule 2 — modules call each other's public service, never reach into internals;
+  this keeps tenancy-rbac People-agnostic by pushing the cross-module reaction to the route).
+- `apps/web/src/app/api/v1/orgs/[id]/join-requests/[reqId]/decide/route.ts` — updated: on a
+  `student` role approval, resolves the enrollment's branch (the join request's own `branchId`
+  if set, else the org's Main branch via `listBranches`) and calls
+  `people.enrollStudent` — the actual place Doc 02 §9's "join request → org approves" flow
+  produces a real enrollment, not just a bare membership. New routes:
+  `GET/POST /api/v1/orgs/{id}/enrollments`, `GET/PATCH /api/v1/orgs/{id}/enrollments/{id}`,
+  `GET /api/v1/me/enrollments` (self), `GET/POST /api/v1/me/wards` (guardian). The existing
+  `POST /api/v1/orgs/{id}/join-requests` route gained an optional `subjectUserId` passthrough.
+- `apps/web/src/app/people/page.tsx` — staff console for the active workspace: enroll an
+  existing identity by user ID + branch + roll number, list enrollments, change status via a
+  dropdown. No member/role admin UI here either — same "service + routes exist, the page
+  doesn't" precedent as Phase 3/4's members/invitations, unrelated to this phase's scope.
+- `apps/web/src/app/family/page.tsx` — new, standalone from `/onboarding` (guardianship is an
+  ongoing relationship a parent revisits, not a one-time provisioning choice): add-a-child
+  form, wards list, and a per-ward "request enrollment" mini-flow (search org by slug → send a
+  join request with `subjectUserId` = the ward).
+- `packages/platform/src/db/pool.ts` — **real bug found and fixed while verifying this phase
+  in-browser**: node-postgres's default `date` (OID 1082) type parser returns a JS `Date`
+  object, which later JSON-serializes with a timezone shift (IST midnight on a `dob`/
+  `started_on` column round-tripped as the previous day's evening UTC — caught live on
+  `/family`'s ward DOB display). Fixed platform-wide with
+  `pgTypes.setTypeParser(pgTypes.builtins.DATE, v => v)` in the one place the `Pool` is
+  constructed, rather than `::text`-casting every `date` column in every module. This was a
+  **pre-existing gap since Phase 2** (`identity-auth.getProfile`'s `dob` column had the exact
+  same latent bug) — not newly introduced by this phase, just newly surfaced by being the
+  first phase to actually render a `date` column value in the UI.
+- `eslint.config.mjs`: `V2_WEB_PATHS` extended with `app/people/**`, `app/family/**`.
+
+**Verified live in a real browser**: signed in as a new identity via magic link, created an
+academy org (onboarding), went to `/family`, added a child ("Browser Test Kid", DOB
+2016-03-10 — confirmed rendering correctly after the date-parser fix, was off by one day
+before it), searched the own org by slug and sent a join request naming the child as subject,
+approved it via a direct API call (`POST .../join-requests/{id}/decide`, matching Phase 3/4's
+no-dedicated-approval-UI precedent), then confirmed on `/people` that the ward was
+auto-enrolled (Main branch, `status: active`) with the exact same `studentUserId` as the
+ward's `wardUserId` from `/family` — the join-request-approval → auto-enroll wiring works
+end-to-end through the real Next.js route, not just in a smoke script. Also exercised the
+status-change dropdown (`active` → `paused`) and confirmed the PATCH persisted via a direct
+`GET` re-fetch.
+
+Also verified via a live-DB smoke script (`npx tsx`, run against local `supabase start`, not
+committed — matches every prior phase's precedent): guardian-adds-child, `listWards` (proves
+`users_select_ward`), guardian-on-behalf join request + Owner approval + auto-enroll,
+guardian read of the ward's enrollment (`is_my_ward`), an unrelated user reading zero rows for
+the same ward (RLS silently filters, not an error), the ward's own constructed session reading
+its own enrollment (`enrollments_select_self` — proves the RLS shape even though a
+profile-only ward can't actually log in), guardian consent capture succeeding and an unrelated
+user's consent-capture attempt failing with a genuine 42501, direct staff enrollment +
+`updateEnrollment`, and a non-staff enrollment attempt failing with 42501. 16/16 assertions
+passed. `npm run type-check` (21 packages), `npm run lint`, `npm run db:reset` (8 migrations
+apply clean), and `npm run db:check-rls` (27 tables, 1 allow-listed) all pass.
+
+**Known gaps / not built (deliberately, in scope for later phases):**
+- `batch_enrollments` — Scheduling, Phase 7 (needs `batches` to exist first).
+- Audit logging is still not retrofitted onto Phase 2-4 write paths, and this phase's own new
+  writes (`enrollStudent`, `addWard`, consent capture) don't call `writeAuditLog()` either —
+  same acknowledged debt Phase 5 flagged, now one phase larger.
+- No search-by-name for staff enrolling a student directly — `/people`'s enroll form takes a
+  raw user ID, same interim shape as Phase 3's email-based invitations before any admin UI
+  existed. A real "find an existing member" picker is a UI-polish item, not blocking.
+- Doc 04 §7's "Enable/disable ward login (≥13)" consent-gated action is not built — same
+  phone-OTP dependency already documented as deferred (Doc 05 §9), not a new gap.
+
+## Next: Phase 7 — Scheduling
+
+Scope (from the roadmap): programs, batches, class sessions, holidays (Doc 07 §7, literal
+schema already sketched there), coach assignment (`coach_assignments.batch_id` FK — deferred
+from Phase 4 because `batches` didn't exist yet, now unblocked), and `batch_enrollments` (Doc
+07 §6's join table, deferred from this phase for the same reason). Doc 04 §5's "Scheduling"
+matrix row and Doc 04 Addendum §1 (per-day coach assignment, wireframe 3b — the `role`/`days`
+mask on `coach_assignments`, UX-only scoping) are the RBAC-relevant parts to re-read.
 
 ## How to resume without re-reading everything
 
-- Don't re-read all of `docsV2/` — this file plus the Phase 6 doc pointers above should be
+- Don't re-read all of `docsV2/` — this file plus the Phase 7 doc pointers above should be
   enough to start.
 - Don't re-derive the gap analysis or ask the scope-change questions again — they're
   answered above (see "User-approved scope changes").
 - Do check `git status`/`git diff` against this file's "what exists" list before assuming
   something isn't built — this file is a snapshot, code is ground truth if they disagree.
 - RBAC (org-scope) is schema-complete as of Phase 4; platform-scope RBAC
-  (`has_platform_perm()`) is schema-complete as of Phase 5. Don't reintroduce a coarse gate
-  for anything People builds; use real permission keys.
+  (`has_platform_perm()`) is schema-complete as of Phase 5. Guardianship-aware RLS
+  (`is_guardian_of`/`has_consent_authority`/`is_my_ward`) is schema-complete as of Phase 6 —
+  reuse these three functions for any ward-facing read in Scheduling/Attendance/Progress
+  rather than inventing a parallel guardian check.
 - The cross-tab-shared-cookie-jar behavior noted in Phase 5's verification section applies to
   ANY future multi-identity browser testing in this environment, not just Platform Admin —
   sign out (or use separate browser profiles) between identities, don't assume two open tabs
   are two independent sessions.
+- `date`-typed columns now come back from `pg` as plain `YYYY-MM-DD` strings, not JS `Date`
+  objects (`packages/platform/src/db/pool.ts`, Phase 6) — don't reintroduce a per-query
+  `::text` cast workaround for this, the platform-wide parser override already handles it.
