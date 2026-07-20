@@ -13,13 +13,17 @@ const POLL_INTERVAL_MS = 5_000;
 async function runOnce(): Promise<number> {
   const jobs = await queue.claim(WORKER_NAME, BATCH_SIZE);
   for (const job of jobs) {
-    const handler = JOB_HANDLERS[job.kind];
-    if (!handler) {
+    const handlers = JOB_HANDLERS[job.kind];
+    if (!handlers || handlers.length === 0) {
       await queue.fail(job.id, `No handler registered for job kind "${job.kind}"`);
       continue;
     }
     try {
-      await handler(job);
+      // Every handler for this kind must succeed for the job to complete
+      // (Phase 10 — a kind can have more than one independent consumer,
+      // see registry.ts's header). A retry re-runs all of them, so each
+      // handler must be idempotent on redelivery.
+      for (const handler of handlers) await handler(job);
       await queue.complete(job.id);
     } catch (err) {
       await queue.fail(job.id, err instanceof Error ? err.message : String(err));

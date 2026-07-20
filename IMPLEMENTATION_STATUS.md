@@ -1030,16 +1030,162 @@ above), `npm run db:reset` (11 migrations apply clean), and `npm run db:check-rl
   `WardFeesSection` (open charges + proof submission only) — `listMyCharges`/
   `listMyPayments` and their routes are real, a fuller self-service view is UI polish.
 
-## Next: Phase 10 — Notifications
+## Phase 10 — Notifications: ✅ DONE, verified live-DB smoke test (16/16) + live in-browser
 
-Scope (from the roadmap): `notification_templates`/`notification_preferences`/
-`notification_deliveries` (Doc 07 §10, already sketched there). Real v1 channels are
-email + push (Doc 08's WhatsApp/SMS channel stubs from Phase 1 stay `not_configured`,
-per the locked scope decision). This phase's natural first consumer is
-`attendance.absence_confirmed` (Doc 14 §8's <5min parent-alert latency target) — Finance
-(Phase 9) also consumes it now via `assessFine()`, so both consumers coexist on the same
-event. Doc 04 §5's "Notifications (manual/templates)" matrix row is the RBAC-relevant part
-to re-read.
+Scope built: `notification_templates`/`notification_preferences`/`notification_deliveries`
+(Doc 07 §10, literal) + `push_subscriptions` (new — see below), real email (SMTP/Inbucket)
+and real push (Web Push/VAPID) channel transports, manual send + template management +
+delivery log, self-service preferences, and `notifyAbsenceConfirmed()` — the real consumer
+of `attendance.absence_confirmed` (Doc 14 §8's <5min parent-alert latency target),
+coexisting with Finance's `assessFine()` on the same event since Phase 9.
+
+What exists (don't recreate):
+- `supabase/migrations/0012_notifications.sql` — all 3 literal tables + `push_subscriptions`
+  (new) + RLS + grants + an en-only seed of the `attendance.absence_confirmed` platform
+  template (email + push). Interpretive calls, all explained in the migration's own header:
+  1. **No branch-column refinement** on templates/deliveries (Doc 07 §10's literal schema
+     has no `branch_id`) — `has_perm()` (org-wide) gates every policy, same "branch-scoped
+     permission is sufficient at the RLS layer, narrowing is app-layer/UI" precedent Phase 7
+     set for Coach's "own batches" People read. RBAC needed **no new permission keys** —
+     migration 0006 already seeded `notify.template.manage`/`notify.send.manual`/
+     `notify.log.read`/`notify.fee_reminder.send` matching Doc 04 §5's row exactly.
+  2. **`updated_at` added** to `notification_templates`/`notification_deliveries` (convention
+     #9) — both rows are genuinely mutable (template edits; delivery status transitions).
+  3. **`push_subscriptions` is a new table**, not in Doc 07 §10's literal list — needed to
+     make "push" a real, verifiable channel via Web Push (VAPID) instead of another
+     `not_configured` stub (FCM/APNs both need an unconfigured paid vendor, same category as
+     WhatsApp BSP/SMS DLT/Razorpay). VAPID needs no vendor account, just a self-generated
+     keypair (`npm run keys:generate:vapid`, same shape as this repo's own JWT keypair
+     script) — matches this project's existing bias toward portable/self-hosted infra over
+     vendor lock-in (Doc 02 §11). Owned by this module, not identity-auth, since it's
+     push-channel machinery.
+  4. **`notification_deliveries` gets an asymmetric grant** — `select, insert` to
+     `authenticated`, no `update`/`delete`. The manual-send path inserts its own `queued` row
+     (RLS-gated, genuinely the staff caller's own action — unlike `ledger_entries`/
+     `audit_log`'s "no grant at all" reserved for pure system-of-record tables); only the
+     dispatch job (service-role, `apps/worker`) may flip `status` afterward. `push_subscriptions`
+     similarly gets no `update` grant — re-subscribing an existing endpoint is delete+insert,
+     not upsert (a real bug caught by this phase's own smoke test: an `ON CONFLICT ... DO
+     UPDATE` in the service code required an UPDATE grant the migration deliberately doesn't
+     have — fixed by matching the code to the migration's original intent instead of adding
+     the grant).
+  5. **Two partial unique indexes** on `notification_templates`, not one constraint — Postgres
+     treats every `NULL` as distinct, so a plain `unique(organization_id, key, channel,
+     language)` would let the platform library accumulate duplicate rows.
+- `packages/platform/src/notify/index.ts` — **redesigned from Phase 1's pre-declared
+  interface**, which coupled template/recipient lookup (tables owned by this module, not
+  platform) into the transport layer and was never implemented ("Full schema and dispatch
+  pipeline land in Phase 10"). Replaced with a plain transport-only `send(target)` over a
+  discriminated union (`email`/`push`/`whatsapp`/`sms`) — the caller resolves the template,
+  renders the body, and looks up contact info itself (same "read across module boundaries via
+  direct SQL" precedent Attendance/Finance already set reading Scheduling's tables).
+  `packages/platform/src/notify/channels/email.ts` — real, via `nodemailer` against local
+  Supabase's Inbucket SMTP (127.0.0.1:54325, no auth) by default, the exact same infra Phase 2
+  already verified end-to-end for magic-link emails; `SMTP_HOST`/`PORT`/`USER`/`PASS`/`FROM`
+  env vars point it at a real relay in staging/prod, no code change.
+  `packages/platform/src/notify/channels/push.ts` — real, via `web-push` (VAPID). WhatsApp/SMS
+  stubs (Phase 1) unchanged, still `not_configured`.
+- `packages/modules/notifications/src/service.ts` — template CRUD (`listTemplates`/
+  `upsertTemplate`), self-service preferences (`getMyPreferences`/`setMyPreference` — no
+  permission gate, Doc 04 §4 "own notification prefs" is an identity right), push subscription
+  self-service (`subscribeToPush`/`unsubscribeFromPush`), manual send
+  (`sendManualNotification` — RLS-gated insert of `queued` delivery rows, then enqueues one
+  `notifications.dispatch_delivery` job per row), the delivery log (`listDeliveries`), the
+  dispatch primitive (`dispatchDelivery`, service-role — renders a template's `{{placeholders}}`
+  and calls `notify.send()`), and `notifyAbsenceConfirmed()` (service-role — resolves the
+  absent student's own account plus active guardians via a direct `guardianships` read,
+  notifies each over every real channel they haven't muted, idempotent via a
+  `ref_type`/`ref_id`/`recipient`/`channel` dedup lookup on redelivery).
+  **Real bug found and fixed during this phase's own smoke test**: the muting-floor check
+  (US-4 AC3) in `sendManualNotification` originally ran inside the staff caller's own
+  `withRequestContext` session — but `notification_preferences` RLS is strictly self-only
+  (migration 0012), so that SELECT against the *recipient's* preference row silently returned
+  zero rows every time, meaning the floor could never engage (a muted recipient still got
+  notified). Fixed by reading preferences via a service-role client instead — a legitimate
+  read (enforcing someone's own opt-out), same category as `notifyAbsenceConfirmed`'s
+  already-service-role preference check; the delivery-row INSERT itself stays RLS-gated on
+  `notify.send.manual`.
+- `apps/worker/src/registry.ts` — **`JOB_HANDLERS` changed shape**, from
+  `Record<string, JobHandler>` to `Record<string, JobHandler[]>` — `attendance.absence_confirmed`
+  now has two independent consumers (`finance.assessFine`, `notifications.notifyAbsenceConfirmed`)
+  and a single-handler map can only ever hold one function per key. `apps/worker/src/index.ts`'s
+  poller now runs every handler for a claimed job kind and only marks it complete if all
+  succeed; a retry re-runs all of them, so every handler must be idempotent on redelivery
+  (both of this event's consumers already are). New handlers: the two
+  `attendance.absence_confirmed` consumers, plus `notifications.dispatch_delivery` (the
+  manual-send path only — `notifyAbsenceConfirmed` calls `dispatchDelivery()` directly since
+  it's already running in-worker). `apps/worker` now depends on `@abhyas/module-notifications`.
+- Routes (all new): `GET/PUT /api/v1/me/notification-preferences` (PUT sets one row per call —
+  the resource's PK is composite, there's no single "whole set" to PUT),
+  `POST/DELETE /api/v1/me/push-subscriptions` (not in Doc 08's literal route list — necessary
+  plumbing for the push channel to work at all), `GET/POST /api/v1/orgs/{id}/notifications/templates`
+  (POST upserts by key/channel/language), `POST /api/v1/orgs/{id}/notifications/send`,
+  `GET /api/v1/orgs/{id}/notifications/log`.
+- `apps/web/src/app/notifications/page.tsx` — staff console (templates, manual send, delivery
+  log), same plain-fetch client component style as `/scheduling`/`/attendance`/`/finance`.
+  `apps/web/src/app/me/notifications/page.tsx` — new, standalone self-service page (any
+  signed-in user, not org-scoped) for per-kind/channel mute toggles and a "Enable push on this
+  device" button driving the real `PushManager.subscribe()` flow.
+  `apps/web/public/sw.js` — service worker handling the `push` event → `showNotification`.
+- `scripts/generate-vapid-keys.mjs` (`npm run keys:generate:vapid`) — VAPID keypair generation,
+  same shape as `scripts/generate-keys.mjs`'s JWT keypair. `.env.example` gained the
+  SMTP/VAPID vars (all optional locally — email defaults to Inbucket, push fails cleanly with
+  a clear error if VAPID keys are unset).
+- `eslint.config.mjs` — `V2_WEB_PATHS` gained `app/notifications/**`, `app/me/**`.
+- `packages/platform/src/db/service-role-manifest.ts` — new entry for
+  `notifications/src/service.ts` (dispatch, the absence consumer, and the muting-floor
+  preference pre-check — everything else is RLS-gated via `withRequestContext`).
+
+**Verified two ways, matching every prior phase's precedent:**
+1. **Live-DB smoke test** (`npx tsx`, run against local `supabase start`, not committed) —
+   16/16 assertions: template create/upsert-in-place/RLS-denial for an outsider/platform-library
+   read; manual send creates a queued delivery, `dispatchDelivery` sends a real email via
+   Inbucket (confirmed `status: sent`); a recipient with no `notify.log.read` reads zero
+   delivery rows; the muting floor actually blocks a muted recipient (post-fix);
+   `notifyAbsenceConfirmed` dispatches over both real channels, the email sends, the push
+   fails cleanly with no subscription on file, and a redelivered event is idempotent (0
+   dispatched, 2 skipped); a real subscribed push attempt runs the full VAPID transport
+   without crashing even against a fake endpoint; the no-UPDATE-grant invariant on
+   `notification_deliveries` is enforced by RLS, not just app-layer trust (direct `UPDATE`
+   and a direct non-`queued` `INSERT` both correctly rejected with 42501).
+2. **Live in-browser**: signed in via real magic-link flow (confirmed via Inbucket UI —
+   the sign-in email AND the smoke test's own notification emails were both visible there,
+   real SMTP delivery, not mocked), created an academy org, opened `/notifications` — the
+   seeded platform template library rendered correctly. Sent a manual notification to self
+   (`attendance.absence_confirmed`, email) — delivery appeared as `queued`; ran the actual
+   `apps/worker --once` binary (not a direct function call) and confirmed the delivery
+   flipped to `sent` through the real claim → dispatch → complete job cycle. On
+   `/me/notifications`, toggled the email preference off via the real PUT round trip and
+   confirmed the UI reflected the muted/enabled state correctly (screenshot-verified: email
+   greyed out with a bell-off icon, push still green/enabled).
+
+`npm run type-check` (23 packages incl. the new module + worker's new dependency),
+`npm run lint` (one raw-SQL-interpolation violation caught and fixed — same
+column-list-in-a-const-before-`.query()` pattern every prior phase used),
+`npm run db:reset` (12 migrations apply clean), and `npm run db:check-rls` (48 tables, 1
+allow-listed) all pass.
+
+**Known gaps / not built (deliberately, in scope for later phases):**
+- WhatsApp/SMS remain `not_configured` stubs — no vendor chosen (locked scope decision).
+- Push (VAPID) has no retry/backoff beyond the queue's own job-level retry — a `failed` push
+  delivery isn't automatically retried on a different channel (`status: 'fallback'` exists in
+  the schema's check constraint per Doc 07 §10 but nothing writes it yet — no fallback-routing
+  logic is built this phase).
+- Template library seeding is `en`-only — `hi`/`te` need real translation content, not
+  fabricated placeholder text (same posture as every prior phase's "designed, content polish
+  later" gaps).
+- Audit logging is not retrofitted onto this phase's writes (template upsert, manual send,
+  preference changes) — same acknowledged debt every phase since Phase 5 has flagged, now one
+  phase larger.
+- No automated recurring-charge-driven fee-due reminders (Phase 9's own flagged gap) — the
+  notification plumbing to send them now exists, but nothing generates the underlying charges
+  yet.
+- No student/guardian-facing view of their own delivery history — `notification_preferences`
+  is self-service and real, but there's no "here's what you were sent" page, only the
+  org-staff `/notifications` log (gated on `notify.log.read`, which no student/parent role
+  holds per Doc 04 §5's matrix — same "—" cells Attendance/Scheduling left for those roles).
+
+## Next: Phase 11 — Marketplace
 
 ## How to resume without re-reading everything
 
@@ -1079,3 +1225,23 @@ to re-read.
 - `date`-typed columns now come back from `pg` as plain `YYYY-MM-DD` strings, not JS `Date`
   objects (`packages/platform/src/db/pool.ts`, Phase 6) — don't reintroduce a per-query
   `::text` cast workaround for this, the platform-wide parser override already handles it.
+- **`apps/worker/src/registry.ts`'s `JOB_HANDLERS` maps a job kind to an ARRAY of handlers, not
+  one**, since Phase 10 — a single queue event (`attendance.absence_confirmed`) can have more
+  than one independent module consumer (Finance, Notifications). If a future phase adds another
+  consumer of an existing event, append to that kind's array rather than assuming one handler
+  per kind; every handler in the array must be independently idempotent since a retry re-runs
+  all of them, not just the one that failed.
+- **Self-only RLS (`user_id = current_user_id()`) silently blocks a STAFF caller from reading
+  someone else's row it legitimately needs to check** (not just "the recipient's own data") —
+  Phase 10 hit this for real: `sendManualNotification`'s muting-floor check ran inside the
+  staff caller's own `withRequestContext` session, so the SELECT against the *recipient's*
+  `notification_preferences` row (self-only RLS) silently returned zero rows every time,
+  and a muted recipient kept getting notified. The fix was a service-role read for just that
+  lookup, not a new RLS policy (preferences have no org/staff dimension to scope a policy to
+  in the first place). Any future "check someone else's self-scoped setting before acting on
+  their behalf" code path should default to a service-role read for that specific lookup,
+  not assume the caller's own RLS session can see it.
+- `web-push`/VAPID is this project's answer for a real, verifiable push channel with no vendor
+  account (`packages/platform/src/notify/channels/push.ts`) — reuse this pattern (self-generated
+  keypair, no paid vendor dependency) before reaching for FCM/APNs if a future phase needs
+  another vendor-gated capability and a self-hosted alternative exists.

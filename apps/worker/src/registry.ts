@@ -2,6 +2,7 @@ import { queue } from '@abhyas/platform';
 import { materializeSessions } from '@abhyas/module-scheduling';
 import { evaluateAbsences, purgeWithdrawnFaceEmbeddings } from '@abhyas/module-attendance';
 import { assessFine, ABSENCE_CONFIRMED_JOB_KIND, type AssessFineInput } from '@abhyas/module-finance';
+import { dispatchDelivery, notifyAbsenceConfirmed, DISPATCH_DELIVERY_JOB_KIND } from '@abhyas/module-notifications';
 
 // Job-kind -> handler registry (Doc 14 §8 job inventory). Each module
 // registers its own handlers as it lands its jobs (class-session
@@ -9,6 +10,17 @@ import { assessFine, ABSENCE_CONFIRMED_JOB_KIND, type AssessFineInput } from '@a
 // purge in Phase 8, finance's assessFine() consuming
 // attendance.absence_confirmed in Phase 9, notification dispatch consuming
 // the same event in Phase 10, retention purges throughout).
+//
+// A job kind maps to an ARRAY of handlers, not one (changed in Phase 10) —
+// `attendance.absence_confirmed` now has TWO independent consumers
+// (finance.assessFine, notifications.notifyAbsenceConfirmed) and a
+// Record<string, JobHandler> can only ever hold one function per key. The
+// poller (index.ts) runs every handler for a claimed job and only marks it
+// complete if all of them succeed; a retry re-runs all handlers for that
+// job, so every handler registered here must be safe to re-run (both of
+// this event's consumers already are: assessFine dedupes on a description
+// string, notifyAbsenceConfirmed dedupes via a notification_deliveries
+// ref_type/ref_id/recipient/channel lookup).
 
 export type JobHandler = (job: queue.Job) => Promise<void>;
 
@@ -30,8 +42,7 @@ async function runMaterializeSessions(): Promise<void> {
 // Doc 14 §8: "time-critical absence alerts get a dedicated per-5-min cron" —
 // self-reschedules at that cadence so the underlying signal
 // (evaluateAbsences' absent attendance_events rows) stays fresh enough for
-// Notifications (Phase 10) to hit the PRD's <5min alert-latency target once
-// it registers a consumer for attendance.absence_confirmed.
+// Notifications to hit the PRD's <5min alert-latency target.
 async function runEvaluateAbsences(): Promise<void> {
   await evaluateAbsences();
   const next = new Date(Date.now() + 5 * 60 * 1000);
@@ -49,18 +60,31 @@ async function runPurgeWithdrawnFaceEmbeddings(): Promise<void> {
   });
 }
 
-// One-shot event consumer (not self-rescheduling — each absence produces
-// exactly one attendance.absence_confirmed job, unlike the cron-shaped
-// handlers above). assessFine() is itself idempotent on the event id (see
-// migration 0011's header), so a redelivered job after a transient failure
-// is safe to just re-run rather than needing dedupe here.
+// One-shot event consumers (not self-rescheduling — each absence produces
+// exactly one attendance.absence_confirmed job). Both are idempotent on
+// redelivery (see this file's header), so a transient failure in one
+// doesn't risk double-charging or double-notifying on retry.
 async function runAssessFine(job: queue.Job): Promise<void> {
   await assessFine(job.payload as AssessFineInput);
 }
 
-export const JOB_HANDLERS: Record<string, JobHandler> = {
-  'scheduling.materialize_sessions': runMaterializeSessions,
-  'attendance.evaluate_absences': runEvaluateAbsences,
-  'attendance.purge_withdrawn_face_embeddings': runPurgeWithdrawnFaceEmbeddings,
-  [ABSENCE_CONFIRMED_JOB_KIND]: runAssessFine,
+async function runNotifyAbsenceConfirmed(job: queue.Job): Promise<void> {
+  await notifyAbsenceConfirmed(job.payload as Parameters<typeof notifyAbsenceConfirmed>[0]);
+}
+
+// Manual-send dispatch (Doc 08 §21 `POST /org/notifications/send`) and the
+// automatic absence-confirmed path both funnel through dispatchDelivery();
+// this handler is only reached for the manual path — notifyAbsenceConfirmed
+// calls dispatchDelivery() directly since it's already running in-worker.
+async function runDispatchDelivery(job: queue.Job): Promise<void> {
+  const { deliveryId, variables } = job.payload as { deliveryId: string; variables: Record<string, unknown> };
+  await dispatchDelivery(deliveryId, variables);
+}
+
+export const JOB_HANDLERS: Record<string, JobHandler[]> = {
+  'scheduling.materialize_sessions': [runMaterializeSessions],
+  'attendance.evaluate_absences': [runEvaluateAbsences],
+  'attendance.purge_withdrawn_face_embeddings': [runPurgeWithdrawnFaceEmbeddings],
+  [ABSENCE_CONFIRMED_JOB_KIND]: [runAssessFine, runNotifyAbsenceConfirmed],
+  [DISPATCH_DELIVERY_JOB_KIND]: [runDispatchDelivery],
 };

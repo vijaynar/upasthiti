@@ -13,12 +13,16 @@
     "@supabase/supabase-js": "^2.47.2",
     "@supabase/ssr": "^0.5.2",
     "pg": "^8.21.0",
-    "jsonwebtoken": "^9.0.2"
+    "jsonwebtoken": "^9.0.2",
+    "nodemailer": "^6.9.16",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "typescript": "^5.7.2",
     "rimraf": "^6.0.1",
     "@types/pg": "^8.11.10",
-    "@types/jsonwebtoken": "^9.0.7"
+    "@types/jsonwebtoken": "^9.0.7",
+    "@types/nodemailer": "^6.4.17",
+    "@types/web-push": "^3.6.4"
   }
 }
