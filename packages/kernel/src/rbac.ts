@@ -1,26 +1,22 @@
-import type { SessionContext } from './session';
-
-// can()/RBAC helper (Doc 04 §1 principle 1, §10). Application code asks
-// permissions, never role identity — "can(session, 'attendance.record',
-// {org, branch})", never "is this user a coach?".
+// Shared RBAC types (Doc 04 §1 principle 1, §10). Application code asks
+// permissions, never role identity — "hasPerm(session, 'attendance.record',
+// {branchId})", never "is this user a coach?".
 //
-// ADVISORY ONLY — this is for UX (hide buttons, early 403s). RLS is the
-// real gate (Doc 02 §5); a bug here can be wrong without breaching
-// isolation. Real resolution (membership -> membership_role ->
-// role_permissions, plus guardianship and coach_assignment paths) needs
-// the RBAC schema and lands in Phase 4.
+// There is no can()/hasPerm() function HERE: kernel has zero DB access by
+// design (Doc 14 §7 — provider SDKs, and by extension any DB-touching code,
+// live only in packages/platform; packages/platform depends on
+// packages/kernel, never the other way, so kernel importing it back would
+// be circular). The real implementation is
+// @abhyas/module-tenancy-rbac's hasPerm()/hasPermBranch() — it owns the
+// roles/permissions/membership_roles tables and calls the SAME
+// has_perm()/has_perm_branch() Postgres functions RLS itself uses, so the
+// advisory app-layer answer can never drift from the real gate. Advisory
+// only either way (Doc 04 §10) — RLS is the last line, a bug in the
+// advisory check can be wrong without breaching isolation.
 
 export interface PermissionTarget {
   orgId?: string;
   branchId?: string;
   batchId?: string;
   subjectUserId?: string;
-}
-
-export async function can(
-  _session: SessionContext,
-  _permission: string,
-  _target: PermissionTarget = {}
-): Promise<boolean> {
-  throw new Error('[kernel/rbac] can() is not implemented until Phase 4 (RBAC & Schema Completion).');
 }

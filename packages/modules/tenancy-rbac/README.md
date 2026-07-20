@@ -15,7 +15,23 @@ service functions for all 4 provisioning flows (Doc 02 §9): create org
 (coach/academy), accept invitation, join request + approve, workspace
 switcher data.
 
-RBAC proper (roles/permissions/membership_roles/has_perm()) is **not**
-built yet — an interim "org-wide member" gate (`is_org_wide_member()`)
-stands in for admin-ish authorization until Phase 4. See migration
-0004's header comment and `IMPLEMENTATION_STATUS.md`.
+## Phase 4 (done)
+
+roles/permissions/role_permissions/membership_roles/platform_role_assignments/
+coach_assignments/support_access_grants + `has_perm()`/`has_perm_branch()`/
+`my_batch_ids()`/`support_grant_active()` (all `SECURITY DEFINER` — see
+migration 0006's header, this is load-bearing not stylistic) + last-Owner
+and seed-super-admin protection triggers + the full permission
+catalogue/system roles/role_permissions seed (migration `0006_rbac.sql`).
+`is_org_wide_member()` is gone — migration 0004's policies that used it are
+DROPped and replaced with `has_perm()`/`has_perm_branch()` versions inside
+0006 itself (not an edit to 0004; RBAC's tables have FKs into tenancy's, so
+0004 can never call a function 0006 defines).
+
+`hasPerm()`/`hasPermBranch()` (app-layer, advisory) call the same SQL
+functions RLS uses. `createOrganization`/`acceptInvitation`/
+`decideJoinRequest` now grant the relevant role(s) for real.
+`listMembers`/`grantRole`/`revokeRole` are new — no admin UI yet (same
+precedent as Phase 3's invitations/join-requests). See
+`IMPLEMENTATION_STATUS.md`'s Phase 4 section for the full writeup,
+including known gaps.

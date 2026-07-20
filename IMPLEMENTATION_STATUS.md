@@ -269,24 +269,131 @@ RLS test (bootstrap ordering, cross-org isolation, column-grant locks on `member
 - No automated tests (Phase 16) — verified via the live-DB smoke scripts above plus the
   in-browser pass, not committed as a test suite (matches Phase 2's precedent).
 
-## Next: Phase 4 — RBAC & Schema Completion
+## Phase 4 — RBAC & Schema Completion: ✅ DONE, verified via smoke test
 
-Scope (from the roadmap): `roles`/`permissions`/`role_permissions`/`membership_roles`/
-`platform_role_assignments`/`coach_assignments`/`support_access_grants` (Doc 04 §12) +
-last-Owner-protection trigger + seed-super-admin protection trigger (Doc 07 §5). Real
-`has_perm()`/`has_perm_branch()` replacing every `is_org_wide_member()` interim check added
-in Phase 3 (migration 0004's header comment lists every policy that needs revisiting).
-`kernel/rbac.ts`'s `can()` stops throwing and does real membership → role → permission
-resolution. Read `docsV2/04_rbac_access_matrix.md` before starting.
+What exists (don't recreate):
+- `supabase/migrations/0006_rbac.sql` — `roles`/`permissions`/`role_permissions`/
+  `membership_roles`/`platform_role_assignments`/`coach_assignments`/`support_access_grants`
+  (Doc 04 §12) + `has_perm()`/`has_perm_branch()`/`my_batch_ids()`/`support_grant_active()`
+  (Doc 07 §17) + last-Owner-protection triggers (on `membership_roles` delete and
+  `memberships.status` update) + seed-super-admin protection triggers (on
+  `platform_role_assignments` delete and `users.deleted_at` update) (Doc 07 §5) + the full
+  permission catalogue/system roles/role_permissions seed translating Doc 04 §5's access
+  matrix (idempotent inserts, versioned by migration — not `seed.sql`, which is
+  local-fixture-only). Two permission keys were added beyond Doc 04 §4's literal catalogue
+  because the matrix needs finer granularity than it lists: `people.join_request.read`
+  (Front Desk "join intake" without approval authority) and `finance.proof.submit` (proof
+  intake without approval authority). The matrix→role_permissions translation required
+  interpretive judgment in places the doc doesn't spell out to permission-key granularity —
+  see migration 0006's header comment before assuming a role's exact bundle from memory;
+  re-derive from the migration's `role_permissions` INSERT instead.
+  **`has_perm()`/`has_perm_branch()`/`my_batch_ids()`/`support_grant_active()`/
+  `my_branch_scope()` are all `SECURITY DEFINER`** — not optional. They're called from RLS
+  policies on the very tables they query (e.g. `memberships_select_staff` calls
+  `has_perm_branch()`, which queries `memberships`); without `SECURITY DEFINER` that's
+  infinite recursion ("stack depth limit exceeded"), hit and fixed empirically while
+  smoke-testing this migration. `SECURITY DEFINER` only changes which role's RLS applies to
+  the function's *internal* lookups — the actual filtering is still `current_user_id()`/
+  `current_org()` (session GUCs), so this doesn't widen what a caller can learn.
+- Migration 0004's `is_org_wide_member()`-gated policies are DROPped and replaced with
+  `has_perm()`/`has_perm_branch()` versions **inside migration 0006**, not by editing 0004 in
+  place — `roles`/`membership_roles` have FKs into 0004's tables, so RBAC schema must apply
+  *after* tenancy schema, meaning 0004's own policies can never call `has_perm()` directly
+  (it doesn't exist yet at that point in the migration sequence). 0004 itself only picked up
+  comment updates (see its header) pointing at 0006 for current policy state — a real
+  structural reason, not a style choice; don't try to consolidate these into one migration
+  later without re-deriving why they're split this way. Also added:
+  `memberships_select_staff`/`memberships_update_staff` (`people.member.read`/`.suspend`,
+  branch-refined) — org-staff visibility/suspend that Phase 3 explicitly deferred.
+- `packages/kernel/src/rbac.ts` — the `can()` stub is gone. Kernel has zero DB access by
+  architecture (`packages/platform` depends on `packages/kernel`, never the reverse, so
+  kernel importing platform back would be circular) — it was never actually possible for
+  `can()` to live here and do real DB resolution, regardless of phase. Real advisory checks
+  are `@abhyas/module-tenancy-rbac`'s `hasPerm()`/`hasPermBranch()`, which call the *same*
+  `has_perm()`/`has_perm_branch()` SQL functions RLS uses — app-layer and RLS can't disagree.
+  Kernel keeps only the shared `PermissionTarget` type.
+- `packages/modules/tenancy-rbac/src/service.ts` — added `hasPerm`/`hasPermBranch`;
+  `createOrganization` now grants Owner (+ Coach for `independent_coach`) via migration
+  0006's bootstrap RLS policy (`membership_roles_insert_bootstrap_owner`, the only path that
+  can grant a role before any role exists on a membership) and explicitly repoints
+  `current_org()` mid-transaction (`select set_config('app.org_id', ...)`) so the Main-branch
+  insert's `has_perm('org.branch.create')` check sees the *new* org, not whatever was active
+  before it existed; `acceptInvitation` now applies `invitation.role_keys` and
+  `decideJoinRequest` now applies `join_request.requested_role` to `membership_roles` (both
+  service-role, same cross-actor-write blocks as the membership insert itself); added
+  `listMembers`/`grantRole`/`revokeRole` with a `ORG_ROLE_GRANTORS` map enforcing Doc 04 §8's
+  grant-authority table (e.g. only an existing Owner can grant Org Admin/Accountant/Owner;
+  Branch Admin can grant Coach/Asst Coach/Front Desk but not Branch Admin) as an app-layer
+  check on top of the `people.role.grant`/`.revoke` RLS gate — RLS alone only sees "does this
+  permission bit exist", not "is target role X within granter's authority".
+- Routes: `GET /api/v1/orgs/{id}/members`,
+  `POST /api/v1/orgs/{id}/members/{membershipId}/roles`,
+  `DELETE /api/v1/orgs/{id}/members/{membershipId}/roles/{roleKey}`. **No admin UI** for
+  these — same precedent as Phase 3's invitations/join-requests (service + routes exist, the
+  page doesn't; deferred to Platform Admin/People, Phases 5-6).
+- `packages/platform/src/db/service-role-manifest.ts` — justification text for
+  tenancy-rbac's existing service-role entry extended to cover the new role-grant writes
+  inside `acceptInvitation`/`decideJoinRequest` (same call sites, no new entry needed).
+
+**Verified via a live-DB smoke script** (`npx tsx`, run against local `supabase start`,
+not committed — matches Phase 2/3's precedent of hand-run smoke scripts, not a test suite):
+independent-coach org bootstrap grants Owner+Coach; `hasPerm()` (app-layer) agrees with what
+RLS actually allows/denies (Owner can update org settings/billing/branding, Coach cannot,
+verified both via the service function *and* a raw UPDATE that RLS silently zero-rows);
+`acceptInvitation`/`decideJoinRequest` correctly apply their role grants; `listMembers`
+visibility works under `memberships_select_staff`; `grantRole` succeeds for an authorized
+granter and correctly throws `RoleGrantNotAllowedError` for an unauthorized one (Coach
+granted Branch Admin); the last-Owner trigger blocks an Owner from revoking their own only
+Owner role. `npm run type-check` (21 packages), `npm run lint`, `npm run db:reset` (all 6
+migrations apply clean, in order), and `npm run db:check-rls` (20 tables, 1 allow-listed)
+all pass.
+
+**Known gaps / not built (deliberately, in scope for later phases):**
+- No admin UI for members/roles (see above) — Platform Admin/People, Phases 5-6.
+- `is_my_ward()` / the P4 guardian RLS policy shape is not built — needs `enrollments`
+  (People, Phase 6) to know if a ward is actually enrolled in the target org.
+- No platform-scope equivalent of `has_perm()` for `platform_role_assignments` — no
+  platform-scoped table exists yet to gate (Platform Admin, Phase 5). The platform-role
+  catalogue/role_permissions ARE seeded now (same seed step as the org matrix), just unread
+  by any policy yet.
+- No seed super admin actually created — the *protection* trigger exists
+  (`platform_role_assignments_protect_seed`/`users_protect_seed_super_admin`), but creating
+  the first real seed row is Platform Admin tooling (Phase 5).
+- `coach_assignments.batch_id` has no FK yet (`batches` doesn't exist until Scheduling,
+  Phase 7) and the table has no write path for `authenticated` yet (schema-only, same
+  pattern as `org_domains`).
+- Doc 04 §8's full anti-lockout rule set (rank ceiling beyond the grant-authority table,
+  custom-role support) is not fully modeled — `ORG_ROLE_GRANTORS` in tenancy-rbac covers the
+  documented grant table faithfully but isn't a general rank/hierarchy system.
+- No automated tests (Phase 16) — verified via the live-DB smoke script above, matching
+  Phase 2/3's precedent.
+
+## Next: Phase 5 — Platform Admin
+
+Scope (from the roadmap): Super Admin/Verification Ops/Support/Platform Finance console —
+org verification review + approve/reject (the gate in US-1 AC5, `organizations.status`
+`pending`→`active`), the actual seed-super-admin creation flow, platform role
+grant/revoke UI (`platform_role_assignments`, now schema-complete from Phase 4), the
+support-access-grant request/approve/audit workflow (Doc 04 §9, `support_access_grants`
+already exists — Phase 4 only built its schema+read policy, not the write/request flow),
+subscriptions/feature-flags/announcements (Doc 07 §15's `feature_flags`/
+`org_feature_flags`/`announcements` tables — not yet created, check Doc 07 before assuming
+they exist). **There is no dedicated Platform Admin doc in `docsV2/`** (only 00, 01, 02, 04,
+05, 07, 08, 13, 14, 15, 17 exist — 03/06/09-12/16 were never written for this rebuild).
+Platform Admin's actual spec is scattered: Doc 04 §9 (support access/impersonation) + §3's
+platform role catalogue, Doc 07 §15-16 (the tables above + audit_log), and
+`docsV2/Wireframes - Login & Superadmin.dc.html` (t1/t4 wireframes, referenced by Doc 04's
+2026-07-19 addendum). Read those three, don't search for a doc number that isn't there.
 
 ## How to resume without re-reading everything
 
-- Don't re-read all of `docsV2/` — this file plus `docsV2/04_rbac_access_matrix.md` and
-  `docsV2/07_database_design.md` §5 are enough for Phase 4.
+- Don't re-read all of `docsV2/` — this file plus Doc 04 §9/§3, Doc 07 §15-16, and the
+  Login & Superadmin wireframe should be enough for Phase 5.
 - Don't re-derive the gap analysis or ask the scope-change questions again — they're
   answered above.
 - Do check `git status`/`git diff` against this file's "what exists" list before assuming
   something isn't built — this file is a snapshot, code is ground truth if they disagree.
-- Every `is_org_wide_member(...)`-based policy in migration 0004 is a marked interim stand-in
-  for `has_perm()` — grep that function name in the migration to find every policy Phase 4
-  needs to revisit, don't rely on memory.
+- RBAC is schema-complete as of Phase 4 — `has_perm()`/`has_perm_branch()` are real and
+  `SECURITY DEFINER`. Don't reintroduce an `is_org_wide_member()`-style coarse gate for
+  anything Platform Admin builds; use real permission keys (extend the catalogue in a new
+  migration if one's missing, following migration 0006's pattern).

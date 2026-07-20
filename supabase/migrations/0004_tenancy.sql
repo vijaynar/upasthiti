@@ -6,6 +6,16 @@
 --     `branch_id is null` on a caller's own membership ("org-wide member")
 --     stands in for "admin-ish" until real permission checks replace it
 --     (Doc 02 §4 confirms org-wide membership is the Owner/org-Admin shape).
+--     Migration 0006 (Phase 4) DROPs and replaces every policy below that
+--     uses is_org_wide_member() with a has_perm()/has_perm_branch() version
+--     — has_perm() can't be defined here because its own tables
+--     (membership_roles/role_permissions) have FKs into this migration's
+--     tables (organizations/memberships), so RBAC schema must come AFTER
+--     tenancy schema, and this migration's policies can't forward-reference
+--     a function that doesn't exist yet. Read migration 0006's "Replace
+--     migration 0004's interim policies" section for the current state of
+--     these policies — this file is what CI applies first, not the last
+--     word on what's actually enforced.
 --   * `organizations.created_by` is NOT in Doc 07's literal schema — added
 --     here because org bootstrap (creator becomes the first member) needs
 --     something to key the one-time self-insert membership policy off of,
@@ -67,7 +77,7 @@ create table invitations (
   organization_id uuid not null references organizations(id),
   branch_id uuid references branches(id),
   phone text, email text,            -- at least one; matched to auth_methods on accept
-  role_keys text[] not null,         -- roles to grant on acceptance (Doc 04 §8) — not applied until Phase 4
+  role_keys text[] not null,         -- roles to grant on acceptance (Doc 04 §8) — applied by tenancy-rbac's acceptInvitation
   token_hash text not null unique,
   invited_by uuid not null references users(id),
   expires_at timestamptz not null, accepted_at timestamptz, revoked_at timestamptz,
@@ -110,8 +120,8 @@ create trigger organizations_set_updated_at
 
 -- ── RLS helper functions (Doc 07 §17) ────────────────────────
 -- has_perm()/has_perm_branch() need the roles/permissions catalogue and
--- land in Phase 4; the functions below are the subset that only depend on
--- tables that exist as of this migration.
+-- land in migration 0006; the functions below are the subset that only
+-- depend on tables that exist as of this migration.
 
 create or replace function current_org() returns uuid
 language sql stable as $$
@@ -133,6 +143,10 @@ $$;
 -- org-wide (branch_id is null), active membership in `org`. Only ever
 -- evaluates the caller's own row, so it's safe under memberships' self-only
 -- SELECT policy (no recursion / no need for org-staff visibility yet).
+-- Superseded by has_perm()/has_perm_branch() in migration 0006, which DROPs
+-- and replaces every policy below that calls this — kept defined here
+-- (not dropped) since 0006 only drops the POLICIES, not this function, and
+-- nothing outside those policies ever called it.
 create or replace function is_org_wide_member(org uuid) returns boolean
 language sql stable as $$
   select exists (

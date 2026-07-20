@@ -29,6 +29,6 @@ export const SERVICE_ROLE_MANIFEST: ServiceRoleUse[] = [
   {
     path: 'packages/modules/tenancy-rbac/src/service.ts',
     justification:
-      'resolveOrgBySlug reads a non-member org for the join-by-slug flow (Doc 02 §9), before any membership exists to scope RLS to. acceptInvitation and the approval half of decideJoinRequest write ANOTHER user\'s membership row (the invitee/requester, not the caller) — a cross-actor write with no self-insert RLS path (migration 0004). Everything else (createOrganization, branches, invitations create/list/revoke, join_requests create/list/decide-status) uses withRequestContext.',
+      'resolveOrgBySlug reads a non-member org for the join-by-slug flow (Doc 02 §9), before any membership exists to scope RLS to. acceptInvitation and the approval half of decideJoinRequest write ANOTHER user\'s membership row (the invitee/requester, not the caller), plus that membership\'s initial role grant (invitation.role_keys / join_request.requested_role, Doc 04 §8) — both cross-actor writes with no self-insert RLS path (migrations 0004/0006). Everything else (createOrganization incl. its own bootstrap role grant, branches, invitations create/list/revoke, join_requests create/list/decide-status, members list, grantRole/revokeRole) uses withRequestContext.',
   },
 ];

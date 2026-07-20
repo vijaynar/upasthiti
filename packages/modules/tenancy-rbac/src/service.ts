@@ -4,10 +4,11 @@
 // rather than a direct table write.
 //
 // Scope: organizations, branches, memberships, invitations, join_requests
-// (Phase 3 — Multi-Tenancy). roles/permissions/membership_roles/
-// platform_role_assignments/coach_assignments/support_access_grants are
-// Phase 4 (RBAC) and don't exist yet — see migration 0004's header comment
-// for how the interim "org-wide member" gate stands in for has_perm().
+// (Phase 3 — Multi-Tenancy) + roles, permissions, membership_roles,
+// platform_role_assignments, coach_assignments, support_access_grants
+// (Phase 4 — RBAC, migration 0006). hasPerm()/hasPermBranch() below are the
+// advisory app-layer counterpart of the has_perm()/has_perm_branch() SQL
+// functions RLS itself uses — same function, same answer, no drift.
 
 import { randomBytes, createHash } from 'node:crypto';
 import { db } from '@abhyas/platform';
@@ -63,6 +64,97 @@ function isUniqueViolation(err: unknown): boolean {
   return typeof err === 'object' && err !== null && 'code' in err && (err as { code?: string }).code === '23505';
 }
 
+// Minimal structural shape of a pg client's query() — enough for the
+// helpers below to be shared between withRequestContext's callback and
+// getServiceClient's client without importing `pg` (Doc 14 §7 — provider
+// SDKs only in packages/platform).
+interface QueryClient {
+  query<T = unknown>(text: string, params?: unknown[]): Promise<{ rows: T[]; rowCount: number | null }>;
+}
+
+// ── RBAC (Doc 04 §10, Phase 4) ────────────────────────────────────
+// Advisory app-layer permission checks — RLS is the real gate. These call
+// the exact same has_perm()/has_perm_branch() Postgres functions (migration
+// 0006) that every RLS policy uses, so "can I?" and "will RLS let me?" can
+// never disagree.
+
+export async function hasPerm(session: SessionContext, permission: string): Promise<boolean> {
+  return db.withRequestContext(session, async (client) => {
+    const result = await client.query<{ ok: boolean }>('select has_perm($1) as ok', [permission]);
+    return result.rows[0]?.ok ?? false;
+  });
+}
+
+export async function hasPermBranch(session: SessionContext, permission: string, branchId: string | null): Promise<boolean> {
+  return db.withRequestContext(session, async (client) => {
+    const result = await client.query<{ ok: boolean }>('select has_perm_branch($1, $2) as ok', [permission, branchId]);
+    return result.rows[0]?.ok ?? false;
+  });
+}
+
+// Doc 04 §8 grant-authority table — who may grant/revoke a given org role.
+// A coarser check than the full anti-lockout rule set (no custom-role rank
+// system exists), applied on top of the membership_roles_insert_granter /
+// _delete_granter RLS policies (which only see "does this permission bit
+// exist", not "is target role X within granter's authority"). 'student' is
+// intentionally absent — that role is only ever granted via invitation
+// acceptance or join-request approval (both service-role paths below),
+// never through this direct-grant surface.
+const ORG_ROLE_GRANTORS: Record<string, string[]> = {
+  owner: ['owner'],
+  org_admin: ['owner'],
+  accountant: ['owner'],
+  branch_admin: ['owner', 'org_admin'],
+  coach: ['owner', 'org_admin', 'branch_admin'],
+  assistant_coach: ['owner', 'org_admin', 'branch_admin'],
+  front_desk: ['owner', 'org_admin', 'branch_admin'],
+};
+
+export class RoleGrantNotAllowedError extends Error {
+  constructor(reason = 'You do not have authority to grant or revoke that role.') {
+    super(`[tenancy-rbac] ${reason}`);
+  }
+}
+
+export class UnknownRoleError extends Error {
+  constructor(roleKey: string) {
+    super(`[tenancy-rbac] Unknown or non-grantable role: ${roleKey}`);
+  }
+}
+
+async function assertGrantAuthority(
+  client: QueryClient,
+  session: SessionContext,
+  organizationId: string,
+  targetRoleKey: string
+): Promise<void> {
+  const allowedGrantors = ORG_ROLE_GRANTORS[targetRoleKey];
+  if (!allowedGrantors) throw new UnknownRoleError(targetRoleKey);
+  const granterRoles = await client.query<{ key: string }>(
+    `select r.key from membership_roles mr
+     join memberships m on m.id = mr.membership_id
+     join roles r on r.id = mr.role_id
+     where m.user_id = $1 and m.organization_id = $2 and m.status = 'active'`,
+    [session.userId, organizationId]
+  );
+  const granterKeys = new Set(granterRoles.rows.map((r) => r.key));
+  if (!allowedGrantors.some((key) => granterKeys.has(key))) {
+    throw new RoleGrantNotAllowedError();
+  }
+}
+
+async function getMembershipOrgBranch(
+  client: QueryClient,
+  membershipId: string
+): Promise<{ organizationId: string; branchId: string | null } | null> {
+  const result = await client.query<{ organization_id: string; branch_id: string | null }>(
+    `select organization_id, branch_id from memberships where id = $1`,
+    [membershipId]
+  );
+  const row = result.rows[0];
+  return row ? { organizationId: row.organization_id, branchId: row.branch_id } : null;
+}
+
 // Same shape as identity-auth/tokens.ts (opaque random + sha256 hash at
 // rest) but kept module-local — a public service surface is not the place
 // to import another module's internal helpers (Doc 14 §2 rule 2).
@@ -101,11 +193,36 @@ export async function createOrganization(
         [input.orgType, input.name, input.slug, session.userId]
       );
       const organizationId = org.rows[0].id;
-      await client.query(
+
+      // Repoint current_org() at the new org for the rest of this
+      // transaction — has_perm()/has_perm_branch() (used by the Main
+      // branch insert below) read session-context current_org(), which is
+      // still whatever was active before this org existed otherwise
+      // (transaction-scoped set_config, same mechanism withRequestContext
+      // itself used at BEGIN — see migration 0004's header comment).
+      await client.query(`select set_config('app.org_id', $1, true)`, [organizationId]);
+
+      const membership = await client.query<{ id: string }>(
         `insert into memberships (user_id, organization_id, branch_id, status, joined_at)
-         values ($1, $2, null, 'active', now())`,
+         values ($1, $2, null, 'active', now()) returning id`,
         [session.userId, organizationId]
       );
+      const membershipId = membership.rows[0].id;
+
+      // Owner always; Coach too for a self-serve independent coach (Doc 04
+      // §3 "An independent coach's org auto-assigns Owner + Coach to the
+      // founder"). Granted via migration 0006's
+      // membership_roles_insert_bootstrap_owner RLS policy — the only path
+      // that can grant a role before any role exists on this membership.
+      const bootstrapRoleKeys = input.orgType === 'independent_coach' ? ['owner', 'coach'] : ['owner'];
+      for (const roleKey of bootstrapRoleKeys) {
+        await client.query(
+          `insert into membership_roles (membership_id, role_id, granted_by)
+           select $1, id, $2 from roles where key = $3 and organization_id is null`,
+          [membershipId, session.userId, roleKey]
+        );
+      }
+
       const branch = await client.query<{ id: string }>(
         `insert into branches (organization_id, name) values ($1, 'Main') returning id`,
         [organizationId]
@@ -384,12 +501,13 @@ export async function acceptInvitation(session: SessionContext, token: string): 
       branch_id: string | null;
       email: string | null;
       phone: string | null;
+      role_keys: string[];
       invited_by: string;
       expires_at: string;
       accepted_at: string | null;
       revoked_at: string | null;
     }>(
-      `select id, organization_id, branch_id, email, phone, invited_by, expires_at, accepted_at, revoked_at
+      `select id, organization_id, branch_id, email, phone, role_keys, invited_by, expires_at, accepted_at, revoked_at
        from invitations where token_hash = $1 for update`,
       [tokenHash]
     );
@@ -423,12 +541,27 @@ export async function acceptInvitation(session: SessionContext, token: string): 
     }
     if (!matched) throw new InvitationInvalidError('This invitation was sent to a different login than the one you used.');
 
-    await client.query(
+    const membership = await client.query<{ id: string }>(
       `insert into memberships (user_id, organization_id, branch_id, status, invited_by, joined_at)
        values ($1, $2, $3, 'active', $4, now())
-       on conflict (user_id, organization_id) do update set status = 'active', branch_id = excluded.branch_id, joined_at = now()`,
+       on conflict (user_id, organization_id) do update set status = 'active', branch_id = excluded.branch_id, joined_at = now()
+       returning id`,
       [session.userId, row.organization_id, row.branch_id, row.invited_by]
     );
+    const membershipId = membership.rows[0].id;
+    // Doc 04 §8 "Invitations carry the intended roles; roles activate only
+    // when the invite is accepted" — applied here, service-role (this
+    // whole block already bypasses RLS for the cross-actor membership
+    // write above; membership_roles needs the same bypass since the
+    // inviter, not the accepting user, is granted_by).
+    for (const roleKey of row.role_keys) {
+      await client.query(
+        `insert into membership_roles (membership_id, role_id, granted_by)
+         select $1, id, $2 from roles where key = $3 and organization_id is null and scope = 'org'
+         on conflict do nothing`,
+        [membershipId, row.invited_by, roleKey]
+      );
+    }
     await client.query(`update invitations set accepted_at = now() where id = $1`, [row.id]);
     await client.query('commit');
     return { organizationId: row.organization_id };
@@ -499,9 +632,9 @@ export async function listJoinRequests(session: SessionContext, organizationId: 
 }
 
 // The join_requests status UPDATE is self-service under RLS
-// (join_requests_decide_org_wide_member), but granting the resulting
-// membership is a cross-actor write (subject_user_id, not the approver) —
-// service-role for that half only, Doc 13 §2.3.
+// (join_requests_decide_permitted), but granting the resulting membership
+// (+ its requested role) is a cross-actor write (subject_user_id, not the
+// approver) — service-role for that half only, Doc 13 §2.3.
 export async function decideJoinRequest(
   session: SessionContext,
   joinRequestId: string,
@@ -513,8 +646,11 @@ export async function decideJoinRequest(
       organization_id: string;
       branch_id: string | null;
       subject_user_id: string;
+      requested_role: RequestedRole;
       status: string;
-    }>(`select organization_id, branch_id, subject_user_id, status from join_requests where id = $1`, [joinRequestId]);
+    }>(`select organization_id, branch_id, subject_user_id, requested_role, status from join_requests where id = $1`, [
+      joinRequestId,
+    ]);
     const row = result.rows[0];
     if (!row || row.status !== 'pending') throw new JoinRequestInvalidError();
 
@@ -530,11 +666,19 @@ export async function decideJoinRequest(
 
   const client = await db.getServiceClient();
   try {
-    await client.query(
+    const membership = await client.query<{ id: string }>(
       `insert into memberships (user_id, organization_id, branch_id, status, joined_at)
        values ($1, $2, $3, 'active', now())
-       on conflict (user_id, organization_id) do update set status = 'active', branch_id = excluded.branch_id, joined_at = now()`,
+       on conflict (user_id, organization_id) do update set status = 'active', branch_id = excluded.branch_id, joined_at = now()
+       returning id`,
       [decided.subject_user_id, decided.organization_id, decided.branch_id]
+    );
+    // Doc 04 §8 — approving a join request activates the role it requested.
+    await client.query(
+      `insert into membership_roles (membership_id, role_id, granted_by)
+       select $1, id, $2 from roles where key = $3 and organization_id is null and scope = 'org'
+       on conflict do nothing`,
+      [membership.rows[0].id, session.userId, decided.requested_role]
     );
   } finally {
     client.release();
@@ -569,6 +713,100 @@ export async function updateBranding(session: SessionContext, organizationId: st
        on conflict (organization_id) do update set
          logo_path = excluded.logo_path, colors = excluded.colors, display_name = excluded.display_name, updated_at = now()`,
       [organizationId, patch.logoPath, patch.colors, patch.displayName]
+    );
+  });
+}
+
+// ── Members & roles (Doc 04 §5 "Members & roles" row, Phase 4) ────
+// No admin UI for this yet (same precedent as Phase 3's invitations/
+// join-requests — service + routes exist, the page doesn't). Visibility
+// relies on migration 0006's memberships_select_staff RLS policy
+// (has_perm_branch('people.member.read', ...)).
+
+export interface MemberSummary {
+  membershipId: string;
+  userId: string;
+  branchId: string | null;
+  status: string;
+  roleKeys: string[];
+}
+
+export async function listMembers(session: SessionContext, organizationId: string): Promise<MemberSummary[]> {
+  return db.withRequestContext(session, async (client) => {
+    const result = await client.query<{
+      membership_id: string;
+      user_id: string;
+      branch_id: string | null;
+      status: string;
+      role_keys: (string | null)[];
+    }>(
+      `select m.id as membership_id, m.user_id, m.branch_id, m.status,
+              array_remove(array_agg(r.key), null) as role_keys
+       from memberships m
+       left join membership_roles mr on mr.membership_id = m.id
+       left join roles r on r.id = mr.role_id
+       where m.organization_id = $1
+       group by m.id
+       order by m.created_at`,
+      [organizationId]
+    );
+    return result.rows.map((row) => ({
+      membershipId: row.membership_id,
+      userId: row.user_id,
+      branchId: row.branch_id,
+      status: row.status,
+      roleKeys: (row.role_keys ?? []).filter((k): k is string => k !== null),
+    }));
+  });
+}
+
+export async function grantRole(
+  session: SessionContext,
+  organizationId: string,
+  membershipId: string,
+  roleKey: string
+): Promise<void> {
+  await db.withRequestContext(session, async (client) => {
+    const target = await getMembershipOrgBranch(client, membershipId);
+    if (!target || target.organizationId !== organizationId) {
+      throw new NotAuthorizedError('grant a role in this organization');
+    }
+    await assertGrantAuthority(client, session, organizationId, roleKey);
+    // membership_roles_insert_granter (migration 0006) is the RLS
+    // last-line check — this insert still fails with 42501 if that
+    // permission bit is somehow absent despite the grant-authority check
+    // above passing (e.g. a stale/derived role list).
+    await client.query(
+      `insert into membership_roles (membership_id, role_id, granted_by)
+       select $1, id, $2 from roles where key = $3 and organization_id is null and scope = 'org'
+       on conflict do nothing`,
+      [membershipId, session.userId, roleKey]
+    );
+  });
+}
+
+export async function revokeRole(
+  session: SessionContext,
+  organizationId: string,
+  membershipId: string,
+  roleKey: string
+): Promise<void> {
+  await db.withRequestContext(session, async (client) => {
+    const target = await getMembershipOrgBranch(client, membershipId);
+    if (!target || target.organizationId !== organizationId) {
+      throw new NotAuthorizedError('revoke a role in this organization');
+    }
+    await assertGrantAuthority(client, session, organizationId, roleKey);
+    // membership_roles_protect_last_owner (migration 0006) raises a
+    // Postgres exception (not a distinguishable error class) if this would
+    // remove an org's last Owner — left uncaught here, same as any other
+    // unexpected DB error; callers get a 500 rather than a friendly
+    // message until that's worth special-casing.
+    await client.query(
+      `delete from membership_roles
+       where membership_id = $1
+         and role_id = (select id from roles where key = $2 and organization_id is null)`,
+      [membershipId, roleKey]
     );
   });
 }
