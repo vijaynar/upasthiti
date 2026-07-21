@@ -34,6 +34,9 @@ const V2_WEB_PATHS = [
   'apps/web/src/app/me/**/*.{ts,tsx}',
   'apps/web/src/app/marketplace/**/*.{ts,tsx}',
   'apps/web/src/app/explore/**/*.{ts,tsx}',
+  'apps/web/src/app/staff/**/*.{ts,tsx}',
+  'apps/web/src/app/progress/**/*.{ts,tsx}',
+  'apps/web/src/components/ProgressTrends.tsx',
   'apps/web/src/lib/v2-session.ts',
 ];
 

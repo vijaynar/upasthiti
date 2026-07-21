@@ -1511,7 +1511,110 @@ clean across the new module, all new routes, and both new UI pages.
   management/CRUD screens only. Not assigned to a phase — raise with the
   user before assuming Progress (Phase 13) or any other phase owns this.
 
-## Next: Phase 13 — Progress
+## Phase 13 — Progress & Performance: ✅ DONE, verified live in-browser
+
+Last feature module (M11). Coaches log sport-specific metrics + vitals per
+enrolled student; students/guardians read their own trend over time. See
+`ROADMAP_REMAINING.md` for how this fits the remaining plan.
+
+What exists (don't recreate):
+- `supabase/migrations/0015_progress.sql` — `metric_definitions` (platform
+  library `organization_id is null` + org-custom) and `progress_entries`
+  (Doc 07 §13 literal). Key decisions in the migration header:
+  1. `progress_entries` denormalizes `organization_id`/`branch_id`/
+     `student_user_id` — the last so the self/guardian SELECT policies stay
+     flat (`student_user_id = current_user_id()` / `is_my_ward(student_user_id,
+     organization_id)`), same convention as attendance/staff-hr.
+  2. **"Own batches" is an APP-LAYER filter, not a second RLS gate** — the
+     same decision migrations 0009/0010 documented. RLS gates by
+     `has_perm_branch(perm, branch_id)` only; `/progress`'s "My batches only"
+     toggle narrows the roster to `my_batch_ids()` server-side.
+  3. The read/log split (Branch Admin 👁, Asst Coach "log only") is already
+     encoded in migration 0006's role_permissions — `branch_admin` has
+     `progress.read` not `.metric.log`; `assistant_coach` has `.metric.log`
+     not `.read`. RLS just reads those keys.
+  4. One permission key added: **`progress.metric.manage`** (Owner + Org
+     Admin) gates creating/editing org-custom metric definitions (org config,
+     org-wide → `has_perm()` not `has_perm_branch()`). Same "add one,
+     documented" precedent as `finance.payout.manage`/`hr.staff.read`.
+  5. `progress_entries` is append-only (no UPDATE policy — a corrected value
+     is a new entry, attendance's philosophy) but has a staff DELETE gated by
+     `progress.metric.log` for mis-log cleanup.
+  6. A platform metric library is seeded (vitals under `sport_key='general'`
+     + a starter sport-specific set keyed to the taxonomy_sports seed),
+     readable by everyone.
+  **Real, pre-existing RLS gap found and fixed while building the roster,
+  same class as Phase 12's**: `users_select_org_staff` (migration 0014) only
+  covers users with an active MEMBERSHIP — i.e. staff. Enrolled students are
+  in `enrollments`, not `memberships`, so the roster's `join users` for a
+  student's `display_name` returned nothing (empty roster despite a real
+  enrollment). Fixed with `users_select_org_student` (this migration) scoped
+  to exactly what `people.student.read` grants on enrollments — one-
+  directional cross-table read, no recursion. **The two `users` staff-read
+  carve-outs are now: members (0014) and enrolled students (0015). Any future
+  join to `users` for a person in a NEW relationship to the org needs its own
+  policy — `users` is not generally org-readable.**
+- `packages/modules/progress/src/service.ts` — full implementation: metric-
+  definition CRUD (`listMetricDefinitions`/`createMetricDefinition`/
+  `deleteMetricDefinition`), roster (`listProgressRoster` with the
+  ownBatchesOnly app-layer filter), entry logging + reads (`logProgress`
+  derives org/branch/student from the enrollment; `listProgressForEnrollment`,
+  `listMyProgressEntries` self, `listWardProgressEntries` guardian,
+  `deleteProgressEntry`). Metric-definition management is audit-logged
+  (`progress.metric.define`); routine progress logging is not (selective-
+  audit precedent). SQL in module-level constants for the A03 lint rule.
+  `@abhyas/module-audit` added to the package deps.
+- Routes (all new): `GET/POST /api/v1/orgs/{id}/progress/metrics` +
+  `DELETE .../metrics/{metricId}`, `GET .../progress/roster?ownBatches=`,
+  `GET/POST .../progress/entries` (`?enrollmentId=&metricKey=`) +
+  `DELETE .../entries/{entryId}`, plus self/guardian `GET /api/v1/me/progress`,
+  `GET /api/v1/me/progress/metrics` (workspace-independent label resolution —
+  platform library reads with no active org), and
+  `GET /api/v1/me/wards/{wardUserId}/progress`.
+- `apps/web/src/components/ProgressTrends.tsx` — shared, dependency-free SVG
+  `Sparkline` (colour reflects direction: green when the latest move improves
+  per `higher_better`/`lower_better`, red when it worsens, neutral indigo for
+  no-direction metrics like weight) + read-only `ProgressTrendCards` grid.
+  **Charts are hand-rolled SVG, no chart library** — decided per
+  ROADMAP_REMAINING.md (one series per metric, boring-stack constraint).
+- `apps/web/src/app/progress/page.tsx` — staff console (searchable roster +
+  "My batches only", per-student editable trend cards with inline log + entry
+  delete). `apps/web/src/app/me/progress/page.tsx` — student self-view.
+  `/family`'s ward cards gained a "View progress" section (guardian read).
+  `AppShell.tsx` — "Progress" under Manage, "My progress" under Me.
+- `eslint.config.mjs` — `V2_WEB_PATHS` gained `app/progress/**`,
+  `components/ProgressTrends.tsx`, and `app/staff/**` (a Phase-12 omission).
+
+**Verified live in-browser**: created an academy org, enrolled a fresh
+student identity, logged a 4-point improving "50m freestyle" trend + 2 weight
+entries via the real API; the `/progress` console rendered the roster (proving
+the `users_select_org_student` fix), the directional sparklines (green for the
+improving lower-better freestyle, neutral for weight), and the "−1.20 vs prev"
+deltas; the student's own `/me/progress` rendered the same trends via self-RLS
+with labels resolving correctly despite the student having no active workspace.
+The guardian ward view (`/family` → View progress) uses the same
+`is_my_ward()` gate and `ProgressTrendCards` component; its RLS policy
+(`progress_entries_select_guardian`) mirrors the already-tested
+`enrollments_select_guardian`/attendance guardian read exactly — not
+independently fixtured this session. `db:reset` (15 migrations clean),
+`db:check-rls` (62 tables, 1 allow-listed), `tsc` + `eslint` all pass.
+
+**Known gaps / not built (deliberately):**
+- No org-custom-metric management UI — the `progress.metric.manage` key +
+  create/delete routes + service are real and the platform library covers the
+  common case, but `/progress` doesn't yet expose a "define custom metric"
+  form (log against existing definitions only). Cheap to add later.
+- `progress.report.generate` (the third seeded key) has no consumer — report
+  export is a Dashboards/reporting concern, not built here.
+- Guardian ward-progress path not independently fixtured this session (see
+  above) — shares tested code but no dedicated guardianship smoke-test ran.
+
+## Next: Dashboards (cross-cutting, then Phase 14 — Medical schema-only)
+
+Per `ROADMAP_REMAINING.md`: role-specific summary/home screens (Doc 05 §7
+post-login routing, US-6 org branch-aggregation, US-2 guardian cards) — never
+a numbered phase, sequenced here so coach/student home views can fold in
+progress trends. Scope to be pinned down when it starts.
 
 ## How to resume without re-reading everything
 
@@ -1594,10 +1697,15 @@ clean across the new module, all new routes, and both new UI pages.
   actually added by any phase since; `tenancy-rbac.listMembers()` (Phase 3) silently works
   around it by never joining `users`. Phase 12 added `users_select_org_staff` (migration 0014,
   scoped to exactly `people.member.read`'s existing visibility) because its onboarding picker
-  was the first feature to actually need a co-member's name. Before joining `users` from any
-  future org-scoped query, confirm this policy still covers your case rather than assuming
-  `users` is generally readable — it's still self-only plus this one staff carve-out plus
-  guardian-of-ward (Phase 6), not a blanket org-visibility grant.
+  was the first feature to actually need a co-member's name. Phase 13 hit the SAME gap one
+  relationship over — enrolled STUDENTS are in `enrollments` not `memberships`, so
+  `users_select_org_staff` didn't cover them and the progress roster's `join users` came back
+  empty; fixed with `users_select_org_student` (migration 0015, scoped to `people.student.read`).
+  **`users` now has exactly these read paths: self (0003), guardian-of-ward (0006/0008),
+  org-staff-reads-member (0014), org-staff-reads-enrolled-student (0015).** Before joining
+  `users` for a person in any OTHER relationship to an org (a lead contact, a prospective
+  member, etc.), assume it will come back empty and add a matching narrow SELECT policy — the
+  join failing silently (empty result, no error) is the tell, exactly as it was both times.
 - `has_perm_branch(perm, branch_id)` alone is sufficient to gate BOTH an org-wide role (Owner/
   Org Admin, whose own membership has `branch_id is null`) and a branch-scoped role (Branch
   Admin) on the same policy, with no separate `has_perm()` check needed — Phase 12 used this

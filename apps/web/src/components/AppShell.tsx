@@ -30,6 +30,7 @@ import {
   ShieldCheck,
   UserCog,
   Briefcase,
+  TrendingUp,
   UserRound,
   LogOut,
   Moon,
@@ -64,6 +65,7 @@ const ORG_NAV = [
   { label: 'People', href: '/people', icon: Users },
   { label: 'Scheduling', href: '/scheduling', icon: CalendarClock },
   { label: 'Attendance', href: '/attendance', icon: ScanFace },
+  { label: 'Progress', href: '/progress', icon: TrendingUp },
   { label: 'Finance', href: '/finance', icon: Wallet },
   { label: 'Staff HR', href: '/staff', icon: UserCog },
   { label: 'Marketplace', href: '/marketplace', icon: Store },
@@ -72,6 +74,7 @@ const ORG_NAV = [
 
 const ME_NAV = [
   { label: 'Family', href: '/family', icon: UserRound },
+  { label: 'My progress', href: '/me/progress', icon: TrendingUp },
   { label: 'My HR', href: '/me/staff', icon: Briefcase },
   { label: 'My notifications', href: '/me/notifications', icon: Bell },
 ];

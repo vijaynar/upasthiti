@@ -7,7 +7,8 @@
 // level relationship a parent revisits over time.
 
 import { useEffect, useState } from 'react';
-import { Users, UserPlus, Search, CheckCircle2, AlertCircle, Fingerprint, Copy, Wallet } from 'lucide-react';
+import { Users, UserPlus, Search, CheckCircle2, AlertCircle, Fingerprint, Copy, Wallet, TrendingUp } from 'lucide-react';
+import { ProgressTrendCards, type MetricDefinition, type ProgressEntry } from '@/components/ProgressTrends';
 
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, { ...init, headers: { 'Content-Type': 'application/json', ...init?.headers } });
@@ -183,6 +184,46 @@ function formatMinor(amountMinor: number, currency = 'INR'): string {
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency }).format(amountMinor / 100);
 }
 
+// Doc 04 §5 "Progress & performance" row: Parent is "🔷 wards" — a guardian
+// reads a ward's recorded metrics via is_my_ward()-backed RLS (migration
+// 0015, progress_entries_select_guardian). Read-only: guardians never log.
+// Metric labels resolve from the platform library (always visible) plus the
+// guardian's active org's custom metrics, if any.
+function WardProgressSection({ ward }: { ward: Ward }) {
+  const [open, setOpen] = useState(false);
+  const [entries, setEntries] = useState<ProgressEntry[] | null>(null);
+  const [metrics, setMetrics] = useState<MetricDefinition[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    api<ProgressEntry[]>(`/api/v1/me/wards/${ward.wardUserId}/progress`)
+      .then(setEntries)
+      .catch((err) => setError(err.message));
+    api<MetricDefinition[]>('/api/v1/me/progress/metrics')
+      .then(setMetrics)
+      .catch(() => {});
+  }, [open]);
+
+  return (
+    <div className="mt-2">
+      <button onClick={() => setOpen((v) => !v)} className="flex items-center gap-1 text-xs font-medium text-slate-400 hover:text-white hover:underline">
+        <TrendingUp className="h-3.5 w-3.5 text-indigo-400" /> {open ? 'Hide progress' : 'View progress'}
+      </button>
+      {open && (
+        <div className="mt-2 rounded-lg border border-white/10 bg-white/5 p-3">
+          {error && <p className="text-xs text-red-400">{error}</p>}
+          {entries === null ? (
+            <p className="text-xs text-slate-400">Loading…</p>
+          ) : (
+            <ProgressTrendCards entries={entries} metrics={metrics} />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Doc 04 §5 "Charges & payments" row: Parent is "🔷 wards + pay" — a
 // guardian can see a ward's charges (is_my_ward()-backed RLS, migration
 // 0011) and submit proof of a payment they've made outside the app; a
@@ -350,6 +391,7 @@ function EnrollWardCard({ ward }: { ward: Ward }) {
 
       <BiometricConsentButton ward={ward} />
       <WardFeesSection ward={ward} />
+      <WardProgressSection ward={ward} />
 
       {open && (
         <div className="mt-3 space-y-2 rounded-lg border border-white/10 bg-white/5 p-3">

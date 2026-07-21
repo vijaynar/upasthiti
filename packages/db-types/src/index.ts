@@ -1656,6 +1656,47 @@ export type Database = {
           },
         ]
       }
+      metric_definitions: {
+        Row: {
+          created_at: string
+          direction: string | null
+          id: string
+          key: string
+          label: string
+          organization_id: string | null
+          sport_key: string | null
+          unit: string | null
+        }
+        Insert: {
+          created_at?: string
+          direction?: string | null
+          id?: string
+          key: string
+          label: string
+          organization_id?: string | null
+          sport_key?: string | null
+          unit?: string | null
+        }
+        Update: {
+          created_at?: string
+          direction?: string | null
+          id?: string
+          key?: string
+          label?: string
+          organization_id?: string | null
+          sport_key?: string | null
+          unit?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "metric_definitions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notification_deliveries: {
         Row: {
           channel: string
@@ -2359,6 +2400,84 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      progress_entries: {
+        Row: {
+          branch_id: string
+          created_at: string
+          enrollment_id: string
+          id: string
+          metric_key: string
+          note: string | null
+          organization_id: string
+          recorded_by: string
+          recorded_on: string
+          student_user_id: string
+          value: number
+        }
+        Insert: {
+          branch_id: string
+          created_at?: string
+          enrollment_id: string
+          id?: string
+          metric_key: string
+          note?: string | null
+          organization_id: string
+          recorded_by: string
+          recorded_on: string
+          student_user_id: string
+          value: number
+        }
+        Update: {
+          branch_id?: string
+          created_at?: string
+          enrollment_id?: string
+          id?: string
+          metric_key?: string
+          note?: string | null
+          organization_id?: string
+          recorded_by?: string
+          recorded_on?: string
+          student_user_id?: string
+          value?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "progress_entries_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "progress_entries_enrollment_id_fkey"
+            columns: ["enrollment_id"]
+            isOneToOne: false
+            referencedRelation: "enrollments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "progress_entries_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "progress_entries_recorded_by_fkey"
+            columns: ["recorded_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "progress_entries_student_user_id_fkey"
+            columns: ["student_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
             referencedColumns: ["id"]
           },
         ]
