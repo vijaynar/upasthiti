@@ -105,7 +105,7 @@ export default function PeoplePage() {
   if (orgId === undefined) {
     return (
       <div className="flex flex-1 items-center justify-center">
-        <p className="text-sm text-neutral-400">Loading…</p>
+        <p className="text-sm text-slate-400">Loading…</p>
       </div>
     );
   }
@@ -113,10 +113,10 @@ export default function PeoplePage() {
   if (orgId === null) {
     return (
       <div className="flex flex-1 items-center justify-center px-4">
-        <div className="max-w-sm space-y-2 rounded-xl border border-neutral-200 bg-white p-8 text-center shadow-sm">
-          <GraduationCap className="mx-auto h-8 w-8 text-neutral-300" />
-          <h1 className="text-lg font-semibold text-neutral-900">People</h1>
-          <p className="text-sm text-neutral-500">Pick an active workspace first — this page shows the roster for whichever org you&apos;re working in.</p>
+        <div className="glass-panel max-w-sm space-y-2 rounded-xl p-8 text-center">
+          <GraduationCap className="mx-auto h-8 w-8 text-indigo-400" />
+          <h1 className="text-lg font-semibold text-white">People</h1>
+          <p className="text-sm text-slate-400">Pick an active workspace first — this page shows the roster for whichever org you&apos;re working in.</p>
         </div>
       </div>
     );
@@ -125,27 +125,27 @@ export default function PeoplePage() {
   return (
     <div className="p-8">
       <div className="mx-auto max-w-3xl">
-        <h1 className="mb-1 text-lg font-semibold text-neutral-900">People</h1>
-        <p className="mb-5 text-sm text-neutral-500">Enrollments for the active workspace.</p>
+        <h1 className="mb-1 text-lg font-semibold text-white">People</h1>
+        <p className="mb-5 text-sm text-slate-400">Enrollments for the active workspace.</p>
 
-        {error && <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+        {error && <div className="mb-4 rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-400">{error}</div>}
 
-        <div className="mb-5 flex flex-wrap items-end gap-2 rounded-xl border border-neutral-200 bg-white p-4">
+        <div className="glass-panel mb-5 flex flex-wrap items-end gap-2 rounded-xl p-4">
           <div>
-            <label className="mb-1 block text-xs font-medium text-neutral-500">Student user ID</label>
+            <label className="mb-1 block text-xs font-medium text-slate-400">Student user ID</label>
             <input
               value={studentUserId}
               onChange={(e) => setStudentUserId(e.target.value)}
               placeholder="uuid of an existing identity"
-              className="w-64 rounded-lg border border-neutral-300 px-3 py-1.5 text-sm outline-none focus:border-neutral-500"
+              className="glass-input w-64 rounded-lg px-3 py-1.5 text-sm"
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-neutral-500">Branch</label>
+            <label className="mb-1 block text-xs font-medium text-slate-400">Branch</label>
             <select
               value={branchId}
               onChange={(e) => setBranchId(e.target.value)}
-              className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm outline-none focus:border-neutral-500"
+              className="glass-input rounded-lg px-3 py-1.5 text-sm"
             >
               {branches.map((b) => (
                 <option key={b.id} value={b.id}>
@@ -155,33 +155,33 @@ export default function PeoplePage() {
             </select>
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-neutral-500">Roll number</label>
+            <label className="mb-1 block text-xs font-medium text-slate-400">Roll number</label>
             <input
               value={rollNumber}
               onChange={(e) => setRollNumber(e.target.value)}
-              className="w-32 rounded-lg border border-neutral-300 px-3 py-1.5 text-sm outline-none focus:border-neutral-500"
+              className="glass-input w-32 rounded-lg px-3 py-1.5 text-sm"
             />
           </div>
           <button
             disabled={busy || !studentUserId.trim() || !branchId}
             onClick={enroll}
-            className="flex items-center gap-1 rounded-lg border border-neutral-900 bg-neutral-900 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-neutral-800 disabled:opacity-50"
+            className="btn-premium flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-50"
           >
             <UserPlus className="h-3.5 w-3.5" /> Enroll
           </button>
         </div>
 
         {enrollments === null ? (
-          <p className="text-sm text-neutral-400">Loading…</p>
+          <p className="text-sm text-slate-400">Loading…</p>
         ) : enrollments.length === 0 ? (
-          <p className="text-sm text-neutral-500">No enrollments yet.</p>
+          <p className="text-sm text-slate-400">No enrollments yet.</p>
         ) : (
-          <ul className="divide-y divide-neutral-200 rounded-xl border border-neutral-200 bg-white">
+          <ul className="glass-panel divide-y divide-white/10 rounded-xl overflow-hidden">
             {enrollments.map((e) => (
               <li key={e.id} className="flex items-center justify-between gap-4 p-4">
                 <div>
-                  <p className="text-sm font-medium text-neutral-900">student {e.studentUserId}</p>
-                  <p className="text-xs text-neutral-500">
+                  <p className="text-sm font-medium text-slate-100">student {e.studentUserId}</p>
+                  <p className="text-xs text-slate-400">
                     {e.rollNumber ? `roll ${e.rollNumber} · ` : ''}
                     since {new Date(e.startedOn).toLocaleDateString()}
                   </p>
@@ -189,8 +189,8 @@ export default function PeoplePage() {
                 <select
                   value={e.status}
                   onChange={(ev) => setStatus(e.id, ev.target.value as Enrollment['status'])}
-                  className={`rounded-full border-none px-3 py-1 text-xs font-medium outline-none ${
-                    e.status === 'active' ? 'bg-neutral-900 text-white' : 'bg-neutral-100 text-neutral-600'
+                  className={`rounded-full px-3 py-1 text-xs font-medium outline-none transition ${
+                    e.status === 'active' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-white/5 text-slate-400 border border-white/10'
                   }`}
                 >
                   {STATUSES.map((s) => (

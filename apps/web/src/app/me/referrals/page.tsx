@@ -29,11 +29,11 @@ interface Referral {
 }
 
 const STATUS_COLORS: Record<ReferralStatus, string> = {
-  created: 'bg-neutral-200 text-neutral-700',
-  attributed: 'bg-blue-100 text-blue-700',
-  rewarding: 'bg-amber-100 text-amber-700',
-  completed: 'bg-emerald-100 text-emerald-700',
-  rejected: 'bg-red-100 text-red-700',
+  created: 'bg-white/10 text-slate-300 border border-white/10',
+  attributed: 'bg-blue-500/20 text-blue-300 border border-blue-500/30',
+  rewarding: 'bg-amber-500/20 text-amber-300 border border-amber-500/30',
+  completed: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30',
+  rejected: 'bg-red-500/20 text-red-300 border border-red-500/30',
 };
 
 export default function MyReferralsPage() {
@@ -69,33 +69,33 @@ export default function MyReferralsPage() {
     <div className="p-8">
       <div className="mx-auto max-w-xl space-y-6">
         <div>
-          <h1 className="mb-1 flex items-center gap-2 text-lg font-semibold text-neutral-900">
-            <Gift className="h-5 w-5 text-neutral-500" /> Referrals
+          <h1 className="mb-1 flex items-center gap-2 text-lg font-semibold text-white">
+            <Gift className="h-5 w-5 text-indigo-400" /> Referrals
           </h1>
-          <p className="text-sm text-neutral-500">Refer a coach or academy — earn a reward when they sign up.</p>
+          <p className="text-sm text-slate-400">Refer a coach or academy — earn a reward when they sign up.</p>
         </div>
 
-        {error && <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+        {error && <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-400">{error}</div>}
 
-        <section className="rounded-xl border border-neutral-200 bg-white p-4">
-          <button onClick={createCode} className="rounded-lg bg-neutral-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-neutral-800">
+        <section className="glass-panel rounded-xl p-4">
+          <button onClick={createCode} className="btn-premium rounded-lg px-3 py-1.5 text-xs font-semibold">
             Generate a referral code
           </button>
 
           <div className="mt-4 space-y-2">
-            {referrals.length === 0 && <p className="text-sm text-neutral-400">No referral codes yet.</p>}
+            {referrals.length === 0 && <p className="text-sm text-slate-400">No referral codes yet.</p>}
             {referrals.map((r) => (
-              <div key={r.id} className="flex items-center justify-between gap-2 rounded-lg border border-neutral-100 p-2.5 text-sm">
+              <div key={r.id} className="flex items-center justify-between gap-2 rounded-lg border border-white/10 bg-white/5 p-2.5 text-sm">
                 <div>
-                  <p className="font-mono font-medium text-neutral-900">{r.code}</p>
+                  <p className="font-mono font-medium text-indigo-300">{r.code}</p>
                   {r.rewardAmountMinor !== null && (
-                    <p className="text-xs text-neutral-500">Reward: ₹{(r.rewardAmountMinor / 100).toLocaleString('en-IN')}</p>
+                    <p className="text-xs text-slate-400">Reward: ₹{(r.rewardAmountMinor / 100).toLocaleString('en-IN')}</p>
                   )}
                 </div>
                 <div className="flex items-center gap-2">
                   <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLORS[r.status]}`}>{r.status}</span>
-                  <button onClick={() => copyLink(r.code)} className="rounded-lg border border-neutral-300 p-1.5 text-neutral-600 hover:bg-neutral-50">
-                    {copied === r.code ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
+                  <button onClick={() => copyLink(r.code)} className="btn-secondary rounded-lg border border-white/10 p-1.5 text-slate-300 hover:bg-white/10">
+                    {copied === r.code ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
                   </button>
                 </div>
               </div>

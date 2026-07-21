@@ -60,7 +60,7 @@ function PlatformConsoleContent() {
     return (
       <div className="flex flex-1 items-center justify-center px-4">
         <div className="glass-panel max-w-sm space-y-2 rounded-xl p-8 text-center">
-          <ShieldCheck className="mx-auto h-8 w-8 text-slate-600" />
+          <ShieldCheck className="mx-auto h-8 w-8 text-slate-400" />
           <h1 className="text-lg font-semibold text-white">Platform console</h1>
           <p className="text-sm text-slate-400">You don&apos;t hold a platform role. This area is for Super Admin, Verification Ops, Support, and Platform Finance staff only.</p>
         </div>
@@ -83,14 +83,14 @@ function PlatformConsoleContent() {
 
 function ErrorBanner({ error }: { error: string | null }) {
   if (!error) return null;
-  return <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</div>;
+  return <div className="mb-4 rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-400">{error}</div>;
 }
 
 function PanelHeader({ title, subtitle }: { title: string; subtitle?: string }) {
   return (
     <div className="mb-5">
-      <h2 className="text-lg font-semibold text-neutral-900">{title}</h2>
-      {subtitle && <p className="mt-0.5 text-sm text-neutral-500">{subtitle}</p>}
+      <h2 className="text-lg font-semibold text-white">{title}</h2>
+      {subtitle && <p className="mt-0.5 text-sm text-slate-400">{subtitle}</p>}
     </div>
   );
 }
@@ -138,16 +138,16 @@ function VerificationQueue() {
       <PanelHeader title="Verification queue" subtitle="Organizations waiting for approval before they go live." />
       <ErrorBanner error={error} />
       {orgs === null ? (
-        <p className="text-sm text-neutral-400">Loading…</p>
+        <p className="text-sm text-slate-400">Loading…</p>
       ) : orgs.length === 0 ? (
-        <p className="text-sm text-neutral-500">Nothing pending — the queue is empty.</p>
+        <p className="text-sm text-slate-400">Nothing pending — the queue is empty.</p>
       ) : (
-        <ul className="divide-y divide-neutral-200 rounded-xl border border-neutral-200 bg-white">
+        <ul className="glass-panel divide-y divide-white/10 rounded-xl overflow-hidden">
           {orgs.map((org) => (
             <li key={org.id} className="flex items-center justify-between gap-4 p-4">
               <div>
-                <p className="text-sm font-medium text-neutral-900">{org.name}</p>
-                <p className="text-xs text-neutral-500">
+                <p className="text-sm font-medium text-slate-100">{org.name}</p>
+                <p className="text-xs text-slate-400">
                   {org.orgType.replace('_', ' ')} · /{org.slug} · submitted {new Date(org.createdAt).toLocaleDateString()}
                 </p>
               </div>
@@ -155,14 +155,14 @@ function VerificationQueue() {
                 <button
                   disabled={busy === org.id}
                   onClick={() => decide(org.id, 'approved')}
-                  className="flex items-center gap-1 rounded-lg border border-neutral-900 bg-neutral-900 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-neutral-800 disabled:opacity-50"
+                  className="btn-premium flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-50"
                 >
                   <CheckCircle2 className="h-3.5 w-3.5" /> Approve
                 </button>
                 <button
                   disabled={busy === org.id}
                   onClick={() => decide(org.id, 'rejected')}
-                  className="flex items-center gap-1 rounded-lg border border-neutral-300 px-3 py-1.5 text-xs font-medium text-neutral-700 transition hover:bg-neutral-50 disabled:opacity-50"
+                  className="btn-secondary flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium border border-white/10 text-slate-300 hover:bg-white/10 disabled:opacity-50"
                 >
                   <XCircle className="h-3.5 w-3.5" /> Reject
                 </button>
@@ -214,33 +214,33 @@ function OrganizationsPanel() {
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         placeholder="Search by name or slug…"
-        className="mb-4 w-72 rounded-lg border border-neutral-300 px-3 py-1.5 text-sm outline-none focus:border-neutral-500"
+        className="glass-input mb-4 w-72 rounded-lg px-3 py-1.5 text-sm"
       />
       {orgs === null ? (
-        <p className="text-sm text-neutral-400">Loading…</p>
+        <p className="text-sm text-slate-400">Loading…</p>
       ) : (
-        <ul className="divide-y divide-neutral-200 rounded-xl border border-neutral-200 bg-white">
+        <ul className="glass-panel divide-y divide-white/10 rounded-xl overflow-hidden">
           {orgs.map((org) => (
             <li key={org.id} className="flex items-center justify-between gap-4 p-4">
               <div>
-                <p className="text-sm font-medium text-neutral-900">{org.name}</p>
-                <p className="text-xs text-neutral-500">
-                  /{org.slug} · <span className="uppercase">{org.status}</span>
+                <p className="text-sm font-medium text-slate-100">{org.name}</p>
+                <p className="text-xs text-slate-400">
+                  /{org.slug} · <span className="uppercase text-slate-300 font-semibold">{org.status}</span>
                 </p>
               </div>
               {(org.status === 'active' || org.status === 'suspended') && (
                 <button
                   disabled={busy === org.id}
                   onClick={() => toggleSuspend(org)}
-                  className="flex items-center gap-1 rounded-lg border border-neutral-300 px-3 py-1.5 text-xs font-medium text-neutral-700 transition hover:bg-neutral-50 disabled:opacity-50"
+                  className="btn-secondary flex items-center gap-1 rounded-lg border border-white/10 px-3 py-1.5 text-xs font-medium text-slate-300 hover:bg-white/10 disabled:opacity-50"
                 >
                   {org.status === 'active' ? (
                     <>
-                      <Ban className="h-3.5 w-3.5" /> Suspend
+                      <Ban className="h-3.5 w-3.5 text-red-400" /> Suspend
                     </>
                   ) : (
                     <>
-                      <RotateCcw className="h-3.5 w-3.5" /> Reinstate
+                      <RotateCcw className="h-3.5 w-3.5 text-emerald-400" /> Reinstate
                     </>
                   )}
                 </button>
@@ -309,22 +309,22 @@ function PlatformRolesPanel() {
     <div>
       <PanelHeader title="Platform roles" subtitle="Super Admin, Verification Ops, Support, Platform Finance, Marketplace Partner." />
       <ErrorBanner error={error} />
-      <div className="mb-5 flex items-end gap-2 rounded-xl border border-neutral-200 bg-white p-4">
+      <div className="glass-panel mb-5 flex items-end gap-2 rounded-xl p-4">
         <div className="flex-1">
-          <label className="mb-1 block text-xs font-medium text-neutral-500">User ID</label>
+          <label className="mb-1 block text-xs font-medium text-slate-400">User ID</label>
           <input
             value={userId}
             onChange={(e) => setUserId(e.target.value)}
             placeholder="uuid of the user to grant a role to"
-            className="w-full rounded-lg border border-neutral-300 px-3 py-1.5 text-sm outline-none focus:border-neutral-500"
+            className="glass-input w-full rounded-lg px-3 py-1.5 text-sm"
           />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-neutral-500">Role</label>
+          <label className="mb-1 block text-xs font-medium text-slate-400">Role</label>
           <select
             value={roleKey}
             onChange={(e) => setRoleKey(e.target.value)}
-            className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm outline-none focus:border-neutral-500"
+            className="glass-input rounded-lg px-3 py-1.5 text-sm"
           >
             {PLATFORM_ROLES.map((r) => (
               <option key={r} value={r}>
@@ -336,25 +336,25 @@ function PlatformRolesPanel() {
         <button
           disabled={busy || !userId.trim()}
           onClick={grant}
-          className="rounded-lg border border-neutral-900 bg-neutral-900 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-neutral-800 disabled:opacity-50"
+          className="btn-premium rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-50"
         >
           Grant
         </button>
       </div>
       {assignments === null ? (
-        <p className="text-sm text-neutral-400">Loading…</p>
+        <p className="text-sm text-slate-400">Loading…</p>
       ) : (
-        <ul className="divide-y divide-neutral-200 rounded-xl border border-neutral-200 bg-white">
+        <ul className="glass-panel divide-y divide-white/10 rounded-xl overflow-hidden">
           {assignments.map((a) => (
             <li key={`${a.userId}-${a.roleKey}`} className="flex items-center justify-between gap-4 p-4">
               <div>
-                <p className="text-sm font-medium text-neutral-900">
-                  {a.roleKey.replace('_', ' ')} {a.seed && <span className="ml-1 rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] uppercase text-neutral-500">seed</span>}
+                <p className="text-sm font-medium text-slate-100">
+                  {a.roleKey.replace('_', ' ')} {a.seed && <span className="ml-1 rounded bg-white/10 px-1.5 py-0.5 text-[10px] uppercase text-slate-400 border border-white/10">seed</span>}
                 </p>
-                <p className="text-xs text-neutral-500">user {a.userId}</p>
+                <p className="text-xs text-slate-400">user {a.userId}</p>
               </div>
               {!a.seed && (
-                <button onClick={() => revoke(a)} className="text-xs font-medium text-red-600 hover:underline">
+                <button onClick={() => revoke(a)} className="text-xs font-medium text-red-400 hover:underline">
                   Revoke
                 </button>
               )}
@@ -427,61 +427,61 @@ function SupportAccessPanel() {
     <div>
       <PanelHeader title="Support access" subtitle="Time-boxed, audited org entry — never standing access (Doc 04 §9)." />
       <ErrorBanner error={error} />
-      <div className="mb-5 flex flex-wrap items-end gap-2 rounded-xl border border-neutral-200 bg-white p-4">
+      <div className="glass-panel mb-5 flex flex-wrap items-end gap-2 rounded-xl p-4">
         <div>
-          <label className="mb-1 block text-xs font-medium text-neutral-500">Organization ID</label>
+          <label className="mb-1 block text-xs font-medium text-slate-400">Organization ID</label>
           <input
             value={orgId}
             onChange={(e) => setOrgId(e.target.value)}
-            className="w-64 rounded-lg border border-neutral-300 px-3 py-1.5 text-sm outline-none focus:border-neutral-500"
+            className="glass-input w-64 rounded-lg px-3 py-1.5 text-sm"
           />
         </div>
         <div className="flex-1">
-          <label className="mb-1 block text-xs font-medium text-neutral-500">Reason</label>
+          <label className="mb-1 block text-xs font-medium text-slate-400">Reason</label>
           <input
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            className="w-full rounded-lg border border-neutral-300 px-3 py-1.5 text-sm outline-none focus:border-neutral-500"
+            className="glass-input w-full rounded-lg px-3 py-1.5 text-sm"
           />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-neutral-500">Hours (max 24)</label>
+          <label className="mb-1 block text-xs font-medium text-slate-400">Hours (max 24)</label>
           <input
             type="number"
             min={1}
             max={24}
             value={hours}
             onChange={(e) => setHours(Number(e.target.value))}
-            className="w-20 rounded-lg border border-neutral-300 px-3 py-1.5 text-sm outline-none focus:border-neutral-500"
+            className="glass-input w-20 rounded-lg px-3 py-1.5 text-sm"
           />
         </div>
         <button
           disabled={busy || !orgId.trim() || !reason.trim()}
           onClick={requestAccess}
-          className="rounded-lg border border-neutral-900 bg-neutral-900 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-neutral-800 disabled:opacity-50"
+          className="btn-premium rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-50"
         >
           Request access
         </button>
       </div>
       {grants === null ? (
-        <p className="text-sm text-neutral-400">Loading…</p>
+        <p className="text-sm text-slate-400">Loading…</p>
       ) : (
-        <ul className="divide-y divide-neutral-200 rounded-xl border border-neutral-200 bg-white">
+        <ul className="glass-panel divide-y divide-white/10 rounded-xl overflow-hidden">
           {grants.map((g) => {
             const expired = new Date(g.expiresAt) < new Date();
             const status = g.revokedAt ? 'revoked' : expired ? 'expired' : 'active';
             return (
               <li key={g.id} className="flex items-center justify-between gap-4 p-4">
                 <div>
-                  <p className="text-sm font-medium text-neutral-900">
-                    org {g.organizationId} <span className="ml-1 text-xs uppercase text-neutral-500">{status}</span>
+                  <p className="text-sm font-medium text-slate-100">
+                    org {g.organizationId} <span className="ml-1 text-xs uppercase text-slate-400 font-semibold">{status}</span>
                   </p>
-                  <p className="text-xs text-neutral-500">
+                  <p className="text-xs text-slate-400">
                     {g.reason} · expires {new Date(g.expiresAt).toLocaleString()}
                   </p>
                 </div>
                 {status === 'active' && (
-                  <button onClick={() => revoke(g.id)} className="text-xs font-medium text-red-600 hover:underline">
+                  <button onClick={() => revoke(g.id)} className="text-xs font-medium text-red-400 hover:underline">
                     Revoke
                   </button>
                 )}
@@ -546,41 +546,41 @@ function FeatureFlagsPanel() {
     <div>
       <PanelHeader title="Feature flags" subtitle="Global kill switches and rollout toggles." />
       <ErrorBanner error={error} />
-      <div className="mb-5 flex items-end gap-2 rounded-xl border border-neutral-200 bg-white p-4">
+      <div className="glass-panel mb-5 flex items-end gap-2 rounded-xl p-4">
         <div>
-          <label className="mb-1 block text-xs font-medium text-neutral-500">Key</label>
-          <input value={key} onChange={(e) => setKey(e.target.value)} className="w-48 rounded-lg border border-neutral-300 px-3 py-1.5 text-sm outline-none focus:border-neutral-500" />
+          <label className="mb-1 block text-xs font-medium text-slate-400">Key</label>
+          <input value={key} onChange={(e) => setKey(e.target.value)} className="glass-input w-48 rounded-lg px-3 py-1.5 text-sm" />
         </div>
         <div className="flex-1">
-          <label className="mb-1 block text-xs font-medium text-neutral-500">Description</label>
+          <label className="mb-1 block text-xs font-medium text-slate-400">Description</label>
           <input
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            className="w-full rounded-lg border border-neutral-300 px-3 py-1.5 text-sm outline-none focus:border-neutral-500"
+            className="glass-input w-full rounded-lg px-3 py-1.5 text-sm"
           />
         </div>
         <button
           disabled={!key.trim()}
           onClick={create}
-          className="rounded-lg border border-neutral-900 bg-neutral-900 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-neutral-800 disabled:opacity-50"
+          className="btn-premium rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-50"
         >
           + New flag
         </button>
       </div>
       {flags === null ? (
-        <p className="text-sm text-neutral-400">Loading…</p>
+        <p className="text-sm text-slate-400">Loading…</p>
       ) : (
-        <ul className="divide-y divide-neutral-200 rounded-xl border border-neutral-200 bg-white">
+        <ul className="glass-panel divide-y divide-white/10 rounded-xl overflow-hidden">
           {flags.map((f) => (
             <li key={f.key} className="flex items-center justify-between gap-4 p-4">
               <div>
-                <p className="text-sm font-medium text-neutral-900">{f.key}</p>
-                {f.description && <p className="text-xs text-neutral-500">{f.description}</p>}
+                <p className="text-sm font-medium text-slate-100">{f.key}</p>
+                {f.description && <p className="text-xs text-slate-400">{f.description}</p>}
               </div>
               <button
                 onClick={() => toggle(f)}
                 className={`rounded-full px-3 py-1 text-xs font-medium transition ${
-                  f.defaultOn ? 'bg-neutral-900 text-white' : 'bg-neutral-100 text-neutral-600'
+                  f.defaultOn ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-white/5 text-slate-400 border border-white/10'
                 }`}
               >
                 {f.defaultOn ? 'On' : 'Off'}
@@ -640,9 +640,9 @@ function AnnouncementsPanel() {
     <div>
       <PanelHeader title="Announcements" subtitle="Platform-wide messages surfaced in-app." />
       <ErrorBanner error={error} />
-      <div className="mb-5 space-y-2 rounded-xl border border-neutral-200 bg-white p-4">
+      <div className="glass-panel mb-5 space-y-2 rounded-xl p-4">
         <div className="flex gap-2">
-          <select value={audience} onChange={(e) => setAudience(e.target.value)} className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm outline-none focus:border-neutral-500">
+          <select value={audience} onChange={(e) => setAudience(e.target.value)} className="glass-input rounded-lg px-3 py-1.5 text-sm">
             <option value="all">All users</option>
             <option value="org_admins">Org admins</option>
             <option value="platform_staff">Platform staff</option>
@@ -651,7 +651,7 @@ function AnnouncementsPanel() {
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="Title"
-            className="flex-1 rounded-lg border border-neutral-300 px-3 py-1.5 text-sm outline-none focus:border-neutral-500"
+            className="glass-input flex-1 rounded-lg px-3 py-1.5 text-sm"
           />
         </div>
         <textarea
@@ -659,26 +659,26 @@ function AnnouncementsPanel() {
           onChange={(e) => setBody(e.target.value)}
           placeholder="Message"
           rows={3}
-          className="w-full rounded-lg border border-neutral-300 px-3 py-1.5 text-sm outline-none focus:border-neutral-500"
+          className="glass-input w-full rounded-lg px-3 py-1.5 text-sm"
         />
         <button
           disabled={busy || !title.trim() || !body.trim()}
           onClick={publish}
-          className="rounded-lg border border-neutral-900 bg-neutral-900 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-neutral-800 disabled:opacity-50"
+          className="btn-premium rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-50"
         >
           Publish
         </button>
       </div>
       {items === null ? (
-        <p className="text-sm text-neutral-400">Loading…</p>
+        <p className="text-sm text-slate-400">Loading…</p>
       ) : (
-        <ul className="divide-y divide-neutral-200 rounded-xl border border-neutral-200 bg-white">
+        <ul className="glass-panel divide-y divide-white/10 rounded-xl overflow-hidden">
           {items.map((a) => (
             <li key={a.id} className="p-4">
-              <p className="text-sm font-medium text-neutral-900">
-                {a.title} <span className="ml-1 text-xs uppercase text-neutral-500">{a.audience}</span>
+              <p className="text-sm font-medium text-slate-100">
+                {a.title} <span className="ml-1 text-xs uppercase text-slate-400 font-semibold">{a.audience}</span>
               </p>
-              <p className="mt-0.5 text-sm text-neutral-600">{a.body}</p>
+              <p className="mt-0.5 text-sm text-slate-400">{a.body}</p>
             </li>
           ))}
         </ul>
@@ -715,15 +715,15 @@ function AuditTrailPanel() {
       <PanelHeader title="Audit trail" subtitle="Append-only. Role grants, support access, and org lifecycle changes." />
       <ErrorBanner error={error} />
       {entries === null ? (
-        <p className="text-sm text-neutral-400">Loading…</p>
+        <p className="text-sm text-slate-400">Loading…</p>
       ) : entries.length === 0 ? (
-        <p className="text-sm text-neutral-500">No platform-scope events yet.</p>
+        <p className="text-sm text-slate-400">No platform-scope events yet.</p>
       ) : (
-        <ul className="divide-y divide-neutral-200 rounded-xl border border-neutral-200 bg-white">
+        <ul className="glass-panel divide-y divide-white/10 rounded-xl overflow-hidden">
           {entries.map((e) => (
             <li key={e.id} className="p-4">
-              <p className="text-sm font-medium text-neutral-900">{e.action}</p>
-              <p className="text-xs text-neutral-500">
+              <p className="text-sm font-medium text-slate-100">{e.action}</p>
+              <p className="text-xs text-slate-400">
                 {new Date(e.occurredAt).toLocaleString()} · actor {e.actorUserId ?? '—'}
                 {e.targetType && ` · ${e.targetType} ${e.targetId}`}
               </p>

@@ -78,10 +78,10 @@ interface Member {
 
 const STATUS_LABELS: Record<AttendanceStatus, string> = { present: 'Present', late: 'Late', absent: 'Absent', excused: 'Excused' };
 const STATUS_COLORS: Record<AttendanceStatus, string> = {
-  present: 'bg-emerald-100 text-emerald-700',
-  late: 'bg-amber-100 text-amber-700',
-  absent: 'bg-red-100 text-red-700',
-  excused: 'bg-neutral-200 text-neutral-700',
+  present: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30',
+  late: 'bg-amber-500/20 text-amber-300 border border-amber-500/30',
+  absent: 'bg-red-500/20 text-red-300 border border-red-500/30',
+  excused: 'bg-white/10 text-slate-300 border border-white/10',
 };
 
 export default function AttendancePage() {
@@ -254,7 +254,7 @@ export default function AttendancePage() {
   if (orgId === undefined) {
     return (
       <div className="flex flex-1 items-center justify-center">
-        <p className="text-sm text-neutral-400">Loading…</p>
+        <p className="text-sm text-slate-400">Loading…</p>
       </div>
     );
   }
@@ -262,10 +262,10 @@ export default function AttendancePage() {
   if (orgId === null) {
     return (
       <div className="flex flex-1 items-center justify-center px-4">
-        <div className="max-w-sm space-y-2 rounded-xl border border-neutral-200 bg-white p-8 text-center shadow-sm">
-          <CalendarCheck className="mx-auto h-8 w-8 text-neutral-300" />
-          <h1 className="text-lg font-semibold text-neutral-900">Attendance</h1>
-          <p className="text-sm text-neutral-500">Pick an active workspace first.</p>
+        <div className="glass-panel max-w-sm space-y-2 rounded-xl p-8 text-center">
+          <CalendarCheck className="mx-auto h-8 w-8 text-indigo-400" />
+          <h1 className="text-lg font-semibold text-white">Attendance</h1>
+          <p className="text-sm text-slate-400">Pick an active workspace first.</p>
         </div>
       </div>
     );
@@ -279,23 +279,23 @@ export default function AttendancePage() {
       <div className="mx-auto max-w-4xl space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="mb-1 text-lg font-semibold text-neutral-900">Attendance</h1>
-            <p className="text-sm text-neutral-500">Mark, scan, and review attendance for the active workspace.</p>
+            <h1 className="mb-1 text-lg font-semibold text-white">Attendance</h1>
+            <p className="text-sm text-slate-400">Mark, scan, and review attendance for the active workspace.</p>
           </div>
-          <button onClick={selfCheckIn} className="flex items-center gap-1.5 rounded-lg border border-neutral-300 px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-100">
+          <button onClick={selfCheckIn} className="btn-secondary flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-xs font-medium text-slate-300 hover:bg-white/10">
             <Check className="h-3.5 w-3.5" /> Self check-in
           </button>
         </div>
 
-        {error && <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</div>}
-        {notice && <div className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">{notice}</div>}
+        {error && <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-400">{error}</div>}
+        {notice && <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm text-emerald-400">{notice}</div>}
 
         {/* Batch / session picker */}
-        <section className="rounded-xl border border-neutral-200 bg-white p-4">
+        <section className="glass-panel rounded-xl p-4">
           <div className="flex flex-wrap items-end gap-3">
             <div>
-              <label className="mb-1 block text-xs font-medium text-neutral-500">Batch</label>
-              <select value={batchId} onChange={(e) => setBatchId(e.target.value)} className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm outline-none focus:border-neutral-500">
+              <label className="mb-1 block text-xs font-medium text-slate-400">Batch</label>
+              <select value={batchId} onChange={(e) => setBatchId(e.target.value)} className="glass-input rounded-lg px-3 py-1.5 text-sm">
                 {batches.map((b) => (
                   <option key={b.id} value={b.id}>
                     {b.name}
@@ -304,8 +304,8 @@ export default function AttendancePage() {
               </select>
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-neutral-500">Session</label>
-              <select value={sessionId} onChange={(e) => setSessionId(e.target.value)} className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm outline-none focus:border-neutral-500">
+              <label className="mb-1 block text-xs font-medium text-slate-400">Session</label>
+              <select value={sessionId} onChange={(e) => setSessionId(e.target.value)} className="glass-input rounded-lg px-3 py-1.5 text-sm">
                 {sessions.map((s) => (
                   <option key={s.id} value={s.id}>
                     {new Date(s.startsAt).toLocaleString()} ({s.status})
@@ -316,38 +316,38 @@ export default function AttendancePage() {
             <button
               onClick={() => setScannerOpen((v) => !v)}
               disabled={!sessionId}
-              className="flex items-center gap-1.5 rounded-lg border border-neutral-900 bg-neutral-900 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-neutral-800 disabled:opacity-50"
+              className="btn-premium flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-50"
             >
               <ScanFace className="h-3.5 w-3.5" /> {scannerOpen ? 'Close scanner' : 'Face check-in'}
             </button>
           </div>
 
           {scannerOpen && (
-            <div className="mt-4 border-t border-neutral-100 pt-4">
+            <div className="mt-4 border-t border-white/10 pt-4">
               <FaceScanner onCapture={handleScan} busy={scanBusy} />
             </div>
           )}
         </section>
 
         {/* Roster */}
-        <section className="rounded-xl border border-neutral-200 bg-white p-4">
-          <h2 className="mb-3 text-sm font-semibold text-neutral-900">Roster</h2>
+        <section className="glass-panel rounded-xl p-4">
+          <h2 className="mb-3 text-sm font-semibold text-white">Roster</h2>
           {activeRoster.length === 0 ? (
-            <p className="text-sm text-neutral-500">No students on this batch&apos;s roster.</p>
+            <p className="text-sm text-slate-400">No students on this batch&apos;s roster.</p>
           ) : (
-            <ul className="divide-y divide-neutral-200 rounded-xl border border-neutral-200">
+            <ul className="glass-panel divide-y divide-white/10 rounded-xl overflow-hidden">
               {activeRoster.map((r) => {
                 const evt = events.find((e) => e.enrollmentId === r.enrollmentId);
                 return (
                   <li key={r.enrollmentId} className="flex items-center justify-between gap-3 p-3">
-                    <span className="text-sm text-neutral-800">{rollLabel(r.enrollmentId)}</span>
+                    <span className="text-sm text-slate-200">{rollLabel(r.enrollmentId)}</span>
                     <div className="flex items-center gap-1.5">
                       {evt && <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${STATUS_COLORS[evt.status]}`}>{STATUS_LABELS[evt.status]}</span>}
                       {(['present', 'late', 'absent', 'excused'] as AttendanceStatus[]).map((s) => (
                         <button
                           key={s}
                           onClick={() => mark(r.enrollmentId, s)}
-                          className={`rounded px-1.5 py-1 text-[10px] font-medium ${evt?.status === s ? STATUS_COLORS[s] : 'bg-neutral-100 text-neutral-500 hover:bg-neutral-200'}`}
+                          className={`rounded px-1.5 py-1 text-[10px] font-medium transition ${evt?.status === s ? STATUS_COLORS[s] : 'bg-white/5 text-slate-400 border border-white/10 hover:bg-white/10'}`}
                         >
                           {STATUS_LABELS[s]}
                         </button>
@@ -361,22 +361,22 @@ export default function AttendancePage() {
         </section>
 
         {/* Review queue */}
-        <section className="rounded-xl border border-neutral-200 bg-white p-4">
-          <h2 className="mb-3 text-sm font-semibold text-neutral-900">Review queue</h2>
+        <section className="glass-panel rounded-xl p-4">
+          <h2 className="mb-3 text-sm font-semibold text-white">Review queue</h2>
           {reviewQueue.length === 0 ? (
-            <p className="text-sm text-neutral-500">Nothing pending review.</p>
+            <p className="text-sm text-slate-400">Nothing pending review.</p>
           ) : (
-            <ul className="divide-y divide-neutral-200 rounded-xl border border-neutral-200">
+            <ul className="glass-panel divide-y divide-white/10 rounded-xl overflow-hidden">
               {reviewQueue.map((item) => (
                 <li key={item.id} className="flex items-center justify-between gap-3 p-3 text-sm">
-                  <span>
+                  <span className="text-slate-200">
                     {item.candidateEnrollmentId ? rollLabel(item.candidateEnrollmentId) : 'Unmatched'} — {Math.round(item.confidence * 100)}% confidence
                   </span>
                   <div className="flex items-center gap-1.5">
-                    <button onClick={() => resolveReview(item.id, 'confirmed')} className="flex items-center gap-1 rounded bg-emerald-600 px-2 py-1 text-[10px] font-medium text-white hover:bg-emerald-700">
+                    <button onClick={() => resolveReview(item.id, 'confirmed')} className="btn-premium flex items-center gap-1 rounded px-2 py-1 text-[10px] font-semibold">
                       <Check className="h-3 w-3" /> Confirm
                     </button>
-                    <button onClick={() => resolveReview(item.id, 'rejected')} className="flex items-center gap-1 rounded bg-neutral-200 px-2 py-1 text-[10px] font-medium text-neutral-700 hover:bg-neutral-300">
+                    <button onClick={() => resolveReview(item.id, 'rejected')} className="btn-secondary flex items-center gap-1 rounded border border-white/10 px-2 py-1 text-[10px] font-medium text-slate-300 hover:bg-white/10">
                       <X className="h-3 w-3" /> Reject
                     </button>
                   </div>
@@ -387,21 +387,21 @@ export default function AttendancePage() {
         </section>
 
         {/* Face enrollment */}
-        <section className="rounded-xl border border-neutral-200 bg-white p-4">
+        <section className="glass-panel rounded-xl p-4">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-neutral-900">Face enrollment</h2>
-            <button onClick={() => setEnrollOpen((v) => !v)} className="flex items-center gap-1 text-xs font-medium text-neutral-600 hover:underline">
-              <UserPlus className="h-3.5 w-3.5" /> {enrollOpen ? 'Close' : 'Enroll a student'}
+            <h2 className="text-sm font-semibold text-white">Face enrollment</h2>
+            <button onClick={() => setEnrollOpen((v) => !v)} className="text-xs font-medium text-slate-400 hover:text-white hover:underline">
+              <UserPlus className="h-3.5 w-3.5 text-indigo-400" /> {enrollOpen ? 'Close' : 'Enroll a student'}
             </button>
           </div>
-          <p className="mb-3 text-xs text-neutral-500">
+          <p className="mb-3 text-xs text-slate-400">
             A guardian must first grant biometric consent (on their Family page) and share the consent ID with you — enrollment requires an active{' '}
-            <code>biometric_face</code> consent for the same student, enforced by the database.
+            <code className="text-slate-300">biometric_face</code> consent for the same student, enforced by the database.
           </p>
           {enrollOpen && (
-            <div className="space-y-3 rounded-lg border border-neutral-100 bg-neutral-50 p-3">
+            <div className="space-y-3 rounded-lg border border-white/10 bg-white/5 p-3">
               <div className="flex flex-wrap gap-2">
-                <select value={enrollEnrollmentId} onChange={(e) => setEnrollEnrollmentId(e.target.value)} className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm outline-none">
+                <select value={enrollEnrollmentId} onChange={(e) => setEnrollEnrollmentId(e.target.value)} className="glass-input rounded-lg px-3 py-1.5 text-sm">
                   <option value="">Pick student…</option>
                   {enrollments.map((e) => (
                     <option key={e.id} value={e.id}>
@@ -413,14 +413,14 @@ export default function AttendancePage() {
                   value={enrollConsentId}
                   onChange={(e) => setEnrollConsentId(e.target.value)}
                   placeholder="consent ID from guardian"
-                  className="w-64 rounded-lg border border-neutral-300 px-3 py-1.5 text-sm outline-none focus:border-neutral-500"
+                  className="glass-input w-64 rounded-lg px-3 py-1.5 text-sm"
                 />
               </div>
               {enrollEnrollmentId && enrollConsentId.trim() ? (
                 <FaceScanner onCapture={submitEnrollment} busy={enrollBusy} />
               ) : (
-                <p className="flex items-center gap-1.5 text-xs text-neutral-400">
-                  <Camera className="h-3.5 w-3.5" /> Pick a student and enter a consent ID to enable the camera.
+                <p className="flex items-center gap-1.5 text-xs text-slate-400">
+                  <Camera className="h-3.5 w-3.5 text-indigo-400" /> Pick a student and enter a consent ID to enable the camera.
                 </p>
               )}
             </div>

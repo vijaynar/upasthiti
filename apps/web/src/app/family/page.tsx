@@ -59,38 +59,38 @@ function AddWardForm({ onAdded }: { onAdded: () => void }) {
   }
 
   return (
-    <div className="mb-5 space-y-2 rounded-xl border border-neutral-200 bg-white p-4">
-      <h2 className="text-sm font-semibold text-neutral-900">Add a child</h2>
+    <div className="glass-panel mb-5 space-y-2 rounded-xl p-4">
+      <h2 className="text-sm font-semibold text-white">Add a child</h2>
       {error && (
-        <div className="flex items-start gap-2 rounded-lg bg-red-50 p-3 text-sm text-red-700">
+        <div className="flex items-start gap-2 rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-400">
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
           <span>{error}</span>
         </div>
       )}
       <div className="flex flex-wrap items-end gap-2">
         <div className="flex-1">
-          <label className="mb-1 block text-xs font-medium text-neutral-500">Name</label>
+          <label className="mb-1 block text-xs font-medium text-slate-400">Name</label>
           <input
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
-            className="w-full rounded-lg border border-neutral-300 px-3 py-1.5 text-sm outline-none focus:border-neutral-500"
+            className="glass-input w-full rounded-lg px-3 py-1.5 text-sm"
           />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-neutral-500">Date of birth</label>
+          <label className="mb-1 block text-xs font-medium text-slate-400">Date of birth</label>
           <input
             type="date"
             value={dob}
             onChange={(e) => setDob(e.target.value)}
-            className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm outline-none focus:border-neutral-500"
+            className="glass-input rounded-lg px-3 py-1.5 text-sm"
           />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-neutral-500">Relationship</label>
+          <label className="mb-1 block text-xs font-medium text-slate-400">Relationship</label>
           <select
             value={relationship}
             onChange={(e) => setRelationship(e.target.value as typeof relationship)}
-            className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm outline-none focus:border-neutral-500"
+            className="glass-input rounded-lg px-3 py-1.5 text-sm"
           >
             <option value="father">Father</option>
             <option value="mother">Mother</option>
@@ -100,7 +100,7 @@ function AddWardForm({ onAdded }: { onAdded: () => void }) {
         <button
           disabled={busy || !displayName.trim()}
           onClick={submit}
-          className="flex items-center gap-1 rounded-lg border border-neutral-900 bg-neutral-900 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-neutral-800 disabled:opacity-50"
+          className="btn-premium flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-50"
         >
           <UserPlus className="h-3.5 w-3.5" /> Add
         </button>
@@ -147,25 +147,25 @@ function BiometricConsentButton({ ward }: { ward: Ward }) {
 
   return (
     <div className="mt-2">
-      {error && <p className="mb-1 text-xs text-red-600">{error}</p>}
+      {error && <p className="mb-1 text-xs text-red-400">{error}</p>}
       {consentId ? (
-        <div className="flex items-center gap-1.5 rounded-lg bg-neutral-50 px-2 py-1.5 text-[11px]">
-          <code className="truncate text-neutral-700">{consentId}</code>
-          <button onClick={copy} className="shrink-0 text-neutral-400 hover:text-neutral-700">
+        <div className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-[11px]">
+          <code className="truncate text-slate-300">{consentId}</code>
+          <button onClick={copy} className="shrink-0 text-slate-400 hover:text-white">
             <Copy className="h-3 w-3" />
           </button>
-          {copied && <span className="shrink-0 text-emerald-600">Copied</span>}
+          {copied && <span className="shrink-0 text-emerald-400">Copied</span>}
         </div>
       ) : (
         <button
           disabled={busy}
           onClick={grant}
-          className="flex items-center gap-1 text-xs font-medium text-neutral-600 hover:underline disabled:opacity-50"
+          className="flex items-center gap-1 text-xs font-medium text-slate-400 hover:text-white hover:underline disabled:opacity-50"
         >
-          <Fingerprint className="h-3.5 w-3.5" /> Grant biometric (face) consent
+          <Fingerprint className="h-3.5 w-3.5 text-indigo-400" /> Grant biometric (face) consent
         </button>
       )}
-      {consentId && <p className="mt-1 text-[10px] text-neutral-400">Show this ID to staff to enroll {ward.displayName}&apos;s face for attendance.</p>}
+      {consentId && <p className="mt-1 text-[10px] text-slate-400">Show this ID to staff to enroll {ward.displayName}&apos;s face for attendance.</p>}
     </div>
   );
 }
@@ -231,57 +231,57 @@ function WardFeesSection({ ward }: { ward: Ward }) {
 
   return (
     <div className="mt-2">
-      <button onClick={() => setOpen((v) => !v)} className="flex items-center gap-1 text-xs font-medium text-neutral-600 hover:underline">
-        <Wallet className="h-3.5 w-3.5" /> {open ? 'Hide fees' : 'View fees'}
+      <button onClick={() => setOpen((v) => !v)} className="flex items-center gap-1 text-xs font-medium text-slate-400 hover:text-white hover:underline">
+        <Wallet className="h-3.5 w-3.5 text-indigo-400" /> {open ? 'Hide fees' : 'View fees'}
       </button>
       {open && (
-        <div className="mt-2 space-y-2 rounded-lg border border-neutral-100 bg-neutral-50 p-3">
-          {error && <p className="text-xs text-red-600">{error}</p>}
-          {notice && <p className="text-xs text-emerald-600">{notice}</p>}
+        <div className="mt-2 space-y-2 rounded-lg border border-white/10 bg-white/5 p-3">
+          {error && <p className="text-xs text-red-400">{error}</p>}
+          {notice && <p className="text-xs text-emerald-400">{notice}</p>}
           {charges === null ? (
-            <p className="text-xs text-neutral-400">Loading…</p>
+            <p className="text-xs text-slate-400">Loading…</p>
           ) : openCharges.length === 0 ? (
-            <p className="text-xs text-neutral-500">No open charges.</p>
+            <p className="text-xs text-slate-400">No open charges.</p>
           ) : (
             <ul className="space-y-1.5">
               {openCharges.map((c) => (
                 <li key={c.id} className="flex items-center justify-between gap-2 text-xs">
-                  <span className="text-neutral-700">
-                    {c.description} — {formatMinor(c.amountMinor, c.currency)} <span className="text-neutral-400">(due {c.dueOn})</span>
+                  <span className="text-slate-200">
+                    {c.description} — {formatMinor(c.amountMinor, c.currency)} <span className="text-slate-400">(due {c.dueOn})</span>
                   </span>
                   {c.status === 'open' && (
-                    <button onClick={() => setProofCharge(c)} className="shrink-0 rounded bg-neutral-200 px-2 py-1 text-[10px] font-medium text-neutral-700 hover:bg-neutral-300">
+                    <button onClick={() => setProofCharge(c)} className="btn-secondary shrink-0 rounded border border-white/10 px-2 py-1 text-[10px] font-medium text-slate-200 hover:bg-white/10">
                       Submit proof
                     </button>
                   )}
-                  {c.status === 'pending_verification' && <span className="shrink-0 text-[10px] text-blue-600">pending review</span>}
+                  {c.status === 'pending_verification' && <span className="shrink-0 text-[10px] text-blue-400 font-semibold">pending review</span>}
                 </li>
               ))}
             </ul>
           )}
 
           {proofCharge && (
-            <div className="space-y-1.5 rounded-lg border border-neutral-200 bg-white p-2">
-              <p className="text-[11px] text-neutral-500">
+            <div className="space-y-1.5 rounded-lg border border-white/10 bg-white/5 p-2">
+              <p className="text-[11px] text-slate-400">
                 Proof of payment for &quot;{proofCharge.description}&quot; ({formatMinor(proofCharge.amountMinor, proofCharge.currency)})
               </p>
               <input
                 value={organizationId}
                 onChange={(e) => setOrganizationId(e.target.value)}
                 placeholder="organization ID"
-                className="w-full rounded border border-neutral-300 px-2 py-1 text-xs outline-none"
+                className="glass-input w-full rounded px-2 py-1 text-xs"
               />
               <input
                 value={proofPath}
                 onChange={(e) => setProofPath(e.target.value)}
                 placeholder="proof file path / reference"
-                className="w-full rounded border border-neutral-300 px-2 py-1 text-xs outline-none"
+                className="glass-input w-full rounded px-2 py-1 text-xs"
               />
               <div className="flex gap-1.5">
-                <button disabled={busy} onClick={submitProof} className="rounded bg-neutral-900 px-2 py-1 text-[10px] font-medium text-white hover:bg-neutral-800 disabled:opacity-50">
+                <button disabled={busy} onClick={submitProof} className="btn-premium rounded px-2 py-1 text-[10px] font-semibold disabled:opacity-50">
                   Submit
                 </button>
-                <button onClick={() => setProofCharge(null)} className="rounded bg-neutral-100 px-2 py-1 text-[10px] font-medium text-neutral-600 hover:bg-neutral-200">
+                <button onClick={() => setProofCharge(null)} className="btn-secondary rounded border border-white/10 px-2 py-1 text-[10px] font-medium text-slate-300 hover:bg-white/10">
                   Cancel
                 </button>
               </div>
@@ -336,14 +336,14 @@ function EnrollWardCard({ ward }: { ward: Ward }) {
     <li className="p-4">
       <div className="flex items-center justify-between gap-4">
         <div>
-          <p className="text-sm font-medium text-neutral-900">{ward.displayName}</p>
-          <p className="text-xs text-neutral-500">
+          <p className="text-sm font-medium text-slate-100">{ward.displayName}</p>
+          <p className="text-xs text-slate-400">
             {ward.relationship}
             {ward.dob ? ` · b. ${ward.dob}` : ''}
             {ward.consentAuthority ? '' : ' · no consent authority'}
           </p>
         </div>
-        <button onClick={() => setOpen((v) => !v)} className="text-xs font-medium text-neutral-600 hover:underline">
+        <button onClick={() => setOpen((v) => !v)} className="text-xs font-medium text-slate-400 hover:text-white hover:underline">
           {open ? 'Close' : 'Request enrollment'}
         </button>
       </div>
@@ -352,10 +352,10 @@ function EnrollWardCard({ ward }: { ward: Ward }) {
       <WardFeesSection ward={ward} />
 
       {open && (
-        <div className="mt-3 space-y-2 rounded-lg border border-neutral-200 p-3">
-          {error && <div className="rounded-lg bg-red-50 p-2 text-xs text-red-700">{error}</div>}
+        <div className="mt-3 space-y-2 rounded-lg border border-white/10 bg-white/5 p-3">
+          {error && <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-2 text-xs text-red-400">{error}</div>}
           {sent ? (
-            <div className="flex items-start gap-2 text-xs text-green-700">
+            <div className="flex items-start gap-2 text-xs text-emerald-400 font-medium">
               <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
               <span>Request sent to {resolved?.name} for {ward.displayName}.</span>
             </div>
@@ -363,31 +363,31 @@ function EnrollWardCard({ ward }: { ward: Ward }) {
             <>
               <div className="flex gap-2">
                 <div className="relative flex-1">
-                  <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-neutral-400" />
+                  <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
                   <input
                     value={slug}
                     onChange={(e) => setSlug(e.target.value)}
                     placeholder="organization URL or code"
-                    className="w-full rounded-lg border border-neutral-300 py-1.5 pl-8 pr-2 text-xs outline-none focus:border-neutral-500"
+                    className="glass-input w-full rounded-lg py-1.5 pl-8 pr-2 text-xs"
                   />
                 </div>
                 <button
                   disabled={loading || !slug.trim()}
                   onClick={search}
-                  className="rounded-lg border border-neutral-300 px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+                  className="btn-secondary rounded-lg border border-white/10 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-white/10 disabled:opacity-50"
                 >
                   Search
                 </button>
               </div>
               {resolved && (
-                <div className="flex items-center justify-between gap-2 rounded-lg bg-neutral-50 p-2">
-                  <span className="text-xs text-neutral-700">
+                <div className="flex items-center justify-between gap-2 rounded-lg border border-white/10 bg-white/5 p-2">
+                  <span className="text-xs text-slate-200">
                     {resolved.name} ({resolved.orgType.replace('_', ' ')})
                   </span>
                   <button
                     disabled={loading}
                     onClick={request}
-                    className="rounded-lg border border-neutral-900 bg-neutral-900 px-3 py-1 text-xs font-medium text-white hover:bg-neutral-800 disabled:opacity-50"
+                    className="btn-premium rounded-lg px-3 py-1 text-xs font-semibold disabled:opacity-50"
                   >
                     Send request
                   </button>
@@ -416,21 +416,21 @@ export default function FamilyPage() {
   return (
     <div className="p-8">
       <div className="mx-auto max-w-2xl">
-        <h1 className="mb-1 flex items-center gap-2 text-lg font-semibold text-neutral-900">
-          <Users className="h-5 w-5 text-neutral-500" /> Family
+        <h1 className="mb-1 flex items-center gap-2 text-lg font-semibold text-white">
+          <Users className="h-5 w-5 text-indigo-400" /> Family
         </h1>
-        <p className="mb-5 text-sm text-neutral-500">Manage your children and request their enrollment at an organization.</p>
+        <p className="mb-5 text-sm text-slate-400">Manage your children and request their enrollment at an organization.</p>
 
-        {error && <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+        {error && <div className="mb-4 rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-400">{error}</div>}
 
         <AddWardForm onAdded={load} />
 
         {wards === null ? (
-          <p className="text-sm text-neutral-400">Loading…</p>
+          <p className="text-sm text-slate-400">Loading…</p>
         ) : wards.length === 0 ? (
-          <p className="text-sm text-neutral-500">You haven&apos;t added any children yet.</p>
+          <p className="text-sm text-slate-400">You haven&apos;t added any children yet.</p>
         ) : (
-          <ul className="divide-y divide-neutral-200 rounded-xl border border-neutral-200 bg-white">
+          <ul className="glass-panel divide-y divide-white/10 rounded-xl overflow-hidden">
             {wards.map((w) => (
               <EnrollWardCard key={w.wardUserId} ward={w} />
             ))}

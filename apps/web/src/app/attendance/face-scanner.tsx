@@ -104,11 +104,11 @@ export function FaceScanner({ onCapture, busy }: { onCapture: (embedding: number
         )}
         <video ref={videoRef} autoPlay playsInline muted className="h-full w-full scale-x-[-1] object-cover" />
       </div>
-      {captureError && <p className="text-xs text-red-600">{captureError}</p>}
+      {captureError && <p className="text-xs text-red-400">{captureError}</p>}
       <button
         onClick={capture}
         disabled={!streamActive || scanning || busy || loadingModels}
-        className="flex items-center gap-1.5 rounded-lg border border-neutral-900 bg-neutral-900 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-neutral-800 disabled:opacity-50"
+        className="btn-premium flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-50"
       >
         {scanning ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
         {scanning ? 'Capturing…' : 'Capture face'}

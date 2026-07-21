@@ -81,12 +81,12 @@ interface Enrollment {
 }
 
 const CHARGE_STATUS_COLORS: Record<ChargeStatus, string> = {
-  open: 'bg-amber-100 text-amber-700',
-  pending_verification: 'bg-blue-100 text-blue-700',
-  paid: 'bg-emerald-100 text-emerald-700',
-  waived: 'bg-neutral-200 text-neutral-700',
-  cancelled: 'bg-neutral-200 text-neutral-500',
-  refunded: 'bg-purple-100 text-purple-700',
+  open: 'bg-amber-500/20 text-amber-300 border border-amber-500/30',
+  pending_verification: 'bg-blue-500/20 text-blue-300 border border-blue-500/30',
+  paid: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30',
+  waived: 'bg-white/10 text-slate-300 border border-white/10',
+  cancelled: 'bg-white/5 text-slate-400 border border-white/10',
+  refunded: 'bg-purple-500/20 text-purple-300 border border-purple-500/30',
 };
 
 export default function FinancePage() {
@@ -132,7 +132,7 @@ export default function FinancePage() {
   if (orgId === undefined) {
     return (
       <div className="flex flex-1 items-center justify-center">
-        <p className="text-sm text-neutral-400">Loading…</p>
+        <p className="text-sm text-slate-400">Loading…</p>
       </div>
     );
   }
@@ -140,10 +140,10 @@ export default function FinancePage() {
   if (orgId === null) {
     return (
       <div className="flex flex-1 items-center justify-center px-4">
-        <div className="max-w-sm space-y-2 rounded-xl border border-neutral-200 bg-white p-8 text-center shadow-sm">
-          <Wallet className="mx-auto h-8 w-8 text-neutral-300" />
-          <h1 className="text-lg font-semibold text-neutral-900">Finance</h1>
-          <p className="text-sm text-neutral-500">Pick an active workspace first.</p>
+        <div className="glass-panel max-w-sm space-y-2 rounded-xl p-8 text-center">
+          <Wallet className="mx-auto h-8 w-8 text-indigo-400" />
+          <h1 className="text-lg font-semibold text-white">Finance</h1>
+          <p className="text-sm text-slate-400">Pick an active workspace first.</p>
         </div>
       </div>
     );
@@ -153,14 +153,14 @@ export default function FinancePage() {
     <div className="p-8">
       <div className="mx-auto max-w-4xl space-y-6">
         <div>
-          <h1 className="mb-1 flex items-center gap-2 text-lg font-semibold text-neutral-900">
-            <Wallet className="h-5 w-5 text-neutral-500" /> Finance
+          <h1 className="mb-1 flex items-center gap-2 text-lg font-semibold text-white">
+            <Wallet className="h-5 w-5 text-indigo-400" /> Finance
           </h1>
-          <p className="text-sm text-neutral-500">Fee policies, charges, payments, ledger, and payouts for the active workspace.</p>
+          <p className="text-sm text-slate-400">Fee policies, charges, payments, ledger, and payouts for the active workspace.</p>
         </div>
 
-        {error && <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</div>}
-        {notice && <div className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">{notice}</div>}
+        {error && <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-400">{error}</div>}
+        {notice && <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm text-emerald-400">{notice}</div>}
 
         <FeePoliciesSection orgId={orgId} feePolicies={feePolicies} run={run} />
         <ChargesSection orgId={orgId} charges={charges} feePolicies={feePolicies} rollLabel={rollLabel} run={run} />
@@ -205,50 +205,50 @@ function FeePoliciesSection({
   }
 
   return (
-    <section className="rounded-xl border border-neutral-200 bg-white p-4">
+    <section className="glass-panel rounded-xl p-4">
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-neutral-900">Fee policies</h2>
-        <button onClick={() => setOpen((v) => !v)} className="flex items-center gap-1 text-xs font-medium text-neutral-600 hover:underline">
+        <h2 className="text-sm font-semibold text-white">Fee policies</h2>
+        <button onClick={() => setOpen((v) => !v)} className="text-xs font-medium text-slate-400 hover:text-white hover:underline">
           <Plus className="h-3.5 w-3.5" /> {open ? 'Close' : 'New policy'}
         </button>
       </div>
 
       {open && (
-        <div className="mb-3 space-y-2 rounded-lg border border-neutral-100 bg-neutral-50 p-3">
+        <div className="mb-3 space-y-2 rounded-lg border border-white/10 bg-white/5 p-3">
           <div className="flex flex-wrap gap-2">
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" className="flex-1 rounded-lg border border-neutral-300 px-3 py-1.5 text-sm outline-none" />
-            <select value={kind} onChange={(e) => setKind(e.target.value as FeePolicyKind)} className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm outline-none">
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" className="glass-input flex-1 rounded-lg px-3 py-1.5 text-sm" />
+            <select value={kind} onChange={(e) => setKind(e.target.value as FeePolicyKind)} className="glass-input rounded-lg px-3 py-1.5 text-sm">
               <option value="recurring_monthly">Recurring — monthly</option>
               <option value="recurring_term">Recurring — term</option>
               <option value="one_time">One-time</option>
               <option value="per_session">Per session</option>
             </select>
-            <input value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="Amount (₹)" type="number" className="w-32 rounded-lg border border-neutral-300 px-3 py-1.5 text-sm outline-none" />
+            <input value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="Amount (₹)" type="number" className="glass-input w-32 rounded-lg px-3 py-1.5 text-sm" />
             <input
               value={absenceFine}
               onChange={(e) => setAbsenceFine(e.target.value)}
               placeholder="Absence fine (₹, optional)"
               type="number"
-              className="w-44 rounded-lg border border-neutral-300 px-3 py-1.5 text-sm outline-none"
+              className="glass-input w-44 rounded-lg px-3 py-1.5 text-sm"
             />
           </div>
-          <p className="text-[11px] text-neutral-400">Absence fine, if set, is what assessFine() charges automatically when a batch using this policy marks a student absent past grace period.</p>
-          <button onClick={submit} className="rounded-lg border border-neutral-900 bg-neutral-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-neutral-800">
+          <p className="text-[11px] text-slate-400">Absence fine, if set, is what assessFine() charges automatically when a batch using this policy marks a student absent past grace period.</p>
+          <button onClick={submit} className="btn-premium rounded-lg px-3 py-1.5 text-xs font-semibold">
             Create
           </button>
         </div>
       )}
 
       {feePolicies.length === 0 ? (
-        <p className="text-sm text-neutral-500">No fee policies yet.</p>
+        <p className="text-sm text-slate-400">No fee policies yet.</p>
       ) : (
-        <ul className="divide-y divide-neutral-200 rounded-xl border border-neutral-200">
+        <ul className="glass-panel divide-y divide-white/10 rounded-xl overflow-hidden">
           {feePolicies.map((p) => (
             <li key={p.id} className="flex items-center justify-between p-3 text-sm">
-              <span>
-                {p.name} <span className="text-neutral-400">({p.kind.replace('_', ' ')})</span>
+              <span className="text-slate-200">
+                {p.name} <span className="text-slate-400">({p.kind.replace('_', ' ')})</span>
               </span>
-              <span className="font-medium text-neutral-800">{formatMinor(p.amountMinor, p.currency)}</span>
+              <span className="font-semibold text-slate-100">{formatMinor(p.amountMinor, p.currency)}</span>
             </li>
           ))}
         </ul>
@@ -297,51 +297,51 @@ function ChargesSection({
   }
 
   return (
-    <section className="rounded-xl border border-neutral-200 bg-white p-4">
+    <section className="glass-panel rounded-xl p-4">
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="flex items-center gap-1.5 text-sm font-semibold text-neutral-900">
-          <Receipt className="h-4 w-4 text-neutral-500" /> Charges
+        <h2 className="flex items-center gap-1.5 text-sm font-semibold text-white">
+          <Receipt className="h-4 w-4 text-indigo-400" /> Charges
         </h2>
-        <button onClick={() => setOpen((v) => !v)} className="flex items-center gap-1 text-xs font-medium text-neutral-600 hover:underline">
+        <button onClick={() => setOpen((v) => !v)} className="text-xs font-medium text-slate-400 hover:text-white hover:underline">
           <Plus className="h-3.5 w-3.5" /> {open ? 'Close' : 'New charge'}
         </button>
       </div>
 
       {open && (
-        <div className="mb-3 space-y-2 rounded-lg border border-neutral-100 bg-neutral-50 p-3">
+        <div className="mb-3 space-y-2 rounded-lg border border-white/10 bg-white/5 p-3">
           <div className="flex flex-wrap gap-2">
-            <input value={enrollmentId} onChange={(e) => setEnrollmentId(e.target.value)} placeholder="Enrollment ID" className="flex-1 rounded-lg border border-neutral-300 px-3 py-1.5 text-sm outline-none" />
-            <input value={branchId} onChange={(e) => setBranchId(e.target.value)} placeholder="Branch ID" className="flex-1 rounded-lg border border-neutral-300 px-3 py-1.5 text-sm outline-none" />
-            <select value={kind} onChange={(e) => setKind(e.target.value as ChargeKind)} className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm outline-none">
+            <input value={enrollmentId} onChange={(e) => setEnrollmentId(e.target.value)} placeholder="Enrollment ID" className="glass-input flex-1 rounded-lg px-3 py-1.5 text-sm" />
+            <input value={branchId} onChange={(e) => setBranchId(e.target.value)} placeholder="Branch ID" className="glass-input flex-1 rounded-lg px-3 py-1.5 text-sm" />
+            <select value={kind} onChange={(e) => setKind(e.target.value as ChargeKind)} className="glass-input rounded-lg px-3 py-1.5 text-sm">
               <option value="fee">Fee</option>
               <option value="fine">Fine</option>
               <option value="adjustment">Adjustment</option>
             </select>
           </div>
           <div className="flex flex-wrap gap-2">
-            <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Description" className="flex-1 rounded-lg border border-neutral-300 px-3 py-1.5 text-sm outline-none" />
-            <input value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="Amount (₹)" type="number" className="w-32 rounded-lg border border-neutral-300 px-3 py-1.5 text-sm outline-none" />
-            <input value={dueOn} onChange={(e) => setDueOn(e.target.value)} type="date" className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm outline-none" />
+            <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Description" className="glass-input flex-1 rounded-lg px-3 py-1.5 text-sm" />
+            <input value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="Amount (₹)" type="number" className="glass-input w-32 rounded-lg px-3 py-1.5 text-sm" />
+            <input value={dueOn} onChange={(e) => setDueOn(e.target.value)} type="date" className="glass-input rounded-lg px-3 py-1.5 text-sm" />
           </div>
-          <button onClick={submit} className="rounded-lg border border-neutral-900 bg-neutral-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-neutral-800">
+          <button onClick={submit} className="btn-premium rounded-lg px-3 py-1.5 text-xs font-semibold">
             Create
           </button>
         </div>
       )}
 
-      {feePolicies.length === 0 && <p className="mb-2 text-[11px] text-neutral-400">No fee policies configured yet — charges can still be created ad hoc.</p>}
+      {feePolicies.length === 0 && <p className="mb-2 text-[11px] text-slate-400">No fee policies configured yet — charges can still be created ad hoc.</p>}
 
       {charges.length === 0 ? (
-        <p className="text-sm text-neutral-500">No charges yet.</p>
+        <p className="text-sm text-slate-400">No charges yet.</p>
       ) : (
-        <ul className="divide-y divide-neutral-200 rounded-xl border border-neutral-200">
+        <ul className="glass-panel divide-y divide-white/10 rounded-xl overflow-hidden">
           {charges.map((c) => (
             <li key={c.id} className="flex items-center justify-between gap-3 p-3 text-sm">
               <div>
-                <p className="text-neutral-800">
+                <p className="text-slate-200">
                   {rollLabel(c.enrollmentId)} — {c.description}
                 </p>
-                <p className="text-xs text-neutral-400">
+                <p className="text-xs text-slate-400">
                   {formatMinor(c.amountMinor, c.currency)} · due {c.dueOn}
                 </p>
               </div>
@@ -349,16 +349,16 @@ function ChargesSection({
                 <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${CHARGE_STATUS_COLORS[c.status]}`}>{c.status.replace('_', ' ')}</span>
                 {(c.status === 'open' || c.status === 'pending_verification') && (
                   <>
-                    <button onClick={() => run(() => api(`/api/v1/orgs/${orgId}/finance/charges/${c.id}/waive`, { method: 'POST' }), 'Charge waived.')} className="rounded bg-neutral-100 px-1.5 py-1 text-[10px] font-medium text-neutral-600 hover:bg-neutral-200">
+                    <button onClick={() => run(() => api(`/api/v1/orgs/${orgId}/finance/charges/${c.id}/waive`, { method: 'POST' }), 'Charge waived.')} className="btn-secondary rounded border border-white/10 px-1.5 py-1 text-[10px] font-medium text-slate-300 hover:bg-white/10">
                       Waive
                     </button>
-                    <button onClick={() => run(() => api(`/api/v1/orgs/${orgId}/finance/charges/${c.id}/cancel`, { method: 'POST' }), 'Charge cancelled.')} className="rounded bg-neutral-100 px-1.5 py-1 text-[10px] font-medium text-neutral-600 hover:bg-neutral-200">
+                    <button onClick={() => run(() => api(`/api/v1/orgs/${orgId}/finance/charges/${c.id}/cancel`, { method: 'POST' }), 'Charge cancelled.')} className="btn-secondary rounded border border-white/10 px-1.5 py-1 text-[10px] font-medium text-slate-300 hover:bg-white/10">
                       Cancel
                     </button>
                   </>
                 )}
                 {c.status === 'paid' && (
-                  <button onClick={() => run(() => api(`/api/v1/orgs/${orgId}/finance/charges/${c.id}/refund`, { method: 'POST' }), 'Charge refunded.')} className="rounded bg-purple-100 px-1.5 py-1 text-[10px] font-medium text-purple-700 hover:bg-purple-200">
+                  <button onClick={() => run(() => api(`/api/v1/orgs/${orgId}/finance/charges/${c.id}/refund`, { method: 'POST' }), 'Charge refunded.')} className="rounded border border-purple-500/30 bg-purple-500/20 px-1.5 py-1 text-[10px] font-medium text-purple-300 hover:bg-purple-500/30">
                     Refund
                   </button>
                 )}
@@ -408,26 +408,26 @@ function PaymentsSection({
   const pendingProof = payments.filter((p) => p.status === 'pending_verification' && p.method === 'manual_proof');
 
   return (
-    <section className="rounded-xl border border-neutral-200 bg-white p-4">
+    <section className="glass-panel rounded-xl p-4">
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-neutral-900">Payments</h2>
-        <button onClick={() => setOpen((v) => !v)} className="flex items-center gap-1 text-xs font-medium text-neutral-600 hover:underline">
+        <h2 className="text-sm font-semibold text-white">Payments</h2>
+        <button onClick={() => setOpen((v) => !v)} className="text-xs font-medium text-slate-400 hover:text-white hover:underline">
           <Plus className="h-3.5 w-3.5" /> {open ? 'Close' : 'Record cash/waiver'}
         </button>
       </div>
 
       {open && (
-        <div className="mb-3 space-y-2 rounded-lg border border-neutral-100 bg-neutral-50 p-3">
+        <div className="mb-3 space-y-2 rounded-lg border border-white/10 bg-white/5 p-3">
           <div className="flex flex-wrap gap-2">
-            <input value={payerUserId} onChange={(e) => setPayerUserId(e.target.value)} placeholder="Payer user ID" className="flex-1 rounded-lg border border-neutral-300 px-3 py-1.5 text-sm outline-none" />
-            <select value={method} onChange={(e) => setMethod(e.target.value as 'cash' | 'waiver')} className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm outline-none">
+            <input value={payerUserId} onChange={(e) => setPayerUserId(e.target.value)} placeholder="Payer user ID" className="glass-input flex-1 rounded-lg px-3 py-1.5 text-sm" />
+            <select value={method} onChange={(e) => setMethod(e.target.value as 'cash' | 'waiver')} className="glass-input rounded-lg px-3 py-1.5 text-sm">
               <option value="cash">Cash</option>
               <option value="waiver">Waiver</option>
             </select>
-            <input value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="Amount (₹)" type="number" className="w-32 rounded-lg border border-neutral-300 px-3 py-1.5 text-sm outline-none" />
+            <input value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="Amount (₹)" type="number" className="glass-input w-32 rounded-lg px-3 py-1.5 text-sm" />
           </div>
-          <input value={chargeIdsText} onChange={(e) => setChargeIdsText(e.target.value)} placeholder="Charge IDs, comma-separated" className="w-full rounded-lg border border-neutral-300 px-3 py-1.5 text-sm outline-none" />
-          <button onClick={submit} className="rounded-lg border border-neutral-900 bg-neutral-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-neutral-800">
+          <input value={chargeIdsText} onChange={(e) => setChargeIdsText(e.target.value)} placeholder="Charge IDs, comma-separated" className="glass-input w-full rounded-lg px-3 py-1.5 text-sm" />
+          <button onClick={submit} className="btn-premium rounded-lg px-3 py-1.5 text-xs font-semibold">
             Record
           </button>
         </div>
@@ -435,11 +435,11 @@ function PaymentsSection({
 
       {pendingProof.length > 0 && (
         <div className="mb-3">
-          <h3 className="mb-1.5 text-xs font-semibold text-neutral-600">Pending proof review</h3>
-          <ul className="divide-y divide-neutral-200 rounded-xl border border-neutral-200">
+          <h3 className="mb-1.5 text-xs font-semibold text-slate-300">Pending proof review</h3>
+          <ul className="glass-panel divide-y divide-white/10 rounded-xl overflow-hidden">
             {pendingProof.map((p) => (
               <li key={p.id} className="flex items-center justify-between gap-3 p-3 text-sm">
-                <span>
+                <span className="text-slate-200">
                   {formatMinor(p.amountMinor, p.currency)} — {p.proofPath ?? 'no proof path'}
                 </span>
                 <div className="flex items-center gap-1.5">
@@ -448,13 +448,13 @@ function PaymentsSection({
                       const chargeIds = charges.filter((c) => c.status === 'open' || c.status === 'pending_verification').map((c) => c.id);
                       run(() => api(`/api/v1/orgs/${orgId}/finance/payments/${p.id}/approve`, { method: 'POST', body: JSON.stringify({ chargeIds }) }), 'Payment approved.');
                     }}
-                    className="flex items-center gap-1 rounded bg-emerald-600 px-2 py-1 text-[10px] font-medium text-white hover:bg-emerald-700"
+                    className="btn-premium flex items-center gap-1 rounded px-2 py-1 text-[10px] font-semibold"
                   >
                     <Check className="h-3 w-3" /> Approve
                   </button>
                   <button
                     onClick={() => run(() => api(`/api/v1/orgs/${orgId}/finance/payments/${p.id}/reject`, { method: 'POST', body: JSON.stringify({ reason: 'Rejected by staff' }) }), 'Payment rejected.')}
-                    className="flex items-center gap-1 rounded bg-neutral-200 px-2 py-1 text-[10px] font-medium text-neutral-700 hover:bg-neutral-300"
+                    className="btn-secondary flex items-center gap-1 rounded border border-white/10 px-2 py-1 text-[10px] font-medium text-slate-300 hover:bg-white/10"
                   >
                     <X className="h-3 w-3" /> Reject
                   </button>
@@ -466,15 +466,15 @@ function PaymentsSection({
       )}
 
       {payments.length === 0 ? (
-        <p className="text-sm text-neutral-500">No payments yet.</p>
+        <p className="text-sm text-slate-400">No payments yet.</p>
       ) : (
-        <ul className="divide-y divide-neutral-200 rounded-xl border border-neutral-200">
+        <ul className="glass-panel divide-y divide-white/10 rounded-xl overflow-hidden">
           {payments.slice(0, 20).map((p) => (
             <li key={p.id} className="flex items-center justify-between p-3 text-sm">
-              <span>
-                {formatMinor(p.amountMinor, p.currency)} <span className="text-neutral-400">({p.method})</span>
+              <span className="text-slate-200">
+                {formatMinor(p.amountMinor, p.currency)} <span className="text-slate-400">({p.method})</span>
               </span>
-              <span className="text-xs text-neutral-500">{p.status.replace('_', ' ')}</span>
+              <span className="text-xs text-slate-400 font-medium">{p.status.replace('_', ' ')}</span>
             </li>
           ))}
         </ul>
@@ -495,40 +495,40 @@ function PayoutsSection({ orgId, payouts, run }: { orgId: string; payouts: Payou
   }
 
   return (
-    <section className="rounded-xl border border-neutral-200 bg-white p-4">
+    <section className="glass-panel rounded-xl p-4">
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="flex items-center gap-1.5 text-sm font-semibold text-neutral-900">
-          <Landmark className="h-4 w-4 text-neutral-500" /> Payouts
+        <h2 className="flex items-center gap-1.5 text-sm font-semibold text-white">
+          <Landmark className="h-4 w-4 text-indigo-400" /> Payouts
         </h2>
-        <button onClick={() => setOpen((v) => !v)} className="flex items-center gap-1 text-xs font-medium text-neutral-600 hover:underline">
+        <button onClick={() => setOpen((v) => !v)} className="text-xs font-medium text-slate-400 hover:text-white hover:underline">
           <Plus className="h-3.5 w-3.5" /> {open ? 'Close' : 'Request payout'}
         </button>
       </div>
 
       {open && (
-        <div className="mb-3 flex gap-2 rounded-lg border border-neutral-100 bg-neutral-50 p-3">
-          <input value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="Amount (₹)" type="number" className="flex-1 rounded-lg border border-neutral-300 px-3 py-1.5 text-sm outline-none" />
-          <button onClick={submit} className="rounded-lg border border-neutral-900 bg-neutral-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-neutral-800">
+        <div className="mb-3 flex gap-2 rounded-lg border border-white/10 bg-white/5 p-3">
+          <input value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="Amount (₹)" type="number" className="glass-input flex-1 rounded-lg px-3 py-1.5 text-sm" />
+          <button onClick={submit} className="btn-premium rounded-lg px-3 py-1.5 text-xs font-semibold">
             Request
           </button>
         </div>
       )}
 
       {payouts.length === 0 ? (
-        <p className="text-sm text-neutral-500">No payouts yet.</p>
+        <p className="text-sm text-slate-400">No payouts yet.</p>
       ) : (
-        <ul className="divide-y divide-neutral-200 rounded-xl border border-neutral-200">
+        <ul className="glass-panel divide-y divide-white/10 rounded-xl overflow-hidden">
           {payouts.map((p) => (
             <li key={p.id} className="flex items-center justify-between p-3 text-sm">
-              <span>{formatMinor(p.amountMinor, p.currency)}</span>
+              <span className="text-slate-200">{formatMinor(p.amountMinor, p.currency)}</span>
               <div className="flex items-center gap-1.5">
-                <span className="text-xs text-neutral-500">{p.status}</span>
+                <span className="text-xs text-slate-400 font-medium">{p.status}</span>
                 {p.status === 'pending' && (
                   <>
-                    <button onClick={() => run(() => api(`/api/v1/orgs/${orgId}/finance/payouts/${p.id}/settle`, { method: 'POST' }), 'Payout settled.')} className="rounded bg-emerald-600 px-2 py-1 text-[10px] font-medium text-white hover:bg-emerald-700">
+                    <button onClick={() => run(() => api(`/api/v1/orgs/${orgId}/finance/payouts/${p.id}/settle`, { method: 'POST' }), 'Payout settled.')} className="btn-premium rounded px-2 py-1 text-[10px] font-semibold">
                       Settle
                     </button>
-                    <button onClick={() => run(() => api(`/api/v1/orgs/${orgId}/finance/payouts/${p.id}/fail`, { method: 'POST' }), 'Payout marked failed.')} className="rounded bg-neutral-200 px-2 py-1 text-[10px] font-medium text-neutral-700 hover:bg-neutral-300">
+                    <button onClick={() => run(() => api(`/api/v1/orgs/${orgId}/finance/payouts/${p.id}/fail`, { method: 'POST' }), 'Payout marked failed.')} className="btn-secondary rounded border border-white/10 px-2 py-1 text-[10px] font-medium text-slate-300 hover:bg-white/10">
                       Mark failed
                     </button>
                   </>
@@ -544,20 +544,20 @@ function PayoutsSection({ orgId, payouts, run }: { orgId: string; payouts: Payou
 
 function LedgerSection({ ledger }: { ledger: LedgerEntry[] }) {
   return (
-    <section className="rounded-xl border border-neutral-200 bg-white p-4">
-      <h2 className="mb-3 flex items-center gap-1.5 text-sm font-semibold text-neutral-900">
-        <ScrollText className="h-4 w-4 text-neutral-500" /> Ledger
+    <section className="glass-panel rounded-xl p-4">
+      <h2 className="mb-3 flex items-center gap-1.5 text-sm font-semibold text-white">
+        <ScrollText className="h-4 w-4 text-indigo-400" /> Ledger
       </h2>
       {ledger.length === 0 ? (
-        <p className="text-sm text-neutral-500">No ledger entries yet.</p>
+        <p className="text-sm text-slate-400">No ledger entries yet.</p>
       ) : (
-        <ul className="divide-y divide-neutral-200 rounded-xl border border-neutral-200">
+        <ul className="glass-panel divide-y divide-white/10 rounded-xl overflow-hidden">
           {ledger.slice(0, 20).map((e) => (
             <li key={e.id} className="flex items-center justify-between p-3 text-xs">
-              <span className="text-neutral-500">
+              <span className="text-slate-400">
                 {e.refType} · {new Date(e.occurredAt).toLocaleString()}
               </span>
-              <span className={e.amountMinor >= 0 ? 'font-medium text-emerald-700' : 'font-medium text-red-700'}>
+              <span className={e.amountMinor >= 0 ? 'font-semibold text-emerald-400' : 'font-semibold text-red-400'}>
                 {e.amountMinor >= 0 ? '+' : ''}
                 {formatMinor(e.amountMinor, e.currency)}
               </span>

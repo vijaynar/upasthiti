@@ -124,40 +124,40 @@ export default function MyNotificationsPage() {
     <div className="p-8">
       <div className="mx-auto max-w-md space-y-6">
         <div>
-          <h1 className="mb-1 flex items-center gap-2 text-lg font-semibold text-neutral-900">
-            <Bell className="h-5 w-5 text-neutral-500" /> Notification settings
+          <h1 className="mb-1 flex items-center gap-2 text-lg font-semibold text-white">
+            <Bell className="h-5 w-5 text-indigo-400" /> Notification settings
           </h1>
-          <p className="text-sm text-neutral-500">Choose which alerts reach you, and on which device.</p>
+          <p className="text-sm text-slate-400">Choose which alerts reach you, and on which device.</p>
         </div>
 
-        {error && <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</div>}
-        {notice && <div className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">{notice}</div>}
+        {error && <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-400">{error}</div>}
+        {notice && <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm text-emerald-400">{notice}</div>}
 
-        <section className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
-          <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-neutral-900">
-            <Smartphone className="h-4 w-4 text-neutral-400" /> Push on this device
+        <section className="glass-panel rounded-xl p-5">
+          <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-white">
+            <Smartphone className="h-4 w-4 text-indigo-400" /> Push on this device
           </h2>
           {pushEnabled === null ? (
-            <p className="text-sm text-neutral-400">Checking…</p>
+            <p className="text-sm text-slate-400">Checking…</p>
           ) : pushEnabled ? (
-            <button onClick={disablePush} className="rounded bg-neutral-100 px-3 py-1.5 text-xs font-medium text-neutral-700 hover:bg-neutral-200">
+            <button onClick={disablePush} className="btn-secondary rounded-lg border border-white/10 px-3 py-1.5 text-xs font-medium text-slate-300 hover:bg-white/10">
               Disable push here
             </button>
           ) : (
-            <button onClick={enablePush} className="rounded bg-neutral-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-neutral-700">
+            <button onClick={enablePush} className="btn-premium rounded-lg px-3 py-1.5 text-xs font-semibold">
               Enable push here
             </button>
           )}
         </section>
 
-        <section className="rounded-xl border border-neutral-200 bg-white shadow-sm">
-          <div className="border-b border-neutral-100 px-5 py-3">
-            <h2 className="text-sm font-semibold text-neutral-900">Alert types</h2>
+        <section className="glass-panel rounded-xl overflow-hidden">
+          <div className="border-b border-white/10 px-5 py-3">
+            <h2 className="text-sm font-semibold text-white">Alert types</h2>
           </div>
-          <ul className="divide-y divide-neutral-100">
+          <ul className="divide-y divide-white/10">
             {KNOWN_KINDS.map(({ kind, label }) => (
               <li key={kind} className="flex items-center justify-between px-5 py-3">
-                <span className="text-sm text-neutral-800">{label}</span>
+                <span className="text-sm text-slate-200">{label}</span>
                 <div className="flex gap-3">
                   {KNOWN_CHANNELS.map(({ channel, label: chLabel }) => {
                     const enabled = isEnabled(channel, kind);
@@ -165,8 +165,8 @@ export default function MyNotificationsPage() {
                       <button
                         key={channel}
                         onClick={() => toggle(channel, kind)}
-                        className={`flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium ${
-                          enabled ? 'bg-emerald-100 text-emerald-700' : 'bg-neutral-100 text-neutral-400'
+                        className={`flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium transition ${
+                          enabled ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-white/5 text-slate-400 border border-white/10'
                         }`}
                       >
                         {enabled ? <Bell className="h-3 w-3" /> : <BellOff className="h-3 w-3" />} {chLabel}

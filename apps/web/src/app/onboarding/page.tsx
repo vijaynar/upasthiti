@@ -40,7 +40,7 @@ async function activateWorkspace(router: ReturnType<typeof useRouter>, organizat
 
 function ErrorBanner({ message }: { message: string }) {
   return (
-    <div className="flex items-start gap-2 rounded-lg bg-red-50 p-3 text-sm text-red-700">
+    <div className="flex items-start gap-2 rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-400">
       <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
       <span>{message}</span>
     </div>
@@ -77,16 +77,16 @@ function CreateOrgForm({ orgType, fixedType, title }: { orgType: string; fixedTy
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <h2 className="text-lg font-semibold text-neutral-900">{title}</h2>
+      <h2 className="text-lg font-semibold text-white">{title}</h2>
       {error && <ErrorBanner message={error} />}
 
       {!fixedType && (
         <div>
-          <label className="mb-1 block text-sm font-medium text-neutral-700">Type</label>
+          <label className="mb-1 block text-sm font-medium text-slate-400">Type</label>
           <select
             value={type}
             onChange={(e) => setType(e.target.value)}
-            className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-neutral-500 focus:outline-none"
+            className="glass-input w-full rounded-lg px-3 py-2 text-sm"
           >
             {ACADEMY_TYPES.map((t) => (
               <option key={t.value} value={t.value}>
@@ -98,7 +98,7 @@ function CreateOrgForm({ orgType, fixedType, title }: { orgType: string; fixedTy
       )}
 
       <div>
-        <label className="mb-1 block text-sm font-medium text-neutral-700">Name</label>
+        <label className="mb-1 block text-sm font-medium text-slate-400">Name</label>
         <input
           required
           value={name}
@@ -107,14 +107,14 @@ function CreateOrgForm({ orgType, fixedType, title }: { orgType: string; fixedTy
             if (!slugTouched) setSlug(slugify(e.target.value));
           }}
           placeholder="Elite Sports Academy"
-          className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-neutral-500 focus:outline-none"
+          className="glass-input w-full rounded-lg px-3 py-2 text-sm"
         />
       </div>
 
       <div>
-        <label className="mb-1 block text-sm font-medium text-neutral-700">URL</label>
-        <div className="flex items-center rounded-lg border border-neutral-300 px-3 py-2 text-sm focus-within:border-neutral-500">
-          <span className="text-neutral-400">abhyas.app/</span>
+        <label className="mb-1 block text-sm font-medium text-slate-400">URL</label>
+        <div className="glass-input flex items-center rounded-lg px-3 py-2 text-sm">
+          <span className="text-slate-400">abhyas.app/</span>
           <input
             required
             value={slug}
@@ -122,7 +122,7 @@ function CreateOrgForm({ orgType, fixedType, title }: { orgType: string; fixedTy
               setSlugTouched(true);
               setSlug(slugify(e.target.value));
             }}
-            className="flex-1 border-0 p-0 outline-none"
+            className="flex-1 bg-transparent border-0 p-0 text-slate-100 outline-none"
           />
         </div>
       </div>
@@ -130,7 +130,7 @@ function CreateOrgForm({ orgType, fixedType, title }: { orgType: string; fixedTy
       <button
         type="submit"
         disabled={loading}
-        className="w-full rounded-lg bg-neutral-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-neutral-800 disabled:opacity-50"
+        className="btn-premium w-full rounded-lg px-4 py-2.5 text-sm font-semibold disabled:opacity-50"
       >
         {loading ? 'Creating…' : 'Create workspace'}
       </button>
@@ -165,22 +165,22 @@ function AcceptInviteForm() {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <h2 className="text-lg font-semibold text-neutral-900">Accept an invitation</h2>
+      <h2 className="text-lg font-semibold text-white">Accept an invitation</h2>
       {error && <ErrorBanner message={error} />}
       <div>
-        <label className="mb-1 block text-sm font-medium text-neutral-700">Invitation code</label>
+        <label className="mb-1 block text-sm font-medium text-slate-400">Invitation code</label>
         <input
           required
           value={token}
           onChange={(e) => setToken(e.target.value)}
           placeholder="Paste the code from your invite"
-          className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-neutral-500 focus:outline-none"
+          className="glass-input w-full rounded-lg px-3 py-2 text-sm"
         />
       </div>
       <button
         type="submit"
         disabled={loading}
-        className="w-full rounded-lg bg-neutral-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-neutral-800 disabled:opacity-50"
+        className="btn-premium w-full rounded-lg px-4 py-2.5 text-sm font-semibold disabled:opacity-50"
       >
         {loading ? 'Joining…' : 'Join workspace'}
       </button>
@@ -235,7 +235,7 @@ function JoinRequestForm() {
 
   if (sent) {
     return (
-      <div className="flex items-start gap-2 rounded-lg bg-green-50 p-3 text-sm text-green-700">
+      <div className="flex items-start gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm text-emerald-400">
         <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
         <span>Your request to join {resolved?.name} has been sent — you&apos;ll get access once it&apos;s approved.</span>
       </div>
@@ -244,40 +244,40 @@ function JoinRequestForm() {
 
   return (
     <div className="space-y-4">
-      <h2 className="text-lg font-semibold text-neutral-900">Find your organization</h2>
+      <h2 className="text-lg font-semibold text-white">Find your organization</h2>
       {error && <ErrorBanner message={error} />}
 
       <form onSubmit={handleSearch} className="flex gap-2">
         <div className="relative flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input
             required
             value={slug}
             onChange={(e) => setSlug(e.target.value)}
             placeholder="organization URL or code"
-            className="w-full rounded-lg border border-neutral-300 py-2.5 pl-9 pr-3 text-sm focus:border-neutral-500 focus:outline-none"
+            className="glass-input w-full rounded-lg py-2.5 pl-9 pr-3 text-sm"
           />
         </div>
         <button
           type="submit"
           disabled={loading}
-          className="rounded-lg border border-neutral-300 px-4 py-2.5 text-sm font-medium text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+          className="btn-secondary rounded-lg border border-white/10 px-4 py-2.5 text-sm font-medium text-slate-200 hover:bg-white/10 disabled:opacity-50"
         >
           Search
         </button>
       </form>
 
       {resolved && (
-        <div className="space-y-3 rounded-lg border border-neutral-200 p-4">
-          <p className="text-sm text-neutral-700">
-            Found <span className="font-medium">{resolved.name}</span> ({resolved.orgType.replace('_', ' ')})
+        <div className="space-y-3 rounded-lg border border-white/10 bg-white/5 p-4">
+          <p className="text-sm text-slate-200">
+            Found <span className="font-semibold text-white">{resolved.name}</span> ({resolved.orgType.replace('_', ' ')})
           </p>
           <div>
-            <label className="mb-1 block text-sm font-medium text-neutral-700">I am a</label>
+            <label className="mb-1 block text-sm font-medium text-slate-400">I am a</label>
             <select
               value={role}
               onChange={(e) => setRole(e.target.value as typeof role)}
-              className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm focus:border-neutral-500 focus:outline-none"
+              className="glass-input w-full rounded-lg px-3 py-2 text-sm"
             >
               <option value="student">Student</option>
               <option value="coach">Coach</option>
@@ -287,7 +287,7 @@ function JoinRequestForm() {
           <button
             onClick={handleRequest}
             disabled={loading}
-            className="w-full rounded-lg bg-neutral-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-neutral-800 disabled:opacity-50"
+            className="btn-premium w-full rounded-lg px-4 py-2.5 text-sm font-semibold disabled:opacity-50"
           >
             {loading ? 'Sending…' : 'Request to join'}
           </button>
@@ -332,8 +332,8 @@ export default function OnboardingPage() {
   return (
     <Shell>
       <div className="text-center">
-        <h1 className="text-xl font-semibold text-neutral-900">You&apos;re signed in.</h1>
-        <p className="mt-1 text-sm text-neutral-500">What brings you to Abhyas?</p>
+        <h1 className="text-xl font-semibold text-white">You&apos;re signed in.</h1>
+        <p className="mt-1 text-sm text-slate-400">What brings you to Abhyas?</p>
       </div>
       <div className="mt-6 space-y-3">
         <IntentButton icon={UserRound} label="I'm a coach" hint="Set up your own coaching workspace" onClick={() => setIntent('coach')} />
@@ -359,12 +359,12 @@ function IntentButton({
   return (
     <button
       onClick={onClick}
-      className="flex w-full items-center gap-3 rounded-lg border border-neutral-200 bg-white p-4 text-left transition hover:border-neutral-300 hover:bg-neutral-50"
+      className="flex w-full items-center gap-3 rounded-lg border border-white/10 bg-white/5 p-4 text-left transition hover:border-white/20 hover:bg-white/10"
     >
-      <Icon className="h-5 w-5 shrink-0 text-neutral-500" />
+      <Icon className="h-5 w-5 shrink-0 text-indigo-400" />
       <span>
-        <span className="block text-sm font-medium text-neutral-900">{label}</span>
-        <span className="block text-xs text-neutral-500">{hint}</span>
+        <span className="block text-sm font-medium text-slate-100">{label}</span>
+        <span className="block text-xs text-slate-400">{hint}</span>
       </span>
     </button>
   );
@@ -372,10 +372,10 @@ function IntentButton({
 
 function Shell({ children, onBack }: { children: React.ReactNode; onBack?: () => void }) {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-neutral-50 px-4">
-      <div className="w-full max-w-sm space-y-4 rounded-xl border border-neutral-200 bg-white p-8 shadow-sm">
+    <div className="flex min-h-screen items-center justify-center px-4 py-12">
+      <div className="glass-panel w-full max-w-sm space-y-4 rounded-xl p-8">
         {onBack && (
-          <button onClick={onBack} className="text-xs text-neutral-400 hover:text-neutral-600">
+          <button onClick={onBack} className="text-xs text-slate-400 hover:text-white">
             ← Back
           </button>
         )}

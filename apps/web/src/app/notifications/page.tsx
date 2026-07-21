@@ -39,11 +39,11 @@ interface Delivery {
 }
 
 const STATUS_COLORS: Record<DeliveryStatus, string> = {
-  queued: 'bg-amber-100 text-amber-700',
-  sent: 'bg-emerald-100 text-emerald-700',
-  delivered: 'bg-emerald-100 text-emerald-700',
-  failed: 'bg-red-100 text-red-700',
-  fallback: 'bg-blue-100 text-blue-700',
+  queued: 'bg-amber-500/20 text-amber-300 border border-amber-500/30',
+  sent: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30',
+  delivered: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30',
+  failed: 'bg-red-500/20 text-red-300 border border-red-500/30',
+  fallback: 'bg-blue-500/20 text-blue-300 border border-blue-500/30',
 };
 
 export default function NotificationsPage() {
@@ -79,7 +79,7 @@ export default function NotificationsPage() {
   if (orgId === undefined) {
     return (
       <div className="flex flex-1 items-center justify-center">
-        <p className="text-sm text-neutral-400">Loading…</p>
+        <p className="text-sm text-slate-400">Loading…</p>
       </div>
     );
   }
@@ -87,10 +87,10 @@ export default function NotificationsPage() {
   if (orgId === null) {
     return (
       <div className="flex flex-1 items-center justify-center px-4">
-        <div className="max-w-sm space-y-2 rounded-xl border border-neutral-200 bg-white p-8 text-center shadow-sm">
-          <Bell className="mx-auto h-8 w-8 text-neutral-300" />
-          <h1 className="text-lg font-semibold text-neutral-900">Notifications</h1>
-          <p className="text-sm text-neutral-500">Pick an active workspace first.</p>
+        <div className="glass-panel max-w-sm space-y-2 rounded-xl p-8 text-center">
+          <Bell className="mx-auto h-8 w-8 text-indigo-400" />
+          <h1 className="text-lg font-semibold text-white">Notifications</h1>
+          <p className="text-sm text-slate-400">Pick an active workspace first.</p>
         </div>
       </div>
     );
@@ -100,14 +100,14 @@ export default function NotificationsPage() {
     <div className="p-8">
       <div className="mx-auto max-w-4xl space-y-6">
         <div>
-          <h1 className="mb-1 flex items-center gap-2 text-lg font-semibold text-neutral-900">
-            <Bell className="h-5 w-5 text-neutral-500" /> Notifications
+          <h1 className="mb-1 flex items-center gap-2 text-lg font-semibold text-white">
+            <Bell className="h-5 w-5 text-indigo-400" /> Notifications
           </h1>
-          <p className="text-sm text-neutral-500">Templates, manual sends, and the delivery log for the active workspace.</p>
+          <p className="text-sm text-slate-400">Templates, manual sends, and the delivery log for the active workspace.</p>
         </div>
 
-        {error && <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</div>}
-        {notice && <div className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-700">{notice}</div>}
+        {error && <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-400">{error}</div>}
+        {notice && <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm text-emerald-400">{notice}</div>}
 
         <TemplatesSection orgId={orgId} templates={templates} run={run} />
         <SendSection orgId={orgId} templates={templates} run={run} />
@@ -133,27 +133,27 @@ function TemplatesSection({
   const [body, setBody] = useState('');
 
   return (
-    <section className="rounded-xl border border-neutral-200 bg-white shadow-sm">
-      <div className="flex items-center justify-between border-b border-neutral-100 px-5 py-3">
-        <h2 className="flex items-center gap-2 text-sm font-semibold text-neutral-900">
-          <FileText className="h-4 w-4 text-neutral-400" /> Templates
+    <section className="glass-panel rounded-xl overflow-hidden">
+      <div className="flex items-center justify-between border-b border-white/10 px-5 py-3">
+        <h2 className="flex items-center gap-2 text-sm font-semibold text-white">
+          <FileText className="h-4 w-4 text-indigo-400" /> Templates
         </h2>
-        <button onClick={() => setOpen((o) => !o)} className="text-xs font-medium text-neutral-600 hover:text-neutral-900">
+        <button onClick={() => setOpen((o) => !o)} className="text-xs font-medium text-slate-400 hover:text-white hover:underline">
           {open ? 'Cancel' : '+ New / edit'}
         </button>
       </div>
 
       {open && (
-        <div className="space-y-2 border-b border-neutral-100 px-5 py-3">
-          <input value={key} onChange={(e) => setKey(e.target.value)} placeholder="Key, e.g. finance.payment_reminder" className="w-full rounded border border-neutral-200 px-2 py-1 text-sm" />
+        <div className="space-y-2 border-b border-white/10 px-5 py-3">
+          <input value={key} onChange={(e) => setKey(e.target.value)} placeholder="Key, e.g. finance.payment_reminder" className="glass-input w-full rounded px-2 py-1 text-sm" />
           <div className="flex gap-2">
-            <select value={channel} onChange={(e) => setChannel(e.target.value as Channel)} className="rounded border border-neutral-200 px-2 py-1 text-sm">
+            <select value={channel} onChange={(e) => setChannel(e.target.value as Channel)} className="glass-input rounded px-2 py-1 text-sm">
               <option value="email">Email</option>
               <option value="push">Push</option>
               <option value="whatsapp">WhatsApp</option>
               <option value="sms">SMS</option>
             </select>
-            <select value={language} onChange={(e) => setLanguage(e.target.value as Language)} className="rounded border border-neutral-200 px-2 py-1 text-sm">
+            <select value={language} onChange={(e) => setLanguage(e.target.value as Language)} className="glass-input rounded px-2 py-1 text-sm">
               <option value="en">English</option>
               <option value="hi">Hindi</option>
               <option value="te">Telugu</option>
@@ -164,32 +164,32 @@ function TemplatesSection({
             onChange={(e) => setBody(e.target.value)}
             placeholder="Body — use {{variableName}} placeholders"
             rows={2}
-            className="w-full rounded border border-neutral-200 px-2 py-1 text-sm"
+            className="glass-input w-full rounded px-2 py-1 text-sm"
           />
           <button
             onClick={() =>
               run(() => api(`/api/v1/orgs/${orgId}/notifications/templates`, { method: 'POST', body: JSON.stringify({ key, channel, language, body }) }), 'Template saved.')
             }
-            className="rounded bg-neutral-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-neutral-700"
+            className="btn-premium rounded px-3 py-1.5 text-xs font-semibold"
           >
             Save template
           </button>
         </div>
       )}
 
-      <ul className="divide-y divide-neutral-100">
+      <ul className="divide-y divide-white/10">
         {templates.map((t) => (
           <li key={t.id} className="flex items-center justify-between px-5 py-2 text-sm">
             <div>
-              <span className="font-medium text-neutral-900">{t.key}</span>
-              <span className="ml-2 text-xs text-neutral-500">
+              <span className="font-medium text-slate-100">{t.key}</span>
+              <span className="ml-2 text-xs text-slate-400">
                 {t.channel} · {t.language} {t.organizationId === null && '· platform library'}
               </span>
             </div>
-            <span className="max-w-xs truncate text-xs text-neutral-400">{t.body}</span>
+            <span className="max-w-xs truncate text-xs text-slate-400">{t.body}</span>
           </li>
         ))}
-        {templates.length === 0 && <li className="px-5 py-3 text-sm text-neutral-400">No templates yet.</li>}
+        {templates.length === 0 && <li className="px-5 py-3 text-sm text-slate-400">No templates yet.</li>}
       </ul>
     </section>
   );
@@ -211,10 +211,10 @@ function SendSection({
   const [variables, setVariables] = useState('{}');
 
   return (
-    <section className="rounded-xl border border-neutral-200 bg-white shadow-sm">
-      <div className="border-b border-neutral-100 px-5 py-3">
-        <h2 className="flex items-center gap-2 text-sm font-semibold text-neutral-900">
-          <Send className="h-4 w-4 text-neutral-400" /> Send manually
+    <section className="glass-panel rounded-xl overflow-hidden">
+      <div className="border-b border-white/10 px-5 py-3">
+        <h2 className="flex items-center gap-2 text-sm font-semibold text-white">
+          <Send className="h-4 w-4 text-indigo-400" /> Send manually
         </h2>
       </div>
       <div className="space-y-2 px-5 py-3">
@@ -222,22 +222,22 @@ function SendSection({
           value={recipients}
           onChange={(e) => setRecipients(e.target.value)}
           placeholder="Recipient user IDs, comma-separated"
-          className="w-full rounded border border-neutral-200 px-2 py-1 text-sm"
+          className="glass-input w-full rounded px-2 py-1 text-sm"
         />
         <div className="flex gap-2">
           <input
             value={templateKey}
             onChange={(e) => setTemplateKey(e.target.value)}
             placeholder="Template key"
-            className="flex-1 rounded border border-neutral-200 px-2 py-1 text-sm"
+            className="glass-input flex-1 rounded px-2 py-1 text-sm"
           />
-          <select value={channel} onChange={(e) => setChannel(e.target.value as Channel)} className="rounded border border-neutral-200 px-2 py-1 text-sm">
+          <select value={channel} onChange={(e) => setChannel(e.target.value as Channel)} className="glass-input rounded px-2 py-1 text-sm">
             <option value="email">Email</option>
             <option value="push">Push</option>
             <option value="whatsapp">WhatsApp</option>
             <option value="sms">SMS</option>
           </select>
-          <select value={language} onChange={(e) => setLanguage(e.target.value as Language)} className="rounded border border-neutral-200 px-2 py-1 text-sm">
+          <select value={language} onChange={(e) => setLanguage(e.target.value as Language)} className="glass-input rounded px-2 py-1 text-sm">
             <option value="en">English</option>
             <option value="hi">Hindi</option>
             <option value="te">Telugu</option>
@@ -248,7 +248,7 @@ function SendSection({
           onChange={(e) => setVariables(e.target.value)}
           rows={2}
           placeholder='Variables JSON, e.g. {"studentName": "Asha"}'
-          className="w-full rounded border border-neutral-200 px-2 py-1 font-mono text-xs"
+          className="glass-input w-full rounded px-2 py-1 font-mono text-xs"
         />
         <button
           onClick={() =>
@@ -271,11 +271,11 @@ function SendSection({
               });
             }, 'Notification queued for delivery.')
           }
-          className="rounded bg-neutral-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-neutral-700"
+          className="btn-premium rounded px-3 py-1.5 text-xs font-semibold"
         >
           Send
         </button>
-        {templates.length > 0 && <p className="text-xs text-neutral-400">Known keys: {templates.map((t) => t.key).join(', ')}</p>}
+        {templates.length > 0 && <p className="text-xs text-slate-400">Known keys: {templates.map((t) => t.key).join(', ')}</p>}
       </div>
     </section>
   );
@@ -283,24 +283,24 @@ function SendSection({
 
 function LogSection({ deliveries }: { deliveries: Delivery[] }) {
   return (
-    <section className="rounded-xl border border-neutral-200 bg-white shadow-sm">
-      <div className="border-b border-neutral-100 px-5 py-3">
-        <h2 className="flex items-center gap-2 text-sm font-semibold text-neutral-900">
-          <ScrollText className="h-4 w-4 text-neutral-400" /> Delivery log
+    <section className="glass-panel rounded-xl overflow-hidden">
+      <div className="border-b border-white/10 px-5 py-3">
+        <h2 className="flex items-center gap-2 text-sm font-semibold text-white">
+          <ScrollText className="h-4 w-4 text-indigo-400" /> Delivery log
         </h2>
       </div>
-      <ul className="divide-y divide-neutral-100">
+      <ul className="divide-y divide-white/10">
         {deliveries.map((d) => (
           <li key={d.id} className="flex items-center justify-between px-5 py-2 text-sm">
             <div>
-              <span className="font-medium text-neutral-900">{d.templateKey}</span>
-              <span className="ml-2 text-xs text-neutral-500">{d.channel} → {d.recipientUserId}</span>
-              {d.error && <p className="text-xs text-red-500">{d.error}</p>}
+              <span className="font-medium text-slate-100">{d.templateKey}</span>
+              <span className="ml-2 text-xs text-slate-400">{d.channel} → {d.recipientUserId}</span>
+              {d.error && <p className="text-xs text-red-400">{d.error}</p>}
             </div>
             <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLORS[d.status]}`}>{d.status}</span>
           </li>
         ))}
-        {deliveries.length === 0 && <li className="px-5 py-3 text-sm text-neutral-400">No deliveries yet.</li>}
+        {deliveries.length === 0 && <li className="px-5 py-3 text-sm text-slate-400">No deliveries yet.</li>}
       </ul>
     </section>
   );
