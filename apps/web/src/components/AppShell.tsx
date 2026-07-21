@@ -28,6 +28,8 @@ import {
   Bell,
   Store,
   ShieldCheck,
+  UserCog,
+  Briefcase,
   UserRound,
   LogOut,
   Moon,
@@ -63,12 +65,14 @@ const ORG_NAV = [
   { label: 'Scheduling', href: '/scheduling', icon: CalendarClock },
   { label: 'Attendance', href: '/attendance', icon: ScanFace },
   { label: 'Finance', href: '/finance', icon: Wallet },
+  { label: 'Staff HR', href: '/staff', icon: UserCog },
   { label: 'Marketplace', href: '/marketplace', icon: Store },
   { label: 'Notifications', href: '/notifications', icon: Bell },
 ];
 
 const ME_NAV = [
   { label: 'Family', href: '/family', icon: UserRound },
+  { label: 'My HR', href: '/me/staff', icon: Briefcase },
   { label: 'My notifications', href: '/me/notifications', icon: Bell },
 ];
 

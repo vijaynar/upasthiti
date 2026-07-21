@@ -1385,7 +1385,133 @@ parameter instead), `npm run db:reset` (13 migrations apply clean), and
 - No automated recurring-charge-driven fee-due reminders, gateway payments, or
   WhatsApp/SMS — all pre-existing, unrelated gaps, unchanged by this phase.
 
-## Next: Phase 12 — Staff HR
+## Phase 12 — Coach & Staff HR: ✅ DONE, verified live in-browser
+
+Scope built (module README): `staff_profiles`/`staff_documents`/
+`staff_availability`/`leave_requests`/`payout_settings` (Doc 07 §12). Coach
+onboarding itself (the four workflows in Doc 04 §8 — invite, join-request,
+self-serve independent-coach, platform-initiated) already exists since
+Phase 3 (invitations/join_requests) and Phase 4 (membership_roles) — this
+phase is the HR *data* layer for a staff member who already holds an org
+membership, not a second invite mechanism. "Onboard staff" here means
+creating that HR profile for an existing active member.
+
+What exists (don't recreate):
+- `supabase/migrations/0014_staff_hr.sql` — all 5 new tables + RLS. Every
+  table denormalizes `organization_id`/`branch_id`/`user_id` directly
+  (same convention as `attendance_events`/`batches`), so every RLS policy
+  reads `has_perm_branch(perm, branch_id)` inline with no join back through
+  `staff_profiles` — `has_perm_branch` alone covers both org-wide (Owner/
+  Org Admin) and branch-scoped (Branch Admin) callers uniformly, since an
+  org-wide caller's own membership has `branch_id is null`, matching any
+  target branch. Two permission keys added beyond the Doc 04 §4 catalogue
+  (`hr.staff.read` → Branch Admin, `hr.payout_settings.read` → Accountant),
+  same "add a narrower key, documented" precedent as `finance.payout.read`/
+  `people.join_request.read`. Self-service (`🔷 self` in the access matrix)
+  is `user_id = current_user_id()` identity-right policies, not a granted
+  permission — leave-request withdrawal is delete-while-pending, not an
+  update, avoiding an OLD-vs-NEW status trigger (Doc 07 §17 pattern from
+  migration 0009) since "pending" is the only self-mutable state.
+  **Real, pre-existing RLS gap found and fixed while building the staff
+  directory, not a regression**: migration 0003's own header says "no
+  org-staff read paths yet (those arrive with memberships in Phase 3)" for
+  the `users` table, but no phase since ever added one — `tenancy-rbac`'s
+  `listMembers()` (Phase 3) quietly works around it by never joining
+  `users` at all (returns bare `user_id`, no `display_name`). Nothing
+  needed a co-member's actual name badly enough to hit the gap until this
+  phase's onboarding picker, which showed only the caller themself instead
+  of every onboardable member. Fixed with a new `users_select_org_staff`
+  policy scoped to exactly the visibility `people.member.read` already
+  grants elsewhere (mirrors `memberships_select_staff`, migration 0006) —
+  no broader exposure than an admin already gets from the members list.
+  **Any future feature that needs to display a co-member's name should
+  check this policy exists first, not assume `users` is readable.**
+- `packages/modules/staff-hr/src/service.ts` — full implementation: staff
+  profiles (`onboardStaff`/`listStaffProfiles`/`getMyStaffProfile`/
+  `listOnboardableMembers`/`updateStaffProfile`/`offboardStaff`), documents
+  (`uploadStaffDocument`/`listStaffDocuments`/`reviewStaffDocument`/
+  `deleteStaffDocument`), availability (`listAvailability`/
+  `setAvailability` — delete+insert bulk rewrite in one `withRequestContext`
+  transaction, same pattern Doc 02 §9 provisioning already established),
+  leave requests (`requestLeave`/`listLeaveRequests`/`listMyLeaveRequests`/
+  `cancelLeaveRequest`/`decideLeaveRequest`), and payout settings
+  (`getPayoutSettings`/`getMyPayoutSettings`/`setPayoutSettings`, upsert via
+  `ON CONFLICT`). RLS is the real gate throughout (no service-role calls in
+  this module) — UPDATE/DELETE denials surface as `rowCount === 0`
+  (`NotAuthorizedError`), INSERT denials throw Postgres 42501 for the
+  route's `isRlsDenied()`. `writeAuditLog()` called on the privileged
+  decision points only (onboard, document review, leave decide, payout
+  set) — same selective-audit precedent Phase 5/11 established, not every
+  write.
+- `staff_documents.storage_path` is a plain text reference, not a real
+  upload pipeline — no module in this repo has built actual file upload yet
+  (Finance's `payments.proof_path`, migration 0011, set this precedent);
+  building a signed-URL/ClamAV pipeline here would be scope creep beyond
+  "Core" (Doc 00 M10 row). Document review does NOT gate `membership_roles`
+  activation — Doc 04 §8 says roles "activate on acceptance + any
+  org-required document verification", but wiring a hold on RBAC's existing
+  accept-invitation path is a real cross-module coupling change, deferred
+  and tracked here rather than silently half-built.
+- Routes (all new): `GET/POST /api/v1/orgs/{id}/staff` +
+  `GET .../staff/onboardable` + `PATCH .../staff/{staffId}` +
+  `GET/POST .../staff/{staffId}/documents` +
+  `PATCH/DELETE .../documents/{docId}` +
+  `GET .../staff/{staffId}/availability` +
+  `GET/PUT .../staff/{staffId}/payout-settings`,
+  `GET /api/v1/orgs/{id}/leave-requests` + `PATCH .../leave-requests/{leaveId}`,
+  and self-service `GET /api/v1/me/staff-profile` +
+  `GET/POST/DELETE /api/v1/me/staff/documents[/{docId}]` +
+  `GET/PUT /api/v1/me/staff/availability` +
+  `GET/POST/DELETE /api/v1/me/staff/leave-requests[/{leaveId}]` +
+  `GET /api/v1/me/staff/payout-settings`.
+- `apps/web/src/app/staff/page.tsx` — org staff console (directory with an
+  "Onboard staff" picker sourced from `listOnboardableMembers`, an
+  expandable per-staff row showing documents/availability/pay settings,
+  and a Leave requests tab with status-filtered approve/reject), same
+  plain-fetch client component style as `/finance`/`/people`.
+- `apps/web/src/app/me/staff/page.tsx` — self-service ("My HR": own
+  availability editor, leave request/withdraw, document upload/withdraw,
+  read-only pay settings), same standalone-settings-page shape as
+  `/me/notifications`/`/me/referrals`. Renders a "no staff profile" empty
+  state for any user without one in their active org.
+- `apps/web/src/components/AppShell.tsx` — new nav entries: "Staff HR"
+  under Manage (org staff), "My HR" under Me (self-service) — this phase
+  also happened to fix an unrelated nav bug reported mid-session (Platform
+  console had its own bolted-on second sidebar instead of living in the
+  global nav; now an expandable "Administration" group with query-param
+  sub-items, same collapsible pattern as V1's `admin/layout.tsx` Reports
+  menu).
+
+**Verified live in-browser** (no automated smoke-test script this phase —
+manual browser + direct-API verification instead, both exercising the same
+route/service/RLS code paths): created a fresh academy org, invited a
+second identity with the Coach role, accepted the invite, confirmed the
+onboarding picker showed both members (post-RLS-fix) not just the caller,
+onboarded the coach with a designation, set their payout settings (INR
+50,000 salary) from the admin console, confirmed `/me/staff` rendered the
+correct profile/pay info as that coach, submitted a leave request as the
+coach, and approved it as the owner — end state (`status: 'approved'`,
+`decidedBy`, `decisionNote`) confirmed via a direct API read after the UI
+action. `npm run db:reset` (14 migrations apply clean) and
+`npm run db:check-rls` (60 tables, 1 allow-listed) both pass; `tsc --noEmit`
+clean across the new module, all new routes, and both new UI pages.
+
+**Known gaps / not built (deliberately, in scope for later phases):**
+- No document upload pipeline (see above) — `storage_path` is a manually
+  entered reference/link, not a file picker.
+- Document review doesn't gate role activation — `staff_documents.review_status`
+  exists as data; nothing currently reads it to hold back a coach's granted
+  role until KYC clears.
+- No dashboards/reporting anywhere in the app yet (a user question raised
+  this session, unrelated to this phase's scope) — the Doc 01 PRD's
+  role-specific summary views (US-2's per-child guardian cards, US-6's
+  org-dashboard branch aggregation, coach "today's batches"/student "my
+  schedule" home screens from Doc 05 §7's post-login routing) were never a
+  standalone phase in the 17-phase roadmap; each module shipped its
+  management/CRUD screens only. Not assigned to a phase — raise with the
+  user before assuming Progress (Phase 13) or any other phase owns this.
+
+## Next: Phase 13 — Progress
 
 ## How to resume without re-reading everything
 
@@ -1463,3 +1589,24 @@ parameter instead), `npm run db:reset` (13 migrations apply clean), and
   established, not RLS policies scoped `to anon`. Doc 07's occasional "RLS for the anon role"
   phrasing describes the literal PostgREST/Supabase-native shape, not how this app's own
   Next.js API layer actually authenticates unauthenticated requests.
+- **`users` has no org-staff SELECT policy for reading a co-member's `display_name`** — flagged
+  as deferred in migration 0003's own header ("arrives with memberships in Phase 3") but never
+  actually added by any phase since; `tenancy-rbac.listMembers()` (Phase 3) silently works
+  around it by never joining `users`. Phase 12 added `users_select_org_staff` (migration 0014,
+  scoped to exactly `people.member.read`'s existing visibility) because its onboarding picker
+  was the first feature to actually need a co-member's name. Before joining `users` from any
+  future org-scoped query, confirm this policy still covers your case rather than assuming
+  `users` is generally readable — it's still self-only plus this one staff carve-out plus
+  guardian-of-ward (Phase 6), not a blanket org-visibility grant.
+- `has_perm_branch(perm, branch_id)` alone is sufficient to gate BOTH an org-wide role (Owner/
+  Org Admin, whose own membership has `branch_id is null`) and a branch-scoped role (Branch
+  Admin) on the same policy, with no separate `has_perm()` check needed — Phase 12 used this
+  uniformly across `staff_profiles`/`staff_documents`/`staff_availability`/`leave_requests`/
+  `payout_settings` instead of writing two policies per table. Reach for this pattern before
+  duplicating an org-wide and a branch-scoped policy separately.
+- This Browser pane's tabs share one cookie jar (Phase 5's note) makes multi-identity testing
+  slow enough that direct `fetch()` calls via the JS console (magic-link start, org create,
+  invitation create/accept, workspace switch) are faster and more reliable than clicking through
+  onboarding UI every time a new test identity is needed — Phase 12 used this to set up two
+  full org+staff test fixtures in one session. Keep the UI clicks for what you're actually
+  verifying, not for routine test-data setup.
