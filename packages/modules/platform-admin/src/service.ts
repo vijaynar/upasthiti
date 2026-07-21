@@ -62,7 +62,7 @@ export async function hasPlatformPerm(session: SessionContext, permission: strin
 // onboarding flow — `platform_role_assignments_select_self` (migration 0006)
 // lets a user read their own row under RLS, no permission check needed.
 export async function isPlatformStaff(userId: string): Promise<boolean> {
-  return db.withRequestContext({ userId, orgId: undefined }, async (client) => {
+  return db.withRequestContext({ userId, orgId: null }, async (client) => {
     const result = await client.query('select 1 from platform_role_assignments where user_id = $1 limit 1', [userId]);
     return (result.rowCount ?? 0) > 0;
   });
@@ -71,7 +71,7 @@ export async function isPlatformStaff(userId: string): Promise<boolean> {
 // Same self-select RLS path as isPlatformStaff, but returns the role keys
 // themselves — used by the app shell to show a "SUPER ADMIN" style badge.
 export async function getMyPlatformRoles(userId: string): Promise<string[]> {
-  return db.withRequestContext({ userId, orgId: undefined }, async (client) => {
+  return db.withRequestContext({ userId, orgId: null }, async (client) => {
     const result = await client.query<{ key: string }>(
       `select r.key from platform_role_assignments pra join roles r on r.id = pra.role_id where pra.user_id = $1`,
       [userId]
@@ -632,4 +632,90 @@ export async function createAnnouncement(session: SessionContext, input: CreateA
   });
   await writeAuditLog(session, { action: 'platform.announcement.create', targetType: 'announcement', targetId: id, detail: { audience: input.audience, title: input.title } });
   return id;
+}
+
+// ── Platform (Super Admin) dashboard ─────────────────────────────
+// Cross-org aggregation for the platform home screen. Same service-role +
+// assertPlatformPerm shape as the rest of this file's cross-actor reads
+// (organizations has no platform-wide SELECT policy) — gated by
+// platform.org.lifecycle, the same permission the org list/verification queue
+// already require, so anyone who can see those can see the roll-up.
+
+export interface PlatformDashboard {
+  orgsByStatus: { pending: number; active: number; suspended: number; rejected: number; archived: number };
+  totalOrgs: number;
+  pendingVerification: number;
+  totalUsers: number;
+  activeSupportGrants: number;
+  auditEventsToday: number;
+  recentSignups: { id: string; name: string; slug: string; orgType: string; status: string; createdAt: string }[];
+}
+
+const PLATFORM_KPIS_SQL = `
+  select
+    (select count(*) from organizations where status = 'pending') as pending,
+    (select count(*) from organizations where status = 'active') as active,
+    (select count(*) from organizations where status = 'suspended') as suspended,
+    (select count(*) from organizations where status = 'rejected') as rejected,
+    (select count(*) from organizations where status = 'archived') as archived,
+    (select count(*) from users where deleted_at is null) as total_users,
+    (select count(*) from support_access_grants where expires_at > now() and revoked_at is null) as active_support_grants,
+    (select count(*) from audit_log where occurred_at >= current_date) as audit_events_today`;
+
+const PLATFORM_RECENT_SIGNUPS_SQL = `
+  select id, name, slug, org_type, status, created_at
+  from organizations
+  order by created_at desc
+  limit 8`;
+
+export async function getPlatformDashboard(session: SessionContext): Promise<PlatformDashboard> {
+  await assertPlatformPerm(session, 'platform.org.lifecycle', 'view the platform dashboard');
+  const client = await db.getServiceClient();
+  try {
+    const kpis = await client.query<{
+      pending: string;
+      active: string;
+      suspended: string;
+      rejected: string;
+      archived: string;
+      total_users: string;
+      active_support_grants: string;
+      audit_events_today: string;
+    }>(PLATFORM_KPIS_SQL);
+    const row = kpis.rows[0];
+
+    const signups = await client.query<{
+      id: string;
+      name: string;
+      slug: string;
+      org_type: string;
+      status: string;
+      created_at: string;
+    }>(PLATFORM_RECENT_SIGNUPS_SQL);
+
+    const pending = Number(row?.pending ?? 0);
+    const active = Number(row?.active ?? 0);
+    const suspended = Number(row?.suspended ?? 0);
+    const rejected = Number(row?.rejected ?? 0);
+    const archived = Number(row?.archived ?? 0);
+
+    return {
+      orgsByStatus: { pending, active, suspended, rejected, archived },
+      totalOrgs: pending + active + suspended + rejected + archived,
+      pendingVerification: pending,
+      totalUsers: Number(row?.total_users ?? 0),
+      activeSupportGrants: Number(row?.active_support_grants ?? 0),
+      auditEventsToday: Number(row?.audit_events_today ?? 0),
+      recentSignups: signups.rows.map((s) => ({
+        id: s.id,
+        name: s.name,
+        slug: s.slug,
+        orgType: s.org_type,
+        status: s.status,
+        createdAt: s.created_at,
+      })),
+    };
+  } finally {
+    client.release();
+  }
 }

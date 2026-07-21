@@ -1609,12 +1609,99 @@ independently fixtured this session. `db:reset` (15 migrations clean),
 - Guardian ward-progress path not independently fixtured this session (see
   above) — shares tested code but no dedicated guardianship smoke-test ran.
 
-## Next: Dashboards (cross-cutting, then Phase 14 — Medical schema-only)
+## Dashboards (cross-cutting): ✅ Super Admin + Owner + Coach DONE, verified live in-browser
 
-Per `ROADMAP_REMAINING.md`: role-specific summary/home screens (Doc 05 §7
-post-login routing, US-6 org branch-aggregation, US-2 guardian cards) — never
-a numbered phase, sequenced here so coach/student home views can fold in
-progress trends. Scope to be pinned down when it starts.
+Role-specific summary/home screens (Doc 01 PRD role dashboards, Doc 05 §7
+post-login landing). First cut built the three the user prioritized —
+**Super Admin, Owner, Coach** — as the app's real home surfaces, with
+"Dashboard" now the **top nav item** in both the org menu and the platform
+Administration menu.
+
+What exists (don't recreate):
+- **`packages/modules/dashboard/`** — a NEW module that owns **no tables**; it
+  composes read-only counts + small recent-activity lists over other modules'
+  tables, always under `db.withRequestContext` so **RLS is the scope gate** (an
+  Owner reads the whole org, a Branch Admin only their branch, a Coach only what
+  `my_batch_ids()`/the batch-roster policies expose). No `getServiceClient()`
+  anywhere in it, so no `SERVICE_ROLE_MANIFEST` entry needed. Exports:
+  `getMyOrgRoles(session, orgId)` (the caller's own active org role keys, read
+  under `membership_roles_select_visible`'s self carve-out — used to pick which
+  dashboard to render), `getOwnerDashboard(session, orgId)`,
+  `getCoachDashboard(session, orgId)`. SQL is in module-level string constants
+  (Doc 13 §9 A03 lint rule) — every `${}` is a static column list, never a value.
+- **`getPlatformDashboard(session)` added to `@abhyas/module-platform-admin`** —
+  the Super Admin cross-org roll-up (org lifecycle funnel, total orgs/users,
+  pending verification, active support grants, audit events today, recent
+  signups). Lives here (not in the dashboard module) because it needs the
+  service-role + `assertPlatformPerm` two-step this file already owns —
+  `organizations` has no platform-wide SELECT policy. Gated by
+  `platform.org.lifecycle` (same permission the org list/verification queue
+  require). Covered by platform-admin's existing manifest entry (path-level).
+- **Routes**: `GET /api/v1/orgs/{id}/me/roles`,
+  `GET /api/v1/orgs/{id}/dashboard/owner`, `GET /api/v1/orgs/{id}/dashboard/coach`,
+  `GET /api/v1/platform/dashboard` (the last catches the perm error → 403 so the
+  page shows an access-denied state, same pattern as `/platform`).
+- **Pages**: `apps/web/src/app/dashboard/page.tsx` — role-aware org home: resolves
+  the caller's role via `/me/roles`, renders the Owner/Admin view for
+  owner/org_admin/branch_admin/front_desk, the Coach view for coach/assistant_coach,
+  a light "here's your stuff" panel for a plain member, and a Management/Coaching
+  toggle when the caller holds both. `apps/web/src/app/platform/dashboard/page.tsx`
+  — Super Admin overview (inherits the existing `/platform` layout's AppShell).
+  New `apps/web/src/app/dashboard/layout.tsx` mounts AppShell for the org route.
+- **`apps/web/src/components/DashboardKit.tsx`** — shared, theme-aware building
+  blocks (StatCard, SectionCard, StatusPill, funnel/money/time helpers) built on
+  the globals.css CSS variables (`var(--foreground)`, `var(--primary)`,
+  `var(--success)`…) so light and dark presets both render correctly. Verified in
+  both modes; the AppShell sidebar stays always-dark by its existing design, not a
+  regression.
+- **Nav (`AppShell.tsx`)**: "Dashboard" (`/dashboard`, `LayoutDashboard`) is now
+  the first primary nav item above "Workspace" (icon changed to `LayoutGrid`) when
+  an org is active; "Dashboard" (`/platform/dashboard`, `Gauge`) is the first item
+  in the platform Administration group above "Platform console". The Platform
+  console button's active-highlight was narrowed from `startsWith('/platform')` to
+  `=== '/platform'` so it no longer lights up on the dashboard route.
+- **`eslint.config.mjs`**: `V2_WEB_PATHS` gained `app/dashboard/**` and
+  `components/DashboardKit.tsx`.
+
+**One pre-existing type error fixed in passing** (not caused by this work, was
+masked by turbo's build cache until this session's edit invalidated it):
+`platform-admin`'s `isPlatformStaff`/`getMyPlatformRoles` passed
+`{ userId, orgId: undefined }` to `withRequestContext`, but `SessionContext.orgId`
+is `string | null` — changed to `orgId: null` (semantically identical,
+`ctx.orgId ?? ''`).
+
+**Verified live in a real browser**: signed in as an existing Owner
+(`p13-owner@abhyas.local`, org "Progress Test Academy") via the magic-link →
+Mailpit flow, switched workspace, and the Owner dashboard rendered real data
+(1 member, 1 active student, recent-enrollment card "student-p13 #S-01 ACTIVE",
+₹0 finance, "no sessions today"). Bootstrapped that same identity as the seed
+Super Admin (`npm run admin:bootstrap-superadmin` — **note: this mutated the
+local dev DB**, since `db:reset` had cleared the prior seed super admin; harmless
+on local, re-run if reset again) and the Super Admin dashboard rendered the
+cross-org roll-up (1 org, 1 pending verification, 2 users, lifecycle funnel,
+"Progress Test Academy — PENDING" signup). Confirmed "Dashboard" is the top menu
+item in both the org and Administration nav groups, and that content is legible in
+both light and dark mode. `npm run type-check` (22 packages incl. the new
+`@abhyas/module-dashboard`) green; `npm run lint` clean except two pre-existing
+unrelated `@next/next/no-img-element` rule-registration errors in
+`auth/login`/`explore/layout` (untouched files).
+
+**Known gaps / not built (deliberately):**
+- **Student & Guardian dashboards not built yet** — the user prioritized Super
+  Admin/Owner/Coach "first". The `/dashboard` page already renders a minimal
+  member landing panel; a real student "my schedule/progress" home and guardian
+  per-ward cards (Doc 01 US-2) are the obvious next cut, reusing DashboardKit.
+- **Coach dashboard not browser-verified with populated data** — no coach
+  identity with assigned batches exists in the current local DB. It shares the
+  exact module→route→RLS→DashboardKit chain the Owner path exercised end-to-end,
+  uses the Phase-7-proven `my_batch_ids()`, and type-checks clean; the API shape
+  was smoke-checked, but a populated in-browser pass is still owed.
+- **No branch filter / date-range controls / trend charts** on any dashboard yet
+  — first cut is today's-snapshot KPIs + recent lists only. Owner figures are
+  org-wide (RLS-scoped), not per-branch-selectable.
+- No automated tests (Phase 16), matching every prior phase's precedent.
+
+## Next: Phase 14 — Medical (schema-only)
 
 ## How to resume without re-reading everything
 

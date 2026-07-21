@@ -21,6 +21,8 @@ import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   LayoutDashboard,
+  LayoutGrid,
+  Gauge,
   Users,
   CalendarClock,
   ScanFace,
@@ -233,7 +235,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
         {/* Nav */}
         <nav className="no-scrollbar flex-1 space-y-4 overflow-y-auto px-4 py-6">
-          <div className="space-y-1">{navItem({ label: 'Workspace', href: '/workspace', icon: LayoutDashboard })}</div>
+          <div className="space-y-1">
+            {activeOrg && navItem({ label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard })}
+            {navItem({ label: 'Workspace', href: '/workspace', icon: LayoutGrid })}
+          </div>
 
           {activeOrg && (
             <div>
@@ -248,18 +253,19 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               <div className="my-3 h-px bg-white/10" />
               <span className="mb-2 block px-4 text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Administration</span>
               <div className="space-y-1">
+                {navItem({ label: 'Dashboard', href: '/platform/dashboard', icon: Gauge })}
                 <button
                   type="button"
                   onClick={() => setPlatformExpanded(!platformExpanded)}
                   className={`group flex h-10 w-full items-center justify-between rounded-xl px-4 text-sm font-medium transition-all duration-200 ${
-                    pathname.startsWith('/platform')
+                    pathname === '/platform'
                       ? 'border border-indigo-500/20 bg-indigo-600/15 text-indigo-300'
                       : 'text-slate-400 hover:bg-white/5 hover:text-slate-200'
                   }`}
                 >
                   <div className="flex items-center gap-3">
                     <ShieldCheck
-                      className={`h-4.5 w-4.5 ${pathname.startsWith('/platform') ? 'text-indigo-400' : 'text-slate-400 group-hover:text-indigo-400'}`}
+                      className={`h-4.5 w-4.5 ${pathname === '/platform' ? 'text-indigo-400' : 'text-slate-400 group-hover:text-indigo-400'}`}
                     />
                     Platform console
                   </div>
