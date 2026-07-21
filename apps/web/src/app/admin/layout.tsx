@@ -148,6 +148,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
         if (dbError || !userProfile) {
           console.error('Error fetching admin profile:', dbError);
+          router.push('/auth/login');
           return;
         }
 
@@ -401,7 +402,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               <span className="font-extrabold text-base tracking-wider bg-gradient-to-r from-white to-indigo-200 bg-clip-text text-transparent">
                 ABHYAS
               </span>
-              <span className="text-[9px] text-slate-500 font-medium tracking-widest uppercase">Smart Academy Management</span>
+              <span className="text-[9px] text-slate-500 font-medium tracking-widest uppercase">Operating System for Coaching &amp; Learning</span>
             </div>
           </div>
           <button

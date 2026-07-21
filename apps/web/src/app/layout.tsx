@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Abhyas — Smart Academy Management Platform",
-  description: "Premium attendance and coaching management for modern academies.",
+  title: "Abhyas — Operating System for Coaching & Learning Businesses",
+  description: "Attendance, scheduling, fees, staff, and a discovery marketplace — one platform for independent coaches through multi-branch academies.",
 };
 
 export const viewport = {

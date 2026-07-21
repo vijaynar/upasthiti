@@ -121,7 +121,7 @@ export default function MyNotificationsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-neutral-50 p-8">
+    <div className="p-8">
       <div className="mx-auto max-w-md space-y-6">
         <div>
           <h1 className="mb-1 flex items-center gap-2 text-lg font-semibold text-neutral-900">

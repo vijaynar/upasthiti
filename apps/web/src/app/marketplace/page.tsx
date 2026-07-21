@@ -111,7 +111,7 @@ export default function MarketplacePage() {
 
   if (orgId === undefined) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-neutral-50">
+      <div className="flex flex-1 items-center justify-center">
         <p className="text-sm text-neutral-400">Loading…</p>
       </div>
     );
@@ -119,7 +119,7 @@ export default function MarketplacePage() {
 
   if (orgId === null) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-neutral-50 px-4">
+      <div className="flex flex-1 items-center justify-center px-4">
         <div className="max-w-sm space-y-2 rounded-xl border border-neutral-200 bg-white p-8 text-center shadow-sm">
           <Store className="mx-auto h-8 w-8 text-neutral-300" />
           <h1 className="text-lg font-semibold text-neutral-900">Marketplace</h1>
@@ -130,7 +130,7 @@ export default function MarketplacePage() {
   }
 
   return (
-    <div className="min-h-screen bg-neutral-50 p-8">
+    <div className="p-8">
       <div className="mx-auto max-w-4xl space-y-6">
         <div>
           <h1 className="mb-1 flex items-center gap-2 text-lg font-semibold text-neutral-900">

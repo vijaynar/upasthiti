@@ -6,32 +6,11 @@
 // Taxonomy/messaging/payments/localization panels (4g-4l) depend on modules
 // that don't exist yet — not built here, see IMPLEMENTATION_STATUS.md.
 
-import { useEffect, useState } from 'react';
-import {
-  ShieldCheck,
-  Building2,
-  Users,
-  KeyRound,
-  Flag,
-  Megaphone,
-  ScrollText,
-  CheckCircle2,
-  XCircle,
-  Ban,
-  RotateCcw,
-} from 'lucide-react';
+import { Suspense, useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { ShieldCheck, CheckCircle2, XCircle, Ban, RotateCcw } from 'lucide-react';
 
 type Tab = 'verification' | 'organizations' | 'roles' | 'support' | 'flags' | 'announcements' | 'audit';
-
-const TABS: { key: Tab; label: string; icon: typeof ShieldCheck }[] = [
-  { key: 'verification', label: 'Verification queue', icon: ShieldCheck },
-  { key: 'organizations', label: 'Organizations', icon: Building2 },
-  { key: 'roles', label: 'Platform roles', icon: Users },
-  { key: 'support', label: 'Support access', icon: KeyRound },
-  { key: 'flags', label: 'Feature flags', icon: Flag },
-  { key: 'announcements', label: 'Announcements', icon: Megaphone },
-  { key: 'audit', label: 'Audit trail', icon: ScrollText },
-];
 
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, { ...init, headers: { 'Content-Type': 'application/json', ...init?.headers } });
@@ -41,7 +20,22 @@ async function api<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 export default function PlatformConsolePage() {
-  const [tab, setTab] = useState<Tab>('verification');
+  return (
+    <Suspense
+      fallback={
+        <div className="flex flex-1 items-center justify-center">
+          <p className="text-sm text-slate-500">Loading…</p>
+        </div>
+      }
+    >
+      <PlatformConsoleContent />
+    </Suspense>
+  );
+}
+
+function PlatformConsoleContent() {
+  const searchParams = useSearchParams();
+  const tab = (searchParams.get('tab') as Tab | null) ?? 'verification';
   const [accessDenied, setAccessDenied] = useState(false);
   const [checking, setChecking] = useState(true);
 
@@ -56,53 +50,34 @@ export default function PlatformConsolePage() {
 
   if (checking) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-neutral-50">
-        <p className="text-sm text-neutral-400">Loading…</p>
+      <div className="flex flex-1 items-center justify-center">
+        <p className="text-sm text-slate-500">Loading…</p>
       </div>
     );
   }
 
   if (accessDenied) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-neutral-50 px-4">
-        <div className="max-w-sm space-y-2 rounded-xl border border-neutral-200 bg-white p-8 text-center shadow-sm">
-          <ShieldCheck className="mx-auto h-8 w-8 text-neutral-300" />
-          <h1 className="text-lg font-semibold text-neutral-900">Platform console</h1>
-          <p className="text-sm text-neutral-500">You don&apos;t hold a platform role. This area is for Super Admin, Verification Ops, Support, and Platform Finance staff only.</p>
+      <div className="flex flex-1 items-center justify-center px-4">
+        <div className="glass-panel max-w-sm space-y-2 rounded-xl p-8 text-center">
+          <ShieldCheck className="mx-auto h-8 w-8 text-slate-600" />
+          <h1 className="text-lg font-semibold text-white">Platform console</h1>
+          <p className="text-sm text-slate-400">You don&apos;t hold a platform role. This area is for Super Admin, Verification Ops, Support, and Platform Finance staff only.</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex min-h-screen bg-neutral-50">
-      <aside className="w-56 shrink-0 border-r border-neutral-200 bg-white p-4">
-        <h1 className="mb-4 px-2 text-sm font-semibold text-neutral-900">Platform console</h1>
-        <nav className="space-y-1">
-          {TABS.map(({ key, label, icon: Icon }) => (
-            <button
-              key={key}
-              onClick={() => setTab(key)}
-              className={`flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm transition ${
-                tab === key ? 'bg-neutral-900 text-white' : 'text-neutral-600 hover:bg-neutral-100'
-              }`}
-            >
-              <Icon className="h-4 w-4 shrink-0" />
-              {label}
-            </button>
-          ))}
-        </nav>
-      </aside>
-      <main className="flex-1 p-8">
-        {tab === 'verification' && <VerificationQueue />}
-        {tab === 'organizations' && <OrganizationsPanel />}
-        {tab === 'roles' && <PlatformRolesPanel />}
-        {tab === 'support' && <SupportAccessPanel />}
-        {tab === 'flags' && <FeatureFlagsPanel />}
-        {tab === 'announcements' && <AnnouncementsPanel />}
-        {tab === 'audit' && <AuditTrailPanel />}
-      </main>
-    </div>
+    <main className="flex-1 p-8">
+      {tab === 'verification' && <VerificationQueue />}
+      {tab === 'organizations' && <OrganizationsPanel />}
+      {tab === 'roles' && <PlatformRolesPanel />}
+      {tab === 'support' && <SupportAccessPanel />}
+      {tab === 'flags' && <FeatureFlagsPanel />}
+      {tab === 'announcements' && <AnnouncementsPanel />}
+      {tab === 'audit' && <AuditTrailPanel />}
+    </main>
   );
 }
 

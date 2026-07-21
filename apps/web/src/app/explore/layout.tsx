@@ -42,7 +42,7 @@ export default async function ExploreLayout({ children }: { children: React.Reac
               <div className="leading-none">
                 <div className="text-[13px] font-black tracking-tight text-white">ABHYAS</div>
                 <div className="mt-0.5 text-[8px] font-semibold tracking-widest text-indigo-400">
-                  SMART ACADEMY<br />MANAGEMENT
+                  OPERATING SYSTEM FOR<br />COACHING &amp; LEARNING
                 </div>
               </div>
             </Link>

@@ -414,7 +414,7 @@ export default function FamilyPage() {
   useEffect(load, []);
 
   return (
-    <div className="min-h-screen bg-neutral-50 p-8">
+    <div className="p-8">
       <div className="mx-auto max-w-2xl">
         <h1 className="mb-1 flex items-center gap-2 text-lg font-semibold text-neutral-900">
           <Users className="h-5 w-5 text-neutral-500" /> Family

@@ -68,6 +68,18 @@ export async function isPlatformStaff(userId: string): Promise<boolean> {
   });
 }
 
+// Same self-select RLS path as isPlatformStaff, but returns the role keys
+// themselves — used by the app shell to show a "SUPER ADMIN" style badge.
+export async function getMyPlatformRoles(userId: string): Promise<string[]> {
+  return db.withRequestContext({ userId, orgId: undefined }, async (client) => {
+    const result = await client.query<{ key: string }>(
+      `select r.key from platform_role_assignments pra join roles r on r.id = pra.role_id where pra.user_id = $1`,
+      [userId]
+    );
+    return result.rows.map((r) => r.key);
+  });
+}
+
 async function assertPlatformPerm(session: SessionContext, permission: string, action: string): Promise<void> {
   if (!(await hasPlatformPerm(session, permission))) {
     throw new PlatformPermissionError(action);
