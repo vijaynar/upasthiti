@@ -2,6 +2,7 @@
 // here with ?code=...; exchange it, issue OUR session, set cookies.
 import { NextRequest, NextResponse } from 'next/server';
 import { completeGoogleOAuth } from '@abhyas/module-identity-auth';
+import { isPlatformStaff } from '@abhyas/module-platform-admin';
 import { createRouteCookieJar, applyPendingCookies, setSessionCookies } from '@/lib/v2-session';
 
 export async function GET(req: NextRequest) {
@@ -17,7 +18,10 @@ export async function GET(req: NextRequest) {
       jar,
       { platform: 'web', ip: req.headers.get('x-forwarded-for') ?? undefined }
     );
-    const response = NextResponse.redirect(new URL(result.isNewUser ? '/onboarding' : '/workspace', req.url));
+    const destination = (await isPlatformStaff(result.userId))
+      ? '/platform'
+      : result.isNewUser ? '/onboarding' : '/workspace';
+    const response = NextResponse.redirect(new URL(destination, req.url));
     applyPendingCookies(response, pending);
     return setSessionCookies(response, result);
   } catch (err) {

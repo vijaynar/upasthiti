@@ -57,6 +57,17 @@ export async function hasPlatformPerm(session: SessionContext, permission: strin
   });
 }
 
+// Used right after login to route platform staff (who have no org membership
+// of their own) straight to the platform console instead of the org-signup
+// onboarding flow — `platform_role_assignments_select_self` (migration 0006)
+// lets a user read their own row under RLS, no permission check needed.
+export async function isPlatformStaff(userId: string): Promise<boolean> {
+  return db.withRequestContext({ userId, orgId: undefined }, async (client) => {
+    const result = await client.query('select 1 from platform_role_assignments where user_id = $1 limit 1', [userId]);
+    return (result.rowCount ?? 0) > 0;
+  });
+}
+
 async function assertPlatformPerm(session: SessionContext, permission: string, action: string): Promise<void> {
   if (!(await hasPlatformPerm(session, permission))) {
     throw new PlatformPermissionError(action);

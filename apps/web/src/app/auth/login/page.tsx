@@ -37,6 +37,8 @@ export default function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-neutral-50 px-4">
       <div className="w-full max-w-sm space-y-6 rounded-xl border border-neutral-200 bg-white p-8 shadow-sm">
         <div className="text-center">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.svg" alt="Abhyas Logo" className="mx-auto mb-3 h-12 w-auto object-contain" />
           <h1 className="text-xl font-semibold text-neutral-900">Sign in to Abhyas</h1>
           <p className="mt-1 text-sm text-neutral-500">One identity across every organization.</p>
         </div>
