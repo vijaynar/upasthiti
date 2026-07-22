@@ -8,7 +8,8 @@
 
 import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { ShieldCheck, CheckCircle2, XCircle, Ban, RotateCcw } from 'lucide-react';
+import { ShieldCheck, CheckCircle2, XCircle, Ban, RotateCcw, UserPlus } from 'lucide-react';
+import InviteCoachPanel from '@/components/InviteCoachPanel';
 
 type Tab = 'verification' | 'organizations' | 'roles' | 'support' | 'flags' | 'announcements' | 'audit';
 
@@ -182,6 +183,7 @@ function OrganizationsPanel() {
   const [search, setSearch] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [inviteOrgId, setInviteOrgId] = useState<string | null>(null);
 
   function load() {
     const qs = search ? `?search=${encodeURIComponent(search)}` : '';
@@ -221,29 +223,44 @@ function OrganizationsPanel() {
       ) : (
         <ul className="glass-panel divide-y divide-white/10 rounded-xl overflow-hidden">
           {orgs.map((org) => (
-            <li key={org.id} className="flex items-center justify-between gap-4 p-4">
-              <div>
-                <p className="text-sm font-medium text-slate-100">{org.name}</p>
-                <p className="text-xs text-slate-400">
-                  /{org.slug} · <span className="uppercase text-slate-300 font-semibold">{org.status}</span>
-                </p>
-              </div>
-              {(org.status === 'active' || org.status === 'suspended') && (
-                <button
-                  disabled={busy === org.id}
-                  onClick={() => toggleSuspend(org)}
-                  className="btn-secondary flex items-center gap-1 rounded-lg border border-white/10 px-3 py-1.5 text-xs font-medium text-slate-300 hover:bg-white/10 disabled:opacity-50"
-                >
-                  {org.status === 'active' ? (
-                    <>
-                      <Ban className="h-3.5 w-3.5 text-red-400" /> Suspend
-                    </>
-                  ) : (
-                    <>
-                      <RotateCcw className="h-3.5 w-3.5 text-emerald-400" /> Reinstate
-                    </>
+            <li key={org.id} className="p-4">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-sm font-medium text-slate-100">{org.name}</p>
+                  <p className="text-xs text-slate-400">
+                    /{org.slug} · <span className="uppercase text-slate-300 font-semibold">{org.status}</span>
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setInviteOrgId(inviteOrgId === org.id ? null : org.id)}
+                    className="flex items-center gap-1 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-3 py-1.5 text-xs font-medium text-indigo-300 hover:bg-indigo-500/20"
+                  >
+                    <UserPlus className="h-3.5 w-3.5" /> Invite coach
+                  </button>
+                  {(org.status === 'active' || org.status === 'suspended') && (
+                    <button
+                      disabled={busy === org.id}
+                      onClick={() => toggleSuspend(org)}
+                      className="btn-secondary flex items-center gap-1 rounded-lg border border-white/10 px-3 py-1.5 text-xs font-medium text-slate-300 hover:bg-white/10 disabled:opacity-50"
+                    >
+                      {org.status === 'active' ? (
+                        <>
+                          <Ban className="h-3.5 w-3.5 text-red-400" /> Suspend
+                        </>
+                      ) : (
+                        <>
+                          <RotateCcw className="h-3.5 w-3.5 text-emerald-400" /> Reinstate
+                        </>
+                      )}
+                    </button>
                   )}
-                </button>
+                </div>
+              </div>
+              {inviteOrgId === org.id && (
+                <div className="mt-3">
+                  <OrgInvitePanel organizationId={org.id} />
+                </div>
               )}
             </li>
           ))}
@@ -251,6 +268,68 @@ function OrganizationsPanel() {
       )}
     </div>
   );
+}
+
+// A Super Admin isn't a member of every org, so invitation writes there are
+// gated on an active support_access_grants row (Doc 04 §9, migration 0016
+// widened invitations' RLS to accept it) rather than an org permission —
+// request one inline here if none is active yet, same time-boxed/audited
+// shape as the Support Access tab, just surfaced where it's needed.
+function OrgInvitePanel({ organizationId }: { organizationId: string }) {
+  const [hasActiveGrant, setHasActiveGrant] = useState<boolean | null>(null);
+  const [requesting, setRequesting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function checkGrant() {
+    api<SupportGrant[]>('/api/v1/platform/support-access')
+      .then((grants) => {
+        const now = new Date();
+        setHasActiveGrant(
+          grants.some((g) => g.organizationId === organizationId && !g.revokedAt && new Date(g.expiresAt) > now)
+        );
+      })
+      .catch((err) => setError(err.message));
+  }
+
+  useEffect(checkGrant, [organizationId]);
+
+  async function requestAccess() {
+    setRequesting(true);
+    setError(null);
+    try {
+      await api('/api/v1/platform/support-access', {
+        method: 'POST',
+        body: JSON.stringify({ organizationId, reason: 'Invite a coach', durationHours: 4 }),
+      });
+      checkGrant();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong.');
+    } finally {
+      setRequesting(false);
+    }
+  }
+
+  if (hasActiveGrant === null) {
+    return <p className="text-xs text-slate-500">Checking access…</p>;
+  }
+
+  if (!hasActiveGrant) {
+    return (
+      <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-300">
+        {error && <p className="mb-2 text-red-400">{error}</p>}
+        <p className="mb-2">You need a time-boxed support-access grant for this org before generating invite links.</p>
+        <button
+          disabled={requesting}
+          onClick={requestAccess}
+          className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 font-medium hover:bg-amber-500/20 disabled:opacity-50"
+        >
+          {requesting ? 'Requesting…' : 'Request 4h access'}
+        </button>
+      </div>
+    );
+  }
+
+  return <InviteCoachPanel organizationId={organizationId} />;
 }
 
 // ── Platform roles (wireframe 4c/4d, Doc 04 §3) ────────────────────

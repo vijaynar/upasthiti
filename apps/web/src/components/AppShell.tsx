@@ -75,6 +75,7 @@ const ORG_NAV = [
 ];
 
 const ME_NAV = [
+  { label: 'My Profile', href: '/me/profile', icon: UserCog },
   { label: 'Family', href: '/family', icon: UserRound },
   { label: 'My progress', href: '/me/progress', icon: TrendingUp },
   { label: 'My HR', href: '/me/staff', icon: Briefcase },

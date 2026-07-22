@@ -39,6 +39,8 @@ const V2_WEB_PATHS = [
   'apps/web/src/app/dashboard/**/*.{ts,tsx}',
   'apps/web/src/components/ProgressTrends.tsx',
   'apps/web/src/components/DashboardKit.tsx',
+  'apps/web/src/components/CoachProfileWizard.tsx',
+  'apps/web/src/components/InviteCoachPanel.tsx',
   'apps/web/src/lib/v2-session.ts',
 ];
 

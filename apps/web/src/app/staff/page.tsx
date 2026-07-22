@@ -8,6 +8,8 @@
 
 import { useEffect, useState } from 'react';
 import { Briefcase, Calendar, CheckCircle2, ChevronDown, ChevronRight, FileText, IndianRupee, UserPlus, XCircle } from 'lucide-react';
+import CoachProfileWizard from '@/components/CoachProfileWizard';
+import InviteCoachPanel from '@/components/InviteCoachPanel';
 
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, { ...init, headers: { 'Content-Type': 'application/json', ...init?.headers } });
@@ -16,7 +18,9 @@ async function api<T>(url: string, init?: RequestInit): Promise<T> {
   return body.data as T;
 }
 
-type Tab = 'directory' | 'leaves';
+const COACH_ROLE_KEYS = ['coach', 'assistant_coach'];
+
+type Tab = 'directory' | 'invite' | 'leaves';
 
 interface StaffProfile {
   id: string;
@@ -34,6 +38,7 @@ interface OnboardableMember {
   userId: string;
   displayName: string;
   branchId: string | null;
+  roleKeys: string[];
 }
 
 interface StaffDocument {
@@ -110,7 +115,7 @@ export default function StaffHrPage() {
       </div>
 
       <div className="mb-6 flex gap-2 border-b border-white/10">
-        {(['directory', 'leaves'] as Tab[]).map((t) => (
+        {(['directory', 'invite', 'leaves'] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -118,12 +123,21 @@ export default function StaffHrPage() {
               tab === t ? 'border-b-2 border-indigo-500 text-white' : 'text-slate-400 hover:text-slate-200'
             }`}
           >
-            {t === 'directory' ? 'Staff directory' : 'Leave requests'}
+            {t === 'directory' ? 'Staff directory' : t === 'invite' ? 'Invite a coach' : 'Leave requests'}
           </button>
         ))}
       </div>
 
-      {tab === 'directory' ? <StaffDirectory orgId={orgId} /> : <LeaveRequestsPanel orgId={orgId} />}
+      {tab === 'directory' && <StaffDirectory orgId={orgId} />}
+      {tab === 'invite' && (
+        <div>
+          <p className="mb-4 text-sm text-slate-400">
+            Generate a link for a coach to sign up and join this organization directly — no separate account setup needed.
+          </p>
+          <InviteCoachPanel organizationId={orgId} />
+        </div>
+      )}
+      {tab === 'leaves' && <LeaveRequestsPanel orgId={orgId} />}
     </div>
   );
 }
@@ -138,6 +152,7 @@ function StaffDirectory({ orgId }: { orgId: string }) {
   const [employmentType, setEmploymentType] = useState('full_time');
   const [busy, setBusy] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [coachWizardTarget, setCoachWizardTarget] = useState<{ staffProfileId: string; displayName: string } | null>(null);
 
   function load() {
     api<StaffProfile[]>(`/api/v1/orgs/${orgId}/staff`).then(setStaff).catch((err) => setError(err.message));
@@ -151,7 +166,8 @@ function StaffDirectory({ orgId }: { orgId: string }) {
     setBusy(true);
     setError(null);
     try {
-      await api(`/api/v1/orgs/${orgId}/staff`, {
+      const picked = onboardable.find((m) => m.membershipId === membershipId);
+      const profile = await api<StaffProfile>(`/api/v1/orgs/${orgId}/staff`, {
         method: 'POST',
         body: JSON.stringify({ membershipId, designation: designation.trim() || undefined, employmentType }),
       });
@@ -159,6 +175,9 @@ function StaffDirectory({ orgId }: { orgId: string }) {
       setDesignation('');
       setShowOnboard(false);
       load();
+      if (picked?.roleKeys.some((k) => COACH_ROLE_KEYS.includes(k))) {
+        setCoachWizardTarget({ staffProfileId: profile.id, displayName: profile.displayName });
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong.');
     } finally {
@@ -174,6 +193,21 @@ function StaffDirectory({ orgId }: { orgId: string }) {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong.');
     }
+  }
+
+  if (coachWizardTarget) {
+    return (
+      <div className="flex justify-center py-4">
+        <CoachProfileWizard
+          mode="admin"
+          organizationId={orgId}
+          staffProfileId={coachWizardTarget.staffProfileId}
+          memberName={coachWizardTarget.displayName}
+          onCancel={() => setCoachWizardTarget(null)}
+          onDone={() => setCoachWizardTarget(null)}
+        />
+      </div>
+    );
   }
 
   return (
@@ -203,6 +237,7 @@ function StaffDirectory({ orgId }: { orgId: string }) {
               {onboardable.map((m) => (
                 <option key={m.membershipId} value={m.membershipId}>
                   {m.displayName}
+                  {m.roleKeys.some((k) => COACH_ROLE_KEYS.includes(k)) ? ' (coach)' : ''}
                 </option>
               ))}
             </select>

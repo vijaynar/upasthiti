@@ -2,11 +2,16 @@
 
 // Org provisioning (Doc 02 §9) — the 4 flows a freshly-authenticated
 // identity (zero roles, zero orgs) can take. Each flow ends by making the
-// resulting org the active workspace and sending the user to /workspace.
+// resulting org the active workspace and sending the user to /workspace —
+// except when the caller ends up holding a `coach`/`assistant_coach` role
+// in that org (independent-coach self-serve, or accepting a coach invite),
+// in which case it detours through CoachProfileWizard first (Doc 04 §8
+// unification: same professional-profile step every coach path shares).
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Building2, Mail, Search, UserRound, AlertCircle, CheckCircle2 } from 'lucide-react';
+import CoachProfileWizard from '@/components/CoachProfileWizard';
 
 type Intent = 'choose' | 'coach' | 'academy' | 'invite' | 'join';
 
@@ -21,6 +26,8 @@ const ACADEMY_TYPES: { value: string; label: string }[] = [
   { value: 'other', label: 'Other' },
 ];
 
+const COACH_ROLE_KEYS = ['coach', 'assistant_coach'];
+
 function slugify(name: string): string {
   return name
     .toLowerCase()
@@ -29,13 +36,23 @@ function slugify(name: string): string {
     .replace(/^-+|-+$/g, '');
 }
 
-async function activateWorkspace(router: ReturnType<typeof useRouter>, organizationId: string) {
+async function activateWorkspace(organizationId: string): Promise<void> {
   await fetch('/api/v1/me/workspace', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ orgId: organizationId }),
   });
-  router.push('/workspace');
+}
+
+async function hasCoachRole(organizationId: string): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/v1/orgs/${organizationId}/me/roles`);
+    const body = await res.json();
+    const roleKeys: string[] = body?.data?.roleKeys ?? [];
+    return roleKeys.some((k) => COACH_ROLE_KEYS.includes(k));
+  } catch {
+    return false;
+  }
 }
 
 function ErrorBanner({ message }: { message: string }) {
@@ -47,8 +64,17 @@ function ErrorBanner({ message }: { message: string }) {
   );
 }
 
-function CreateOrgForm({ orgType, fixedType, title }: { orgType: string; fixedType: boolean; title: string }) {
-  const router = useRouter();
+function CreateOrgForm({
+  orgType,
+  fixedType,
+  title,
+  onCreated,
+}: {
+  orgType: string;
+  fixedType: boolean;
+  title: string;
+  onCreated: (organizationId: string) => void;
+}) {
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
   const [type, setType] = useState(orgType);
@@ -68,7 +94,7 @@ function CreateOrgForm({ orgType, fixedType, title }: { orgType: string; fixedTy
       });
       const body = await res.json();
       if (!res.ok) throw new Error(body.error?.message ?? 'Could not create the organization.');
-      await activateWorkspace(router, body.data.organizationId);
+      onCreated(body.data.organizationId);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong.');
       setLoading(false);
@@ -138,9 +164,9 @@ function CreateOrgForm({ orgType, fixedType, title }: { orgType: string; fixedTy
   );
 }
 
-function AcceptInviteForm() {
-  const router = useRouter();
-  const [token, setToken] = useState('');
+function AcceptInviteForm({ onAccepted }: { onAccepted: (organizationId: string) => void }) {
+  const searchParams = useSearchParams();
+  const [token, setToken] = useState(searchParams.get('token') ?? '');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -156,7 +182,7 @@ function AcceptInviteForm() {
       });
       const body = await res.json();
       if (!res.ok) throw new Error(body.error?.message ?? 'Could not accept the invitation.');
-      await activateWorkspace(router, body.data.organizationId);
+      onAccepted(body.data.organizationId);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong.');
       setLoading(false);
@@ -297,27 +323,61 @@ function JoinRequestForm() {
   );
 }
 
-export default function OnboardingPage() {
-  const [intent, setIntent] = useState<Intent>('choose');
+function OnboardingContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [intent, setIntent] = useState<Intent>(searchParams.get('token') ? 'invite' : 'choose');
+  const [coachWizardOrgId, setCoachWizardOrgId] = useState<string | null>(null);
+
+  function finish() {
+    router.push('/workspace');
+  }
+
+  async function afterOrgReady(organizationId: string, checkRole: boolean) {
+    await activateWorkspace(organizationId);
+    if (checkRole && (await hasCoachRole(organizationId))) {
+      setCoachWizardOrgId(organizationId);
+    } else {
+      finish();
+    }
+  }
+
+  if (coachWizardOrgId) {
+    return (
+      <div className="flex min-h-screen items-center justify-center px-4 py-12">
+        <CoachProfileWizard mode="self" onCancel={finish} onDone={finish} />
+      </div>
+    );
+  }
 
   if (intent === 'coach') {
     return (
       <Shell onBack={() => setIntent('choose')}>
-        <CreateOrgForm orgType="independent_coach" fixedType title="Set up your coaching workspace" />
+        <CreateOrgForm
+          orgType="independent_coach"
+          fixedType
+          title="Set up your coaching workspace"
+          onCreated={(orgId) => afterOrgReady(orgId, true)}
+        />
       </Shell>
     );
   }
   if (intent === 'academy') {
     return (
       <Shell onBack={() => setIntent('choose')}>
-        <CreateOrgForm orgType="academy" fixedType={false} title="Set up your organization" />
+        <CreateOrgForm
+          orgType="academy"
+          fixedType={false}
+          title="Set up your organization"
+          onCreated={(orgId) => afterOrgReady(orgId, false)}
+        />
       </Shell>
     );
   }
   if (intent === 'invite') {
     return (
       <Shell onBack={() => setIntent('choose')}>
-        <AcceptInviteForm />
+        <AcceptInviteForm onAccepted={(orgId) => afterOrgReady(orgId, true)} />
       </Shell>
     );
   }
@@ -342,6 +402,14 @@ export default function OnboardingPage() {
         <IntentButton icon={Search} label="I'm a parent or student" hint="Find and request to join an organization" onClick={() => setIntent('join')} />
       </div>
     </Shell>
+  );
+}
+
+export default function OnboardingPage() {
+  return (
+    <Suspense fallback={null}>
+      <OnboardingContent />
+    </Suspense>
   );
 }
 
