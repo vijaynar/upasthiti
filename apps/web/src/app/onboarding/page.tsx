@@ -12,6 +12,7 @@ import { useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Building2, Mail, Search, UserRound, AlertCircle, CheckCircle2 } from 'lucide-react';
 import CoachProfileWizard from '@/components/CoachProfileWizard';
+import AcademyOnboardingWizard from '@/components/AcademyOnboardingWizard';
 
 type Intent = 'choose' | 'coach' | 'academy' | 'invite' | 'join';
 
@@ -326,8 +327,10 @@ function JoinRequestForm() {
 function OnboardingContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [intent, setIntent] = useState<Intent>(searchParams.get('token') ? 'invite' : 'choose');
+  const initialIntent = (searchParams.get('intent') as Intent) || (searchParams.get('token') ? 'invite' : 'choose');
+  const [intent, setIntent] = useState<Intent>(initialIntent);
   const [coachWizardOrgId, setCoachWizardOrgId] = useState<string | null>(null);
+  const [academyWizardOrgId, setAcademyWizardOrgId] = useState<string | null>(null);
 
   function finish() {
     router.push('/workspace');
@@ -338,7 +341,7 @@ function OnboardingContent() {
     if (checkRole && (await hasCoachRole(organizationId))) {
       setCoachWizardOrgId(organizationId);
     } else {
-      finish();
+      setAcademyWizardOrgId(organizationId);
     }
   }
 
@@ -362,16 +365,19 @@ function OnboardingContent() {
       </Shell>
     );
   }
-  if (intent === 'academy') {
+
+  if (intent === 'academy' || academyWizardOrgId) {
     return (
-      <Shell onBack={() => setIntent('choose')}>
-        <CreateOrgForm
-          orgType="academy"
-          fixedType={false}
-          title="Set up your organization"
-          onCreated={(orgId) => afterOrgReady(orgId, false)}
+      <div className="flex min-h-screen items-center justify-center px-4 py-12">
+        <AcademyOnboardingWizard
+          organizationId={academyWizardOrgId ?? undefined}
+          onCancel={() => {
+            setAcademyWizardOrgId(null);
+            setIntent('choose');
+          }}
+          onDone={finish}
         />
-      </Shell>
+      </div>
     );
   }
   if (intent === 'invite') {

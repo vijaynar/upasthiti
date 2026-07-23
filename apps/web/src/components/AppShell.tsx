@@ -63,6 +63,19 @@ async function api<T>(url: string): Promise<T | null> {
   }
 }
 
+// Display labels for the real org-scope role keys (migration 0006's
+// `roles` seed) — "Member" is not one of these; it never was a real role.
+const ORG_ROLE_LABELS: Record<string, string> = {
+  owner: 'Owner',
+  org_admin: 'Org Admin',
+  branch_admin: 'Branch Admin',
+  coach: 'Coach',
+  assistant_coach: 'Assistant Coach',
+  front_desk: 'Front Desk',
+  accountant: 'Accountant',
+  student: 'Student',
+};
+
 const ORG_NAV = [
   { label: 'People', href: '/people', icon: Users },
   { label: 'Scheduling', href: '/scheduling', icon: CalendarClock },
@@ -120,7 +133,7 @@ function PlatformSubmenuList({ pathname, setSidebarOpen }: { pathname: string; s
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const [displayName, setDisplayName] = useState<string | null>(null);
   const [avatarPath, setAvatarPath] = useState<string | null>(null);
-  const [isCoach, setIsCoach] = useState(false);
+  const [orgRoleKeys, setOrgRoleKeys] = useState<string[]>([]);
   const [platformRoles, setPlatformRoles] = useState<string[]>([]);
   const [activeOrg, setActiveOrg] = useState<Membership | null | undefined>(undefined);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -160,13 +173,24 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       })
       .catch(() => {});
     api<{ roles: string[] }>('/api/v1/me/platform-roles').then((r) => setPlatformRoles(r?.roles ?? []));
-    api<unknown>('/api/v1/me/coach-profile').then((p) => setIsCoach(p != null));
     Promise.all([
       api<{ activeOrgId: string | null }>('/api/v1/me/workspace'),
       api<Membership[]>('/api/v1/orgs'),
     ]).then(([w, orgs]) => {
       const org = w?.activeOrgId ? orgs?.find((o) => o.organizationId === w.activeOrgId) ?? null : null;
       setActiveOrg(org);
+      // The sidebar badge used to hardcode "Coach" vs "Member" based only on
+      // whether a coach_profile existed — "Member" isn't a real role (the
+      // system's actual org roles are owner/org_admin/branch_admin/coach/
+      // assistant_coach/front_desk/accountant/student, migration 0006), so
+      // an Owner or Org Admin with no coach profile was shown as "Member"
+      // regardless of their real, much broader access. Read the caller's
+      // actual role key(s) for this org instead.
+      if (org) {
+        api<{ roleKeys: string[] }>(`/api/v1/orgs/${org.organizationId}/me/roles`)
+          .then((r) => setOrgRoleKeys(r?.roleKeys ?? []))
+          .catch(() => setOrgRoleKeys([]));
+      }
     });
   }, []);
 
@@ -350,7 +374,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             <div className="overflow-hidden">
               <h5 className="truncate text-xs font-bold text-slate-200">{displayName ?? '…'}</h5>
               <span className="mt-0.5 inline-flex items-center rounded-full border border-indigo-500/30 bg-indigo-500/10 px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide text-indigo-300">
-                {isPlatformStaff ? platformRoles.join(', ').replace(/_/g, ' ') : activeOrg ? (isCoach ? 'Coach' : 'Member') : 'No workspace'}
+                {isPlatformStaff
+                  ? platformRoles.join(', ').replace(/_/g, ' ')
+                  : activeOrg
+                    ? orgRoleKeys.map((k) => ORG_ROLE_LABELS[k] ?? k).join(', ') || '…'
+                    : 'No workspace'}
               </span>
             </div>
           </div>
