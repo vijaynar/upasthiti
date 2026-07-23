@@ -22,6 +22,13 @@ export async function PATCH(req: NextRequest) {
     dob: 'dob' in body ? body.dob : undefined,
     locale: typeof body.locale === 'string' ? body.locale : undefined,
     timezone: typeof body.timezone === 'string' ? body.timezone : undefined,
+    avatarPath: 'avatarPath' in body ? body.avatarPath : undefined,
+    gender: 'gender' in body ? body.gender : undefined,
+    phone: 'phone' in body ? body.phone : undefined,
+    addressLine: 'addressLine' in body ? body.addressLine : undefined,
+    state: 'state' in body ? body.state : undefined,
+    city: 'city' in body ? body.city : undefined,
+    area: 'area' in body ? body.area : undefined,
   });
   return jsonData({ updated: true });
 }

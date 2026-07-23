@@ -119,6 +119,8 @@ function PlatformSubmenuList({ pathname, setSidebarOpen }: { pathname: string; s
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const [displayName, setDisplayName] = useState<string | null>(null);
+  const [avatarPath, setAvatarPath] = useState<string | null>(null);
+  const [isCoach, setIsCoach] = useState(false);
   const [platformRoles, setPlatformRoles] = useState<string[]>([]);
   const [activeOrg, setActiveOrg] = useState<Membership | null | undefined>(undefined);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -133,8 +135,32 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   }, [pathname]);
 
   useEffect(() => {
-    api<{ displayName: string }>('/api/v1/me').then((p) => setDisplayName(p?.displayName ?? null));
+    // Not the shared api() helper: that swallows status codes, and a 401
+    // here specifically means middleware's silent refresh (middleware.ts)
+    // already tried and failed — the refresh token itself is gone too, a
+    // real logout, not a transient blip. Every page under this shell reads
+    // its own identity/workspace data independently and has no way to tell
+    // "still loading" apart from "will never load" (see middleware.ts's
+    // header) — this redirect is what actually resolves that for the
+    // shell's own name/role/avatar fetch instead of leaving it on "…"
+    // forever.
+    fetch('/api/v1/me')
+      .then(async (res) => {
+        if (res.status === 401) {
+          router.push('/auth/login');
+          return null;
+        }
+        if (!res.ok) return null;
+        const body = await res.json();
+        return body.data as { displayName: string; avatarPath: string | null };
+      })
+      .then((p) => {
+        setDisplayName(p?.displayName ?? null);
+        setAvatarPath(p?.avatarPath ?? null);
+      })
+      .catch(() => {});
     api<{ roles: string[] }>('/api/v1/me/platform-roles').then((r) => setPlatformRoles(r?.roles ?? []));
+    api<unknown>('/api/v1/me/coach-profile').then((p) => setIsCoach(p != null));
     Promise.all([
       api<{ activeOrgId: string | null }>('/api/v1/me/workspace'),
       api<Membership[]>('/api/v1/orgs'),
@@ -313,13 +339,18 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           </div>
 
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-slate-800 text-indigo-400">
-              <UserRound className="h-5 w-5" />
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-slate-800 text-indigo-400">
+              {avatarPath ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={avatarPath} alt="" className="h-full w-full object-cover" onError={(e) => ((e.target as HTMLImageElement).style.display = 'none')} />
+              ) : (
+                <UserRound className="h-5 w-5" />
+              )}
             </div>
             <div className="overflow-hidden">
               <h5 className="truncate text-xs font-bold text-slate-200">{displayName ?? '…'}</h5>
               <span className="mt-0.5 inline-flex items-center rounded-full border border-indigo-500/30 bg-indigo-500/10 px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide text-indigo-300">
-                {isPlatformStaff ? platformRoles.join(', ').replace(/_/g, ' ') : activeOrg ? 'Member' : 'No workspace'}
+                {isPlatformStaff ? platformRoles.join(', ').replace(/_/g, ' ') : activeOrg ? (isCoach ? 'Coach' : 'Member') : 'No workspace'}
               </span>
             </div>
           </div>

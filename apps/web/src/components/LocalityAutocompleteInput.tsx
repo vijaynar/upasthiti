@@ -86,6 +86,13 @@ export function LocalityAutocompleteInput({ value, onChange, city, placeholder, 
     getPlaceDetails(prediction.placeId).catch(() => {});
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    // Same Tab-commits-top-suggestion behaviour as RestrictedAutocompleteInput.
+    if (e.key === 'Tab' && !e.shiftKey && open && !searching && suggestions.length > 0) {
+      selectSuggestion(suggestions[0]);
+    }
+  };
+
   const inputClass = `rounded-xl px-3 py-2 text-xs w-full outline-none border ${
     isDark ? 'glass-input border-white/10 bg-[#060814]/40 text-slate-200' : 'border-slate-200 bg-white text-slate-800'
   }`;
@@ -98,6 +105,7 @@ export function LocalityAutocompleteInput({ value, onChange, city, placeholder, 
         onChange={e => { onChange(e.target.value); setOpen(true); }}
         onFocus={() => setOpen(true)}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
+        onKeyDown={handleKeyDown}
         placeholder={placeholder}
         className={inputClass}
       />

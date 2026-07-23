@@ -280,6 +280,19 @@ export interface UploadStaffDocumentInput {
   storagePath: string;
 }
 
+// Resolves which user a staff_profile belongs to, gated by the same
+// staff_profiles RLS (self OR hr.staff.*) uploadStaffDocument already relies
+// on — used by the documents upload-url route to scope a signed Storage
+// path to the right user/{id}/... prefix before any staff_documents row
+// exists (an admin can be uploading for a member who's had a staff_profiles
+// row for a while; the document row itself is only inserted afterward).
+export async function resolveStaffProfileOwner(session: SessionContext, staffProfileId: string): Promise<{ userId: string } | null> {
+  return db.withRequestContext(session, async (client) => {
+    const result = await client.query<{ user_id: string }>(`select user_id from staff_profiles where id = $1`, [staffProfileId]);
+    return result.rows[0] ? { userId: result.rows[0].user_id } : null;
+  });
+}
+
 export async function uploadStaffDocument(session: SessionContext, input: UploadStaffDocumentInput): Promise<StaffDocument> {
   return db.withRequestContext(session, async (client) => {
     const profile = await client.query<{ organization_id: string; branch_id: string | null; user_id: string }>(
@@ -611,11 +624,16 @@ export interface CoachProfile {
   experienceYears: number | null;
   qualification: string | null;
   languagesKnown: string[];
-  sportKeys: string[];
   ageGroups: string[];
   skillLevels: string[];
   serviceTypes: string[];
   classTypes: string[];
+  serviceAreaKeys: string[];
+  allowStudentOverrides: boolean;
+  categoryId: string | null;
+  subcategoryIds: string[];
+  primarySubcategoryId: string | null;
+  tagIds: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -630,11 +648,16 @@ function mapCoachProfileRow(row: {
   experience_years: number | null;
   qualification: string | null;
   languages_known: string[];
-  sport_keys: string[];
   age_groups: string[];
   skill_levels: string[];
   service_types: string[];
   class_types: string[];
+  service_area_keys: string[];
+  allow_student_overrides: boolean;
+  category_id: string | null;
+  subcategory_ids: string[];
+  primary_subcategory_id: string | null;
+  tag_ids: string[];
   created_at: string;
   updated_at: string;
 }): CoachProfile {
@@ -648,18 +671,25 @@ function mapCoachProfileRow(row: {
     experienceYears: row.experience_years,
     qualification: row.qualification,
     languagesKnown: row.languages_known ?? [],
-    sportKeys: row.sport_keys ?? [],
     ageGroups: row.age_groups ?? [],
     skillLevels: row.skill_levels ?? [],
     serviceTypes: row.service_types ?? [],
     classTypes: row.class_types ?? [],
+    serviceAreaKeys: row.service_area_keys ?? [],
+    allowStudentOverrides: row.allow_student_overrides ?? false,
+    categoryId: row.category_id,
+    subcategoryIds: row.subcategory_ids ?? [],
+    primarySubcategoryId: row.primary_subcategory_id,
+    tagIds: row.tag_ids ?? [],
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
 }
 
 const COACH_PROFILE_COLUMNS = `id, staff_profile_id, organization_id, branch_id, user_id, bio, experience_years,
-  qualification, languages_known, sport_keys, age_groups, skill_levels, service_types, class_types, created_at, updated_at`;
+  qualification, languages_known, age_groups, skill_levels, service_types, class_types,
+  service_area_keys, allow_student_overrides, category_id, subcategory_ids, primary_subcategory_id, tag_ids,
+  created_at, updated_at`;
 const GET_COACH_PROFILE_SQL = `select ${COACH_PROFILE_COLUMNS} from coach_profiles where staff_profile_id = $1`;
 const GET_MY_COACH_PROFILE_SQL = `select ${COACH_PROFILE_COLUMNS} from coach_profiles where user_id = $1 and organization_id = $2`;
 
@@ -683,21 +713,30 @@ export interface UpsertCoachProfileInput {
   experienceYears?: number;
   qualification?: string;
   languagesKnown?: string[];
-  sportKeys?: string[];
   ageGroups?: string[];
   skillLevels?: string[];
   serviceTypes?: string[];
   classTypes?: string[];
+  serviceAreaKeys?: string[];
+  allowStudentOverrides?: boolean;
+  categoryId?: string | null;
+  subcategoryIds?: string[];
+  primarySubcategoryId?: string | null;
+  tagIds?: string[];
 }
 
 const UPSERT_COACH_PROFILE_SQL = `insert into coach_profiles
     (staff_profile_id, organization_id, branch_id, user_id, bio, experience_years, qualification,
-     languages_known, sport_keys, age_groups, skill_levels, service_types, class_types)
-   values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+     languages_known, age_groups, skill_levels, service_types, class_types,
+     service_area_keys, allow_student_overrides, category_id, subcategory_ids, primary_subcategory_id, tag_ids)
+   values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
    on conflict (staff_profile_id) do update set
      bio = excluded.bio, experience_years = excluded.experience_years, qualification = excluded.qualification,
-     languages_known = excluded.languages_known, sport_keys = excluded.sport_keys, age_groups = excluded.age_groups,
+     languages_known = excluded.languages_known, age_groups = excluded.age_groups,
      skill_levels = excluded.skill_levels, service_types = excluded.service_types, class_types = excluded.class_types,
+     service_area_keys = excluded.service_area_keys, allow_student_overrides = excluded.allow_student_overrides,
+     category_id = excluded.category_id, subcategory_ids = excluded.subcategory_ids,
+     primary_subcategory_id = excluded.primary_subcategory_id, tag_ids = excluded.tag_ids,
      updated_at = now()
    returning ${COACH_PROFILE_COLUMNS}`;
 
@@ -723,11 +762,16 @@ export async function upsertCoachProfile(session: SessionContext, input: UpsertC
       input.experienceYears ?? null,
       input.qualification ?? null,
       input.languagesKnown ?? [],
-      input.sportKeys ?? [],
       input.ageGroups ?? [],
       input.skillLevels ?? [],
       input.serviceTypes ?? [],
       input.classTypes ?? [],
+      input.serviceAreaKeys ?? [],
+      input.allowStudentOverrides ?? false,
+      input.categoryId ?? null,
+      input.subcategoryIds ?? [],
+      input.primarySubcategoryId ?? null,
+      input.tagIds ?? [],
     ]);
     return mapCoachProfileRow(result.rows[0]);
   });
@@ -739,11 +783,16 @@ export interface SelfOnboardAsCoachInput {
   experienceYears?: number;
   qualification?: string;
   languagesKnown?: string[];
-  sportKeys?: string[];
   ageGroups?: string[];
   skillLevels?: string[];
   serviceTypes?: string[];
   classTypes?: string[];
+  serviceAreaKeys?: string[];
+  allowStudentOverrides?: boolean;
+  categoryId?: string | null;
+  subcategoryIds?: string[];
+  primarySubcategoryId?: string | null;
+  tagIds?: string[];
 }
 
 // The one call the coach-profile wizard makes in "self" mode — covers both
@@ -778,6 +827,123 @@ export async function selfOnboardAsCoach(session: SessionContext, input: SelfOnb
   });
 
   return upsertCoachProfile(session, { staffProfileId, ...input });
+}
+
+// ── Coach pricing (Doc 04 §8, migration 0018) — how STUDENTS pay THIS
+// coach. Mirrors V1's coach_pricing_policies/coach_pricing_rules 1:many
+// shape (one row per enabled strategy; 'package' can have several tiers).
+// Whole-selection replace on every save, same as the wizard's V1 ancestor —
+// this is onboarding-step data re-submitted as a unit, not an incremental
+// ledger.
+
+export type PricingPolicyType =
+  | 'monthly_subscription' | 'per_class' | 'package' | 'trial_session' | 'fine_based' | 'one_time_registration';
+
+export interface PricingRule {
+  amount: number;
+  currency?: string;
+  billingCycle?: 'Weekly' | 'Monthly' | 'Quarterly' | 'Yearly';
+  autoRenew?: boolean;
+  lateFeeAmount?: number;
+  lateFeeGraceDays?: number;
+  cancellationWindowHours?: number;
+  minBookingCount?: number;
+  classCount?: number;
+  trialType?: 'free' | 'paid';
+  lateArrivalFeeAmount?: number;
+  lateArrivalThresholdMinutes?: number;
+  absenceFeeAmount?: number;
+}
+
+export interface PricingPolicy {
+  policyType: PricingPolicyType;
+  enabled: boolean;
+  isDefault: boolean;
+  rules: PricingRule[];
+}
+
+const GET_COACH_PRICING_SQL = `
+  select p.policy_type, p.enabled, p.is_default,
+    coalesce(json_agg(json_build_object(
+      'amount', r.amount, 'currency', r.currency, 'billingCycle', r.billing_cycle, 'autoRenew', r.auto_renew,
+      'lateFeeAmount', r.late_fee_amount, 'lateFeeGraceDays', r.late_fee_grace_days,
+      'cancellationWindowHours', r.cancellation_window_hours, 'minBookingCount', r.min_booking_count,
+      'classCount', r.class_count, 'trialType', r.trial_type,
+      'lateArrivalFeeAmount', r.late_arrival_fee_amount, 'lateArrivalThresholdMinutes', r.late_arrival_threshold_minutes,
+      'absenceFeeAmount', r.absence_fee_amount
+    ) order by r.created_at) filter (where r.id is not null), '[]') as rules
+  from coach_pricing_policies p
+  left join coach_pricing_rules r on r.policy_id = p.id
+  where p.coach_profile_id = $1
+  group by p.id
+  order by p.policy_type`;
+
+export async function getCoachPricing(session: SessionContext, coachProfileId: string): Promise<PricingPolicy[]> {
+  return db.withRequestContext(session, async (client) => {
+    const result = await client.query<{ policy_type: PricingPolicyType; enabled: boolean; is_default: boolean; rules: PricingRule[] }>(
+      GET_COACH_PRICING_SQL,
+      [coachProfileId]
+    );
+    return result.rows.map((row) => ({
+      policyType: row.policy_type,
+      enabled: row.enabled,
+      isDefault: row.is_default,
+      rules: row.rules,
+    }));
+  });
+}
+
+export interface UpsertCoachPricingInput {
+  coachProfileId: string;
+  policies: PricingPolicy[];
+}
+
+export async function upsertCoachPricing(session: SessionContext, input: UpsertCoachPricingInput): Promise<PricingPolicy[]> {
+  return db.withRequestContext(session, async (client) => {
+    const owner = await client.query<{ organization_id: string }>('select organization_id from coach_profiles where id = $1', [input.coachProfileId]);
+    if (!owner.rows[0]) throw new StaffStateError('Coach profile not found.');
+    const organizationId = owner.rows[0].organization_id;
+
+    // Replace-whole-set: delete existing policies (cascades to rules), then re-insert only the enabled ones.
+    await client.query('delete from coach_pricing_policies where coach_profile_id = $1', [input.coachProfileId]);
+
+    for (const policy of input.policies.filter((p) => p.enabled)) {
+      const inserted = await client.query<{ id: string }>(
+        `insert into coach_pricing_policies (coach_profile_id, organization_id, policy_type, enabled, is_default)
+         values ($1, $2, $3, true, $4) returning id`,
+        [input.coachProfileId, organizationId, policy.policyType, policy.isDefault]
+      );
+      const policyId = inserted.rows[0].id;
+
+      for (const rule of policy.rules) {
+        await client.query(
+          `insert into coach_pricing_rules
+             (policy_id, amount, currency, billing_cycle, auto_renew, late_fee_amount, late_fee_grace_days,
+              cancellation_window_hours, min_booking_count, class_count, trial_type,
+              late_arrival_fee_amount, late_arrival_threshold_minutes, absence_fee_amount)
+           values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+          [
+            policyId,
+            rule.amount,
+            rule.currency ?? 'INR',
+            rule.billingCycle ?? null,
+            rule.autoRenew ?? null,
+            rule.lateFeeAmount ?? null,
+            rule.lateFeeGraceDays ?? null,
+            rule.cancellationWindowHours ?? null,
+            rule.minBookingCount ?? null,
+            rule.classCount ?? null,
+            rule.trialType ?? null,
+            rule.lateArrivalFeeAmount ?? null,
+            rule.lateArrivalThresholdMinutes ?? null,
+            rule.absenceFeeAmount ?? null,
+          ]
+        );
+      }
+    }
+
+    return input.policies.filter((p) => p.enabled);
+  });
 }
 
 export async function setPayoutSettings(session: SessionContext, input: SetPayoutSettingsInput): Promise<PayoutSettings> {

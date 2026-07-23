@@ -243,6 +243,14 @@ export interface Profile {
   locale: string;
   timezone: string;
   avatarPath: string | null;
+  gender: string | null;
+  phone: string | null;
+  addressLine: string | null;
+  state: string | null;
+  city: string | null;
+  area: string | null;
+  /** Read-only — the verified email_otp identifier, if any (Doc 05 identity stays self-owned; there's no PATCH path for this). */
+  email: string | null;
 }
 
 export async function getProfile(session: SessionContext): Promise<Profile | null> {
@@ -254,7 +262,22 @@ export async function getProfile(session: SessionContext): Promise<Profile | nul
       locale: string;
       timezone: string;
       avatar_path: string | null;
-    }>('select id, display_name, dob, locale, timezone, avatar_path from users where id = $1', [session.userId]);
+      gender: string | null;
+      phone: string | null;
+      address_line: string | null;
+      state: string | null;
+      city: string | null;
+      area: string | null;
+      email: string | null;
+    }>(
+      `select u.id, u.display_name, u.dob, u.locale, u.timezone, u.avatar_path, u.gender, u.phone,
+              u.address_line, u.state, u.city, u.area,
+              (select am.verified_identifier from auth_methods am
+                 where am.user_id = u.id and am.provider = 'email_otp'
+                 order by am.verified_at desc nulls last limit 1) as email
+       from users u where u.id = $1`,
+      [session.userId]
+    );
     const row = result.rows[0];
     if (!row) return null;
     return {
@@ -264,6 +287,13 @@ export async function getProfile(session: SessionContext): Promise<Profile | nul
       locale: row.locale,
       timezone: row.timezone,
       avatarPath: row.avatar_path,
+      gender: row.gender,
+      phone: row.phone,
+      addressLine: row.address_line,
+      state: row.state,
+      city: row.city,
+      area: row.area,
+      email: row.email,
     };
   });
 }
@@ -273,6 +303,13 @@ export interface ProfilePatch {
   dob?: string | null;
   locale?: string;
   timezone?: string;
+  avatarPath?: string | null;
+  gender?: string | null;
+  phone?: string | null;
+  addressLine?: string | null;
+  state?: string | null;
+  city?: string | null;
+  area?: string | null;
 }
 
 export async function updateProfile(session: SessionContext, patch: ProfilePatch): Promise<void> {
@@ -282,9 +319,37 @@ export async function updateProfile(session: SessionContext, patch: ProfilePatch
          display_name = coalesce($2, display_name),
          dob = case when $3::boolean then $4::date else dob end,
          locale = coalesce($5, locale),
-         timezone = coalesce($6, timezone)
+         timezone = coalesce($6, timezone),
+         avatar_path = case when $7::boolean then $8 else avatar_path end,
+         gender = case when $9::boolean then $10 else gender end,
+         address_line = case when $11::boolean then $12 else address_line end,
+         city = case when $13::boolean then $14 else city end,
+         area = case when $15::boolean then $16 else area end,
+         phone = case when $17::boolean then $18 else phone end,
+         state = case when $19::boolean then $20 else state end
        where id = $1`,
-      [session.userId, patch.displayName ?? null, 'dob' in patch, patch.dob ?? null, patch.locale ?? null, patch.timezone ?? null]
+      [
+        session.userId,
+        patch.displayName ?? null,
+        'dob' in patch,
+        patch.dob ?? null,
+        patch.locale ?? null,
+        patch.timezone ?? null,
+        'avatarPath' in patch,
+        patch.avatarPath ?? null,
+        'gender' in patch,
+        patch.gender ?? null,
+        'addressLine' in patch,
+        patch.addressLine ?? null,
+        'city' in patch,
+        patch.city ?? null,
+        'area' in patch,
+        patch.area ?? null,
+        'phone' in patch,
+        patch.phone ?? null,
+        'state' in patch,
+        patch.state ?? null,
+      ]
     );
   });
 }

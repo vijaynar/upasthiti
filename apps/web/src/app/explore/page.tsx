@@ -2,48 +2,55 @@
 
 // Public discovery marketplace (Doc 01 vision; Doc 08 §10 `/public/*`,
 // anonymous, SEO-critical; PRD M9 "listings + leads"). Styled after the
-// "Wireframes - Marketplace.dc.html" reference (frames 5a discovery landing
-// + 5b search results, combined into one page for v1) AND V1's own /explore
-// landing (dark glass-panel theme, gradient headline, icon category tiles,
-// CTA banner) — this page had drifted into a bespoke light theme that
-// clashed with the rest of the app (everything else defaults dark via
-// ThemeProvider/globals.css); this rewrite uses the same glass-panel/
-// btn-premium/radial-mesh-bg system as /admin and /auth/login instead of
-// hardcoded neutral/blue Tailwind classes.
+// "Wireframes - Marketplace.dc.html" reference (frame 5a discovery landing)
+// AND V1's own /explore landing (dark glass-panel theme, gradient headline,
+// icon category tiles, CTA banner).
 //
-// The wireframe's filter rail goes well beyond what this phase's schema can
-// back (radius, availability, fee ranges, batch type, coach demographics —
-// see marketplace/src/service.ts's header) — this page only exposes the
-// facets `listings` actually stores: city, sport, area, free text.
+// Category tiles now come from GET /api/v1/public/categories — the same
+// categories/subcategories/tags taxonomy (migration 0019) coach onboarding
+// (CategoryPicker) uses — instead of taxonomy_sports (migration 0013, a
+// flat, unrelated 12-sport list). Those were two independent taxonomies:
+// a coach onboards under "Music" (categories.slug) but this page showed
+// "swimming/football/cricket…" tiles with no relationship to what any coach
+// actually picked, so a category here never matched what search found.
 //
-// Search is live (every city/sport/q change refetches — no separate results
-// route to "go to"), but nothing signalled that to a V1-trained eye: no
-// visible Search button, no distinct "results" section. Added both — the
-// hero's Search button scrolls to #results, which now has its own heading
-// + live count.
+// Per the wireframe's "5a discovery landing -> 5b search results" two-step
+// flow, clicking a tile or searching now navigates to /explore/search (its
+// own filter-rail results page — see that page's header) instead of
+// scrolling to an in-page section.
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Search, MapPin, Star, Sparkles, ArrowRight } from 'lucide-react';
+import { MapPin, Search, Sparkles, ArrowRight, ChevronRight } from 'lucide-react';
+import { useCategoryTaxonomy } from '@/lib/useCategoryTaxonomy';
 
-// Emoji glyphs for the fixed sport set seeded in taxonomy_sports (migration
-// 0013) — matches V1's per-category `icon` column and the wireframe's
-// "Popular categories" tiles, but as a static map since taxonomy_sports
-// itself has no icon column (key/label/category only).
-const SPORT_ICONS: Record<string, string> = {
-  swimming: '🏊',
-  football: '⚽',
-  cricket: '🏏',
-  basketball: '🏀',
-  badminton: '🏸',
-  tennis: '🎾',
-  chess: '♟️',
-  yoga: '🧘',
-  dance: '💃',
-  music: '🎵',
-  athletics: '🏃',
-  martial_arts: '🥋',
-};
+function initials(name: string | null): string {
+  if (!name) return '';
+  const parts = name.trim().split(/\s+/);
+  return ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase();
+}
+
+interface TopPickCoach {
+  id: string;
+  experienceYears: number | null;
+  category: { name: string; icon: string | null } | null;
+  primarySubcategoryName: string | null;
+  displayName: string | null;
+  avatarPath: string | null;
+}
+
+interface City {
+  key: string;
+  label: string;
+}
+
+async function api<T>(url: string): Promise<T> {
+  const res = await fetch(url);
+  const body = await res.json();
+  if (!res.ok) throw new Error(body.error?.message ?? 'Something went wrong.');
+  return body.data as T;
+}
 
 // Same cycling palette V1's /explore used for category tiles (main branch,
 // apps/web/src/app/explore/page.tsx CATEGORY_COLORS).
@@ -58,77 +65,41 @@ const CATEGORY_COLORS = [
   { bg: 'from-slate-500/15 to-slate-600/5', border: 'border-slate-500/20', text: 'text-slate-300' },
 ];
 
-async function api<T>(url: string): Promise<T> {
-  const res = await fetch(url);
-  const body = await res.json();
-  if (!res.ok) throw new Error(body.error?.message ?? 'Something went wrong.');
-  return body.data as T;
-}
-
-interface ListingSummary {
-  slug: string;
-  headline: string | null;
-  cityKey: string;
-  sportKeys: string[];
-  priceDisplay: unknown;
-  featured: boolean;
-  avgRating: number | null;
-  reviewCount: number;
-}
-
-interface Sport {
-  key: string;
-  label: string;
-}
-
-interface City {
-  key: string;
-  label: string;
-}
-
-function priceLabel(priceDisplay: unknown): string | null {
-  if (priceDisplay && typeof priceDisplay === 'object' && 'amountMinor' in (priceDisplay as Record<string, unknown>)) {
-    const amountMinor = (priceDisplay as { amountMinor?: number }).amountMinor;
-    const per = (priceDisplay as { per?: string }).per ?? 'mo';
-    if (typeof amountMinor === 'number') return `₹${(amountMinor / 100).toLocaleString('en-IN')}/${per}`;
-  }
-  return null;
-}
-
 export default function ExplorePage() {
-  const [listings, setListings] = useState<ListingSummary[]>([]);
-  const [sports, setSports] = useState<Sport[]>([]);
+  const router = useRouter();
+  const { categories } = useCategoryTaxonomy();
+  const [topPicks, setTopPicks] = useState<TopPickCoach[]>([]);
   const [cities, setCities] = useState<City[]>([]);
-  const [city, setCity] = useState('');
-  const [sport, setSport] = useState('');
-  const [q, setQ] = useState('');
-  const [loading, setLoading] = useState(true);
-  const resultsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    api<{ sports: Sport[]; cities: City[] }>('/api/v1/public/taxonomy').then((t) => {
-      setSports(t.sports);
-      setCities(t.cities);
-    }).catch(() => {});
+    api<{ coaches: TopPickCoach[] }>('/api/v1/public/coaches?limit=8')
+      .then((r) => setTopPicks(r.coaches))
+      .catch(() => setTopPicks([]));
   }, []);
 
   useEffect(() => {
-    setLoading(true);
-    const params = new URLSearchParams();
-    if (city) params.set('city', city);
-    if (sport) params.set('sport', sport);
-    if (q) params.set('q', q);
-    api<{ listings: ListingSummary[] }>(`/api/v1/public/listings?${params.toString()}`)
-      .then((r) => setListings(r.listings))
-      .catch(() => setListings([]))
-      .finally(() => setLoading(false));
-  }, [city, sport, q]);
+    api<{ cities: City[] }>('/api/v1/public/taxonomy')
+      .then((t) => setCities(t.cities))
+      .catch(() => setCities([]));
+  }, []);
 
-  function goToResults() {
-    resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  function goToSearch(patch: Record<string, string>) {
+    const params = new URLSearchParams(patch);
+    router.push(`/explore/search${params.toString() ? `?${params.toString()}` : ''}`);
   }
 
-  const activeSportLabel = sport ? sports.find((s) => s.key === sport)?.label : null;
+  // The hero's city field is free text (matching V1's plain <input
+  // name="city">), but /explore/search's city filter is a real geo_cities
+  // key (coach_profiles has no city column — filtering only works via
+  // service_area_keys -> geo_areas.city_key, see the coaches API route).
+  // Resolve whatever the visitor typed against the known city labels so it
+  // lands pre-selected in the results page's city dropdown; an unresolved
+  // typo is passed through as-is and degrades to the existing "no coaches
+  // match" empty state rather than silently being dropped.
+  function resolveCityKey(typed: string): string {
+    const match = cities.find((c) => c.label.toLowerCase() === typed.trim().toLowerCase());
+    return match?.key ?? typed.trim();
+  }
 
   return (
     <div>
@@ -149,141 +120,140 @@ export default function ExplorePage() {
             &amp; Academies Near You
           </h1>
           <p className="mx-auto mb-8 max-w-xl text-sm text-slate-400 sm:text-base">
-            Search by city and sport to discover verified coaches and academies.
+            Search city/area-wise and discover top-rated professionals across sports, education, music, dance and more.
           </p>
 
-          <div className="mx-auto flex max-w-2xl flex-col gap-2 rounded-2xl border border-indigo-500/15 bg-[var(--panel-bg)] p-2 shadow-lg backdrop-blur sm:flex-row">
-            <select
-              value={city}
-              onChange={(e) => setCity(e.target.value)}
-              className="glass-input rounded-xl px-3 py-2.5 text-sm outline-none sm:w-44"
-            >
-              <option value="">📍 Any city</option>
-              {cities.map((c) => (
-                <option key={c.key} value={c.key}>{c.label}</option>
-              ))}
-            </select>
-            <div className="relative flex-1">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              const data = new FormData(e.currentTarget);
+              const cityTyped = (data.get('city') as string) ?? '';
+              const q = (data.get('q') as string) ?? '';
+              const patch: Record<string, string> = {};
+              if (cityTyped.trim()) patch.city = resolveCityKey(cityTyped);
+              if (q.trim()) patch.q = q.trim();
+              goToSearch(patch);
+            }}
+            className="mx-auto flex max-w-2xl flex-col gap-2 rounded-2xl border border-indigo-500/15 bg-[var(--panel-bg)] p-2 shadow-lg backdrop-blur sm:flex-row"
+          >
+            <div className="flex flex-1 items-center gap-2 px-3 py-1">
+              <MapPin className="h-4 w-4 shrink-0 text-indigo-400" />
               <input
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') goToResults(); }}
-                placeholder="sport, coaching, music…"
-                className="glass-input w-full rounded-xl py-2.5 pl-9 pr-3 text-sm outline-none"
+                name="city"
+                list="explore-city-options"
+                placeholder="City or Area (e.g. Hyderabad)"
+                className="w-full min-w-0 bg-transparent text-sm text-slate-200 placeholder-slate-500 outline-none"
+              />
+              <datalist id="explore-city-options">
+                {cities.map((c) => (
+                  <option key={c.key} value={c.label} />
+                ))}
+              </datalist>
+            </div>
+            <div className="hidden w-px self-stretch bg-white/10 sm:block" />
+            <div className="flex flex-1 items-center gap-2 px-3 py-1">
+              <Search className="h-4 w-4 shrink-0 text-slate-500" />
+              <input
+                name="q"
+                placeholder="Sports, coaching, music…"
+                className="w-full min-w-0 bg-transparent text-sm text-slate-200 placeholder-slate-500 outline-none"
               />
             </div>
             <button
-              onClick={goToResults}
+              type="submit"
               className="btn-premium flex shrink-0 items-center justify-center gap-2 rounded-xl px-6 py-2.5 text-sm font-semibold"
             >
               <Search className="h-4 w-4" /> Search
             </button>
-          </div>
+          </form>
         </div>
       </section>
 
       {/* ── POPULAR CATEGORIES ────────────────────────────────────────── */}
-      <section className="mx-auto mb-12 max-w-6xl px-4 sm:px-6 lg:px-8">
-        <h2 className="mb-5 text-base font-bold text-slate-100">Popular Categories</h2>
-        <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-6">
-          <button
-            onClick={() => { setSport(''); goToResults(); }}
-            className={`flex flex-col items-center gap-2 rounded-2xl border p-3 text-center transition-all duration-200 hover:scale-105 sm:p-4 ${
-              !sport ? 'border-indigo-400/60 bg-indigo-500/15 text-indigo-200' : 'border-white/10 bg-white/[0.03] text-slate-400'
-            }`}
-          >
-            <span className="text-2xl">🏅</span>
-            <span className="text-xs font-semibold">All sports</span>
+      {/* Sizes match V1's /explore exactly (main branch): grid-cols-4/6/11,
+          p-3 sm:p-4 tile, text-2xl icon, text-xs label — the grid-cols-11 on
+          large screens is why V1's tiles land in a single row (11 categories,
+          11 columns), not because they're pills in a horizontal scroller. */}
+      <section className="mx-auto mb-16 max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div className="mb-6 flex items-center justify-between">
+          <h2 className="text-lg font-bold text-slate-100">Popular Categories</h2>
+          <button onClick={() => goToSearch({})} className="flex items-center gap-1 text-xs text-indigo-400 transition-colors hover:text-indigo-300">
+            View all <ArrowRight className="h-3 w-3" />
           </button>
-          {sports.map((s, i) => {
+        </div>
+        <div className="grid grid-cols-4 gap-3 sm:grid-cols-6 lg:grid-cols-11">
+          {categories.map((c, i) => {
             const color = CATEGORY_COLORS[i % CATEGORY_COLORS.length];
-            const active = sport === s.key;
             return (
               <button
-                key={s.key}
-                onClick={() => { setSport(s.key); goToResults(); }}
-                className={`flex flex-col items-center gap-2 rounded-2xl border bg-gradient-to-b p-3 text-center transition-all duration-200 hover:scale-105 sm:p-4 ${color.bg} ${color.text} ${
-                  active ? 'border-2 border-current' : color.border
-                }`}
+                key={c.id}
+                onClick={() => goToSearch({ categoryId: c.id })}
+                className={`flex flex-col items-center gap-2 rounded-2xl border bg-gradient-to-b p-3 text-center transition-all duration-200 hover:scale-105 sm:p-4 ${color.bg} ${color.border} ${color.text}`}
               >
-                <span className="text-2xl">{SPORT_ICONS[s.key] ?? '🏅'}</span>
-                <span className="text-xs font-semibold">{s.label}</span>
+                <span className="text-2xl">{c.icon ?? '🏅'}</span>
+                <span className="text-xs font-semibold">{c.name}</span>
               </button>
             );
           })}
         </div>
       </section>
 
-      {/* ── RESULTS ──────────────────────────────────────────────────── */}
-      <section ref={resultsRef} id="results" className="mx-auto max-w-6xl scroll-mt-20 px-4 pb-16 sm:px-6 lg:px-8">
-        <div className="mb-5">
-          <h2 className="text-base font-bold text-slate-100">{activeSportLabel ?? 'All'} results</h2>
-          <p className="mt-0.5 text-xs text-slate-500">
-            {loading ? 'Searching…' : `${listings.length} result${listings.length === 1 ? '' : 's'} found`}
-          </p>
-        </div>
-
-        {!loading && listings.length === 0 && (
-          <div className="glass-panel flex flex-col items-center gap-3 rounded-2xl border border-dashed border-white/10 py-14 text-center">
-            <Search className="h-7 w-7 text-slate-600" />
-            <p className="text-sm font-medium text-slate-300">No listings match yet.</p>
-            <p className="max-w-xs text-xs text-slate-500">Try a different city, or clear the sport filter to see everything nearby.</p>
-            {(city || sport || q) && (
-              <button
-                onClick={() => { setCity(''); setSport(''); setQ(''); }}
-                className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs font-medium text-slate-300 hover:bg-white/[0.08]"
-              >
-                Clear filters
-              </button>
-            )}
+      {/* ── TOP PICKS ────────────────────────────────────────────────── */}
+      {/* Sizes match V1's /explore top-picks cards exactly: h-36 avatar
+          area, p-4 body, text-sm font-bold name, ChevronRight "View Profile".
+          Rating badge and location line are dropped (not faked) — V2's
+          coach_profiles has no rating/review source and no city column. */}
+      {topPicks.length > 0 && (
+        <section className="mx-auto mb-20 max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="mb-6 flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-bold text-slate-100">Top Picks For You</h2>
+              <p className="mt-0.5 text-xs text-slate-500">Coaches ready to teach across categories</p>
+            </div>
+            <button onClick={() => goToSearch({})} className="flex items-center gap-1 text-xs font-medium text-indigo-400 transition-colors hover:text-indigo-300">
+              View all coaches <ArrowRight className="h-3.5 w-3.5" />
+            </button>
           </div>
-        )}
-
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {listings.map((listing) => {
-            const price = priceLabel(listing.priceDisplay);
-            return (
-              <a
-                key={listing.slug}
-                href={`/explore/${listing.slug}`}
-                className={`glass-panel glass-panel-hover block rounded-2xl p-4 transition-all duration-200 ${
-                  listing.featured ? 'border-amber-400/40' : ''
-                }`}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {topPicks.map((coach) => (
+              <Link
+                key={coach.id}
+                href={`/coaches/${coach.id}`}
+                className="glass-panel glass-panel-hover group overflow-hidden rounded-2xl transition-all duration-200"
               >
-                {listing.featured && (
-                  <span className="mb-1.5 inline-block rounded-full border border-amber-400/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-300">
-                    ★ Featured
-                  </span>
-                )}
-                <h3 className="font-semibold text-slate-100">{listing.headline ?? listing.slug}</h3>
-                <p className="mt-1 flex items-center gap-1 text-xs text-slate-500">
-                  <MapPin className="h-3 w-3" /> {cities.find((c) => c.key === listing.cityKey)?.label ?? listing.cityKey}
-                </p>
-                <div className="mt-2 flex flex-wrap gap-1">
-                  {listing.sportKeys.slice(0, 3).map((key) => (
-                    <span key={key} className="rounded-full bg-white/[0.06] px-2 py-0.5 text-[10px] text-slate-400">
-                      {sports.find((s) => s.key === key)?.label ?? key}
-                    </span>
-                  ))}
-                </div>
-                <div className="mt-2 flex items-center justify-between">
-                  {listing.avgRating !== null ? (
-                    <span className="flex items-center gap-1 text-xs text-slate-400">
-                      <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" /> {listing.avgRating.toFixed(1)} ({listing.reviewCount})
-                    </span>
+                <div className="relative flex h-36 items-center justify-center overflow-hidden bg-gradient-to-br from-indigo-900/40 to-slate-900/60">
+                  {coach.avatarPath ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={coach.avatarPath} alt={coach.displayName ?? 'Coach'} className="h-full w-full object-cover" />
                   ) : (
-                    <span className="text-xs text-slate-600">No reviews yet</span>
+                    <div className="flex h-20 w-20 items-center justify-center rounded-full border border-indigo-500/30 bg-indigo-500/20 text-2xl font-black text-indigo-200">
+                      {initials(coach.displayName)}
+                    </div>
                   )}
-                  {price && <span className="text-sm font-semibold text-white">{price}</span>}
+                  <div className="absolute bottom-2 left-2 rounded-full bg-indigo-600/80 px-2 py-0.5 text-[10px] font-semibold text-white backdrop-blur-sm">
+                    {coach.primarySubcategoryName ?? coach.category?.name ?? 'Coach'}
+                  </div>
                 </div>
-              </a>
-            );
-          })}
-        </div>
+                <div className="p-4">
+                  <h3 className="truncate text-sm font-bold text-slate-100 transition-colors group-hover:text-indigo-300">
+                    Coach {coach.displayName ?? ''}
+                  </h3>
+                  <div className="mt-3 flex items-center justify-between">
+                    <span className="text-xs text-slate-500">{coach.experienceYears !== null ? `${coach.experienceYears}+ yrs exp` : ''}</span>
+                    <span className="flex items-center gap-0.5 text-xs font-medium text-indigo-400">
+                      View Profile <ChevronRight className="h-3 w-3" />
+                    </span>
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
 
-        {/* ── SUPPLY-SIDE CTA ────────────────────────────────────────── */}
-        <div className="glass-panel relative mt-12 overflow-hidden rounded-3xl border border-indigo-500/15 bg-indigo-500/[0.03] p-8 text-center sm:p-12">
+      {/* ── SUPPLY-SIDE CTA ────────────────────────────────────────── */}
+      <section className="mx-auto max-w-7xl px-4 pb-16 sm:px-6 lg:px-8">
+        <div className="glass-panel relative overflow-hidden rounded-3xl border border-indigo-500/15 bg-indigo-500/[0.03] p-8 text-center sm:p-12">
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-indigo-500/5 via-transparent to-purple-500/5" />
           <h3 className="relative mb-3 text-2xl font-black text-white sm:text-3xl">Are you a Coach or Academy?</h3>
           <p className="relative mx-auto mb-6 max-w-md text-sm text-slate-400">

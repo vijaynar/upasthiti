@@ -18,11 +18,16 @@ export async function POST(req: NextRequest) {
       experienceYears: typeof body?.experienceYears === 'number' ? body.experienceYears : undefined,
       qualification: typeof body?.qualification === 'string' ? body.qualification : undefined,
       languagesKnown: Array.isArray(body?.languagesKnown) ? body.languagesKnown : undefined,
-      sportKeys: Array.isArray(body?.sportKeys) ? body.sportKeys : undefined,
       ageGroups: Array.isArray(body?.ageGroups) ? body.ageGroups : undefined,
       skillLevels: Array.isArray(body?.skillLevels) ? body.skillLevels : undefined,
       serviceTypes: Array.isArray(body?.serviceTypes) ? body.serviceTypes : undefined,
       classTypes: Array.isArray(body?.classTypes) ? body.classTypes : undefined,
+      serviceAreaKeys: Array.isArray(body?.serviceAreaKeys) ? body.serviceAreaKeys : undefined,
+      allowStudentOverrides: typeof body?.allowStudentOverrides === 'boolean' ? body.allowStudentOverrides : undefined,
+      categoryId: typeof body?.categoryId === 'string' ? body.categoryId : undefined,
+      subcategoryIds: Array.isArray(body?.subcategoryIds) ? body.subcategoryIds : undefined,
+      primarySubcategoryId: typeof body?.primarySubcategoryId === 'string' ? body.primarySubcategoryId : undefined,
+      tagIds: Array.isArray(body?.tagIds) ? body.tagIds : undefined,
     });
     return jsonData(profile, 201);
   } catch (err) {

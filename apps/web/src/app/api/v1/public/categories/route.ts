@@ -3,7 +3,15 @@
 // Returns the full categories -> subcategories -> tags taxonomy tree.
 // Powers both the Coach onboarding picker and the Discovery filters so
 // both surfaces share a single source of truth for the taxonomy.
-
+//
+// coachCount used to come from V1's coaches/coach_categories tables (a
+// public-profile-slug + join-table pair that only ever existed in V1's
+// legacy schema, migrations_v1_legacy/0002_core_schema.sql — never applied
+// to V2's active database). Against V2's actual schema that 500'd
+// unconditionally, for both V1 and V2 callers, regardless of this
+// endpoint's data. It's counted from coach_profiles.category_id instead
+// (migration 0019) — V2's real "what a coach teaches" column — now that
+// that data genuinely exists.
 import { adminDb, ok, err } from '@/lib/api';
 
 export async function GET() {
@@ -14,8 +22,7 @@ export async function GET() {
       { data: categories, error: catErr },
       { data: subcategories, error: subErr },
       { data: tags, error: tagErr },
-      { data: visibleCoaches, error: coachErr },
-      { data: coachCategoryRows, error: ccErr },
+      { data: coachProfileRows, error: cpErr },
     ] = await Promise.all([
       db.from('categories').select('id, name, slug, icon, display_order')
         .eq('is_active', true).order('display_order'),
@@ -23,28 +30,18 @@ export async function GET() {
         .eq('is_active', true).order('display_order'),
       db.from('tags').select('id, subcategory_id, tag_type, name, slug, display_order')
         .order('display_order'),
-      // Same "publicly listed" definition as /api/v1/public/coaches (has a slug).
-      db.from('coaches').select('id').not('public_profile_slug', 'is', null),
-      db.from('coach_categories').select('coach_id, subcategory_id'),
+      db.from('coach_profiles').select('category_id').not('category_id', 'is', null),
     ]);
 
     if (catErr) throw catErr;
     if (subErr) throw subErr;
     if (tagErr) throw tagErr;
-    if (coachErr) throw coachErr;
-    if (ccErr) throw ccErr;
+    if (cpErr) throw cpErr;
 
-    // Distinct coach count per category — a coach counts once per category
-    // even if tagged to multiple subcategories within it.
-    const visibleCoachIds = new Set((visibleCoaches ?? []).map(c => c.id));
-    const subcategoryToCategory = new Map((subcategories ?? []).map(s => [s.id, s.category_id]));
-    const coachesByCategory = new Map<string, Set<string>>();
-    for (const row of coachCategoryRows ?? []) {
-      if (!visibleCoachIds.has(row.coach_id)) continue;
-      const categoryId = subcategoryToCategory.get(row.subcategory_id);
-      if (!categoryId) continue;
-      if (!coachesByCategory.has(categoryId)) coachesByCategory.set(categoryId, new Set());
-      coachesByCategory.get(categoryId)!.add(row.coach_id);
+    const coachesByCategory = new Map<string, number>();
+    for (const row of coachProfileRows ?? []) {
+      if (!row.category_id) continue;
+      coachesByCategory.set(row.category_id, (coachesByCategory.get(row.category_id) ?? 0) + 1);
     }
 
     // Global tags (subcategory_id IS NULL, e.g. Board) only make sense within
@@ -57,7 +54,7 @@ export async function GET() {
 
     const tree = (categories ?? []).map(cat => ({
       ...cat,
-      coachCount: coachesByCategory.get(cat.id)?.size ?? 0,
+      coachCount: coachesByCategory.get(cat.id) ?? 0,
       subcategories: (subcategories ?? [])
         .filter(sub => sub.category_id === cat.id)
         .map(sub => ({

@@ -37,6 +37,16 @@ export function RestrictedAutocompleteInput({
     setOpen(false);
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    // Tab commits the top suggestion instead of leaving whatever partial
+    // text was typed — e.g. "Tel" + Tab selects "Telangana" and moves on to
+    // the next field, rather than requiring a mouse click on the dropdown
+    // first. Not preventDefault'd: the browser still advances focus itself.
+    if (e.key === 'Tab' && !e.shiftKey && open && suggestions.length > 0) {
+      select(suggestions[0]);
+    }
+  };
+
   const handleBlur = () => {
     // Delayed so a suggestion's onMouseDown fires first.
     setTimeout(() => {
@@ -65,6 +75,7 @@ export function RestrictedAutocompleteInput({
         onChange={e => { onChange(e.target.value); setOpen(true); }}
         onFocus={() => setOpen(true)}
         onBlur={handleBlur}
+        onKeyDown={handleKeyDown}
         placeholder={placeholder}
         autoComplete="off"
         className={inputClass}
