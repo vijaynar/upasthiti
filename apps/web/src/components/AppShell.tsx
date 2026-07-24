@@ -110,7 +110,7 @@ function PlatformSubmenuList({ pathname, setSidebarOpen }: { pathname: string; s
   const searchParams = useSearchParams();
   const activeTab = searchParams.get('tab') || 'verification';
   return (
-    <div className="mt-0.5 space-y-0.5 pl-5">
+    <div className="mt-0.5 space-y-0.5 pl-4">
       {PLATFORM_TABS.map(({ key, label }) => {
         const active = pathname === '/platform' && activeTab === key;
         return (
@@ -118,7 +118,7 @@ function PlatformSubmenuList({ pathname, setSidebarOpen }: { pathname: string; s
             key={key}
             href={`/platform?tab=${key}`}
             onClick={() => setSidebarOpen(false)}
-            className={`flex items-center gap-2.5 rounded-md px-2.5 h-8 text-xs font-medium transition-all duration-150 group ${
+            className={`flex items-center gap-2 rounded-md px-2 h-7 text-xs font-medium transition-all duration-150 group ${
               active ? 'bg-indigo-500/10 font-bold text-indigo-400' : 'text-slate-400 hover:bg-white/5 hover:text-slate-200'
             }`}
           >
@@ -195,13 +195,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         key={item.href}
         href={item.href}
         onClick={() => setSidebarOpen(false)}
-        className={`flex items-center gap-2.5 rounded-lg px-3 h-9 text-[13px] font-medium transition-all duration-150 group ${
+        className={`flex items-center gap-2.5 rounded-md px-2.5 h-9 text-[13px] font-medium transition-all duration-150 group ${
           active
             ? 'bg-indigo-600 text-white font-semibold shadow-sm'
             : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
         }`}
       >
-        <Icon className={`h-[18px] w-[18px] shrink-0 ${active ? 'text-white' : 'text-slate-400 group-hover:text-indigo-400'}`} />
+        <Icon className={`h-4 w-4 shrink-0 ${active ? 'text-white' : 'text-slate-400 group-hover:text-indigo-400'}`} />
         <span className="truncate">{item.label}</span>
       </Link>
     );
@@ -212,17 +212,17 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <div className="radial-mesh-bg" />
 
       {/* ── Mobile header ── */}
-      <header className="glass-panel fixed left-0 top-0 z-40 flex h-14 w-full items-center justify-between border-b border-white/10 px-4 md:hidden">
+      <header className="glass-panel fixed left-0 top-0 z-40 flex h-12 w-full items-center justify-between border-b border-white/10 px-4 md:hidden">
         <div className="flex items-center gap-2">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.svg" alt="Abhyas" className="h-6 w-auto object-contain" />
+          <img src="/logo.svg" alt="Abhyas" className="h-5 w-auto object-contain" />
           <span className="text-xs font-black tracking-widest text-indigo-400">ABHYAS</span>
         </div>
         <button
           onClick={() => setSidebarOpen(true)}
           className="rounded-lg border border-white/10 bg-white/5 p-1.5 hover:bg-white/10"
         >
-          <Menu className="h-5 w-5 text-slate-200" />
+          <Menu className="h-4 w-4 text-slate-200" />
         </button>
       </header>
 
@@ -233,31 +233,31 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         }`}
       >
         {/* Brand header */}
-        <div className="relative flex h-14 items-center justify-between border-b border-white/10 px-4">
+        <div className="relative flex h-12 items-center justify-between border-b border-white/10 px-3">
           <div className="flex items-center gap-2">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logo.svg" alt="Abhyas" className="h-7 w-auto shrink-0 object-contain" />
+            <img src="/logo.svg" alt="Abhyas" className="h-6 w-auto shrink-0 object-contain" />
             <div className="flex flex-col leading-tight">
-              <span className="bg-gradient-to-r from-white to-indigo-200 bg-clip-text text-sm font-extrabold tracking-wider text-transparent">
+              <span className="bg-gradient-to-r from-white to-indigo-200 bg-clip-text text-xs font-extrabold tracking-wider text-transparent">
                 ABHYAS
               </span>
-              <span className="text-[9px] font-medium uppercase tracking-widest text-slate-500">
+              <span className="text-[8px] font-medium uppercase tracking-widest text-slate-500">
                 {TAGLINE}
               </span>
             </div>
           </div>
           <button onClick={() => setSidebarOpen(false)} className="rounded-md p-1 text-slate-400 hover:text-white md:hidden">
-            <X className="h-5 w-5" />
+            <X className="h-4 w-4" />
           </button>
         </div>
 
         {/* Active workspace card */}
         <Link
           href="/workspace"
-          className="mx-3 mt-3 flex items-center gap-2.5 rounded-xl border border-indigo-500/10 bg-indigo-950/20 p-3 hover:border-indigo-500/25 transition-all"
+          className="mx-2.5 mt-2 flex items-center gap-2 rounded-lg border border-indigo-500/10 bg-indigo-950/20 p-2 hover:border-indigo-500/25 transition-all"
         >
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-indigo-500/30 bg-indigo-500/10 text-indigo-400">
-            <ShieldCheck className="h-4 w-4" />
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-indigo-500/30 bg-indigo-500/10 text-indigo-400">
+            <ShieldCheck className="h-3.5 w-3.5" />
           </div>
           <div className="overflow-hidden">
             <h4 className="truncate text-xs font-bold tracking-wide text-slate-200">
@@ -270,32 +270,32 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </Link>
 
         {/* Nav */}
-        <nav className="no-scrollbar flex-1 space-y-3 overflow-y-auto px-3 py-3">
-          <div className="space-y-0.5">
+        <nav className="no-scrollbar flex-1 space-y-4 overflow-y-auto px-2.5 py-2">
+          <div className="space-y-1">
             {activeOrg && navItem({ label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard })}
             {navItem({ label: 'Workspace', href: '/workspace', icon: LayoutGrid })}
           </div>
 
           {activeOrg && (
             <div>
-              <div className="mt-2.5 pt-2 border-t border-white/10 px-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400/80">
+              <div className="mt-2 pt-2 border-t border-white/10 px-2.5 pb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400/80">
                 Manage
               </div>
-              <div className="space-y-0.5">{ORG_NAV.map(navItem)}</div>
+              <div className="space-y-1">{ORG_NAV.map(navItem)}</div>
             </div>
           )}
 
           {isPlatformStaff && (
             <div>
-              <div className="mt-2.5 pt-2 border-t border-white/10 px-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400/80">
+              <div className="mt-2 pt-2 border-t border-white/10 px-2.5 pb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400/80">
                 Administration
               </div>
-              <div className="space-y-0.5">
+              <div className="space-y-1">
                 {navItem({ label: 'Dashboard', href: '/platform/dashboard', icon: Gauge })}
                 <button
                   type="button"
                   onClick={() => setPlatformExpanded(!platformExpanded)}
-                  className={`group flex h-9 w-full items-center justify-between rounded-lg px-3 text-[13px] font-medium transition-all duration-150 ${
+                  className={`group flex h-9 w-full items-center justify-between rounded-md px-2.5 text-[13px] font-medium transition-all duration-150 ${
                     pathname === '/platform'
                       ? 'border border-indigo-500/20 bg-indigo-600/15 text-indigo-300 font-semibold'
                       : 'text-slate-400 hover:bg-white/5 hover:text-slate-200'
@@ -303,7 +303,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 >
                   <div className="flex items-center gap-2.5">
                     <ShieldCheck
-                      className={`h-[18px] w-[18px] shrink-0 ${pathname === '/platform' ? 'text-indigo-400' : 'text-slate-400 group-hover:text-indigo-400'}`}
+                      className={`h-4 w-4 shrink-0 ${pathname === '/platform' ? 'text-indigo-400' : 'text-slate-400 group-hover:text-indigo-400'}`}
                     />
                     <span>Platform console</span>
                   </div>
@@ -314,7 +314,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                   )}
                 </button>
                 {platformExpanded && (
-                  <Suspense fallback={<div className="py-1 pl-5 text-xs text-slate-500">Loading…</div>}>
+                  <Suspense fallback={<div className="py-1 pl-4 text-xs text-slate-500">Loading…</div>}>
                     <PlatformSubmenuList pathname={pathname} setSidebarOpen={setSidebarOpen} />
                   </Suspense>
                 )}
@@ -323,20 +323,20 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           )}
 
           <div>
-            <div className="mt-2.5 pt-2 border-t border-white/10 px-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400/80">
+            <div className="mt-2 pt-2 border-t border-white/10 px-2.5 pb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400/80">
               Me
             </div>
-            <div className="space-y-0.5">{ME_NAV.map(navItem)}</div>
+            <div className="space-y-1">{ME_NAV.map(navItem)}</div>
           </div>
         </nav>
 
         {/* Footer: theme + user + end session */}
-        <div className="space-y-2 border-t border-white/10 p-3">
-          <div className="flex items-center gap-2">
+        <div className="space-y-1.5 border-t border-white/10 p-2.5">
+          <div className="flex items-center gap-1.5">
             <button
               onClick={() => setShowTheme(!showTheme)}
               title="Change theme"
-              className="flex h-8 flex-1 items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-2.5 text-xs font-semibold text-slate-400 hover:bg-white/10 hover:text-slate-200 transition"
+              className="flex h-7 flex-1 items-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-2 text-xs font-semibold text-slate-400 hover:bg-white/10 hover:text-slate-200 transition"
             >
               <Palette className="h-3.5 w-3.5" style={{ color: 'var(--primary)' }} />
               Themes
@@ -344,24 +344,24 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             <button
               onClick={toggleMode}
               title={mode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-slate-400 hover:bg-white/10 hover:text-slate-200 transition"
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-white/10 bg-white/5 text-slate-400 hover:bg-white/10 hover:text-slate-200 transition"
             >
               {mode === 'dark' ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
             </button>
           </div>
 
-          <div className="flex items-center gap-2.5 py-0.5">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-slate-800 text-indigo-400">
+          <div className="flex items-center gap-2 py-0.5">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-slate-800 text-indigo-400">
               {avatarPath ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={avatarPath} alt="" className="h-full w-full object-cover" onError={(e) => ((e.target as HTMLImageElement).style.display = 'none')} />
               ) : (
-                <UserRound className="h-4 w-4" />
+                <UserRound className="h-3.5 w-3.5" />
               )}
             </div>
             <div className="overflow-hidden">
               <h5 className="truncate text-xs font-bold text-slate-200">{displayName ?? '…'}</h5>
-              <span className="mt-0.5 inline-flex items-center rounded-full border border-indigo-500/30 bg-indigo-500/10 px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide text-indigo-300">
+              <span className="inline-flex items-center rounded-full border border-indigo-500/30 bg-indigo-500/10 px-1.5 text-[8px] font-extrabold uppercase tracking-wide text-indigo-300">
                 {isPlatformStaff
                   ? platformRoles.join(', ').replace(/_/g, ' ')
                   : activeOrg
@@ -373,7 +373,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
           <button
             onClick={endSession}
-            className="flex h-8.5 w-full items-center justify-center gap-2 rounded-lg border border-red-500/10 bg-red-500/5 text-xs font-semibold text-red-400 hover:border-red-500/30 hover:bg-red-500/10 hover:text-red-300 transition"
+            className="flex h-7 w-full items-center justify-center gap-1.5 rounded-md border border-red-500/10 bg-red-500/5 text-xs font-semibold text-red-400 hover:border-red-500/30 hover:bg-red-500/10 hover:text-red-300 transition"
           >
             <LogOut className="h-3.5 w-3.5" /> End Session
           </button>
