@@ -9,6 +9,7 @@ import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { LayoutDashboard } from 'lucide-react';
 import { jwt as platformJwt } from '@abhyas/platform';
+import { TAGLINE } from '@/lib/brand';
 
 async function getOptionalUserId(): Promise<string | null> {
   try {
@@ -41,8 +42,8 @@ export default async function ExploreLayout({ children }: { children: React.Reac
               <img src="/logo.svg" alt="Abhyas" className="h-8 w-auto object-contain" />
               <div className="leading-none">
                 <div className="text-[13px] font-black tracking-tight text-white">ABHYAS</div>
-                <div className="mt-0.5 text-[8px] font-semibold tracking-widest text-indigo-400">
-                  OPERATING SYSTEM FOR<br />COACHING &amp; LEARNING
+                <div className="mt-0.5 text-[8px] font-semibold uppercase tracking-widest text-indigo-400">
+                  {TAGLINE}
                 </div>
               </div>
             </Link>

@@ -32,6 +32,7 @@ import {
 } from 'lucide-react';
 import ThemeSelector from './components/ThemeSelector';
 import { useTheme } from '@/lib/theme';
+import { TAGLINE } from '@/lib/brand';
 
 interface UserProfile {
   id: string;
@@ -402,7 +403,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               <span className="font-extrabold text-base tracking-wider bg-gradient-to-r from-white to-indigo-200 bg-clip-text text-transparent">
                 ABHYAS
               </span>
-              <span className="text-[9px] text-slate-500 font-medium tracking-widest uppercase">Operating System for Coaching &amp; Learning</span>
+              <span className="text-[9px] text-slate-500 font-medium tracking-widest uppercase">{TAGLINE}</span>
             </div>
           </div>
           <button

@@ -45,6 +45,7 @@ import {
 } from 'lucide-react';
 import ThemeSelector from '@/app/admin/components/ThemeSelector';
 import { useTheme } from '@/lib/theme';
+import { TAGLINE } from '@/lib/brand';
 
 interface Membership {
   organizationId: string;
@@ -109,7 +110,7 @@ function PlatformSubmenuList({ pathname, setSidebarOpen }: { pathname: string; s
   const searchParams = useSearchParams();
   const activeTab = searchParams.get('tab') || 'verification';
   return (
-    <div className="mt-1 space-y-1 pl-6">
+    <div className="mt-0.5 space-y-0.5 pl-5">
       {PLATFORM_TABS.map(({ key, label }) => {
         const active = pathname === '/platform' && activeTab === key;
         return (
@@ -117,12 +118,12 @@ function PlatformSubmenuList({ pathname, setSidebarOpen }: { pathname: string; s
             key={key}
             href={`/platform?tab=${key}`}
             onClick={() => setSidebarOpen(false)}
-            className={`flex items-center gap-3 rounded-lg px-4 h-9 text-[13px] font-medium transition-all duration-200 group ${
-              active ? 'bg-indigo-500/5 font-bold text-indigo-400' : 'text-slate-500 hover:bg-white/[0.02] hover:text-slate-300'
+            className={`flex items-center gap-2.5 rounded-md px-2.5 h-8 text-xs font-medium transition-all duration-150 group ${
+              active ? 'bg-indigo-500/10 font-bold text-indigo-400' : 'text-slate-400 hover:bg-white/5 hover:text-slate-200'
             }`}
           >
-            <span className={`h-1.5 w-1.5 rounded-full ${active ? 'bg-indigo-400' : 'bg-slate-700 group-hover:bg-slate-500'}`} />
-            {label}
+            <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${active ? 'bg-indigo-400' : 'bg-slate-600 group-hover:bg-slate-400'}`} />
+            <span className="truncate">{label}</span>
           </Link>
         );
       })}
@@ -148,15 +149,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   }, [pathname]);
 
   useEffect(() => {
-    // Not the shared api() helper: that swallows status codes, and a 401
-    // here specifically means middleware's silent refresh (middleware.ts)
-    // already tried and failed — the refresh token itself is gone too, a
-    // real logout, not a transient blip. Every page under this shell reads
-    // its own identity/workspace data independently and has no way to tell
-    // "still loading" apart from "will never load" (see middleware.ts's
-    // header) — this redirect is what actually resolves that for the
-    // shell's own name/role/avatar fetch instead of leaving it on "…"
-    // forever.
     fetch('/api/v1/me')
       .then(async (res) => {
         if (res.status === 401) {
@@ -179,13 +171,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     ]).then(([w, orgs]) => {
       const org = w?.activeOrgId ? orgs?.find((o) => o.organizationId === w.activeOrgId) ?? null : null;
       setActiveOrg(org);
-      // The sidebar badge used to hardcode "Coach" vs "Member" based only on
-      // whether a coach_profile existed — "Member" isn't a real role (the
-      // system's actual org roles are owner/org_admin/branch_admin/coach/
-      // assistant_coach/front_desk/accountant/student, migration 0006), so
-      // an Owner or Org Admin with no coach profile was shown as "Member"
-      // regardless of their real, much broader access. Read the caller's
-      // actual role key(s) for this org instead.
       if (org) {
         api<{ roleKeys: string[] }>(`/api/v1/orgs/${org.organizationId}/me/roles`)
           .then((r) => setOrgRoleKeys(r?.roleKeys ?? []))
@@ -210,14 +195,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         key={item.href}
         href={item.href}
         onClick={() => setSidebarOpen(false)}
-        className={`flex items-center gap-3 rounded-xl px-4 h-10 text-sm font-medium transition-all duration-200 group ${
+        className={`flex items-center gap-2.5 rounded-lg px-3 h-9 text-[13px] font-medium transition-all duration-150 group ${
           active
-            ? 'bg-indigo-600 text-white font-semibold border border-indigo-500/30'
+            ? 'bg-indigo-600 text-white font-semibold shadow-sm'
             : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
         }`}
       >
-        <Icon className={`h-4.5 w-4.5 ${active ? 'text-white' : 'text-slate-400 group-hover:text-indigo-400'}`} />
-        {item.label}
+        <Icon className={`h-[18px] w-[18px] shrink-0 ${active ? 'text-white' : 'text-slate-400 group-hover:text-indigo-400'}`} />
+        <span className="truncate">{item.label}</span>
       </Link>
     );
   }
@@ -227,11 +212,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <div className="radial-mesh-bg" />
 
       {/* ── Mobile header ── */}
-      <header className="glass-panel fixed left-0 top-0 z-40 flex h-16 w-full items-center justify-between border-b border-white/10 px-4 md:hidden">
+      <header className="glass-panel fixed left-0 top-0 z-40 flex h-14 w-full items-center justify-between border-b border-white/10 px-4 md:hidden">
         <div className="flex items-center gap-2">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.svg" alt="Abhyas" className="h-7 w-auto object-contain" />
-          <span className="text-sm font-black tracking-widest text-indigo-400">ABHYAS</span>
+          <img src="/logo.svg" alt="Abhyas" className="h-6 w-auto object-contain" />
+          <span className="text-xs font-black tracking-widest text-indigo-400">ABHYAS</span>
         </div>
         <button
           onClick={() => setSidebarOpen(true)}
@@ -248,16 +233,16 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         }`}
       >
         {/* Brand header */}
-        <div className="relative flex h-16 items-center justify-between border-b border-white/10 px-6">
-          <div className="flex items-center gap-2.5">
+        <div className="relative flex h-14 items-center justify-between border-b border-white/10 px-4">
+          <div className="flex items-center gap-2">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logo.svg" alt="Abhyas" className="h-8 w-auto shrink-0 object-contain" />
+            <img src="/logo.svg" alt="Abhyas" className="h-7 w-auto shrink-0 object-contain" />
             <div className="flex flex-col leading-tight">
-              <span className="bg-gradient-to-r from-white to-indigo-200 bg-clip-text text-base font-extrabold tracking-wider text-transparent">
+              <span className="bg-gradient-to-r from-white to-indigo-200 bg-clip-text text-sm font-extrabold tracking-wider text-transparent">
                 ABHYAS
               </span>
               <span className="text-[9px] font-medium uppercase tracking-widest text-slate-500">
-                Operating system for coaching &amp; learning
+                {TAGLINE}
               </span>
             </div>
           </div>
@@ -269,56 +254,58 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         {/* Active workspace card */}
         <Link
           href="/workspace"
-          className="mx-4 mt-4 flex items-center gap-3 rounded-2xl border border-indigo-500/10 bg-indigo-950/20 p-4 hover:border-indigo-500/25"
+          className="mx-3 mt-3 flex items-center gap-2.5 rounded-xl border border-indigo-500/10 bg-indigo-950/20 p-3 hover:border-indigo-500/25 transition-all"
         >
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-indigo-500/30 bg-indigo-500/10 text-indigo-400">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-indigo-500/30 bg-indigo-500/10 text-indigo-400">
             <ShieldCheck className="h-4 w-4" />
           </div>
           <div className="overflow-hidden">
-            <h4 className="truncate text-xs font-bold tracking-wide text-slate-300">
+            <h4 className="truncate text-xs font-bold tracking-wide text-slate-200">
               {isPlatformStaff ? 'Abhyas Platform' : activeOrg ? activeOrg.organizationName : 'No workspace selected'}
             </h4>
-            <p className="truncate text-[10px] text-slate-500">
+            <p className="truncate text-[10px] text-slate-400/80">
               {isPlatformStaff ? 'platform.abhyas.app' : activeOrg ? `${activeOrg.organizationSlug}.abhyas.app` : 'Choose a workspace →'}
             </p>
           </div>
         </Link>
 
         {/* Nav */}
-        <nav className="no-scrollbar flex-1 space-y-4 overflow-y-auto px-4 py-6">
-          <div className="space-y-1">
+        <nav className="no-scrollbar flex-1 space-y-3 overflow-y-auto px-3 py-3">
+          <div className="space-y-0.5">
             {activeOrg && navItem({ label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard })}
             {navItem({ label: 'Workspace', href: '/workspace', icon: LayoutGrid })}
           </div>
 
           {activeOrg && (
             <div>
-              <div className="my-3 h-px bg-white/10" />
-              <span className="mb-2 block px-4 text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Manage</span>
-              <div className="space-y-1">{ORG_NAV.map(navItem)}</div>
+              <div className="mt-2.5 pt-2 border-t border-white/10 px-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400/80">
+                Manage
+              </div>
+              <div className="space-y-0.5">{ORG_NAV.map(navItem)}</div>
             </div>
           )}
 
           {isPlatformStaff && (
             <div>
-              <div className="my-3 h-px bg-white/10" />
-              <span className="mb-2 block px-4 text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Administration</span>
-              <div className="space-y-1">
+              <div className="mt-2.5 pt-2 border-t border-white/10 px-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400/80">
+                Administration
+              </div>
+              <div className="space-y-0.5">
                 {navItem({ label: 'Dashboard', href: '/platform/dashboard', icon: Gauge })}
                 <button
                   type="button"
                   onClick={() => setPlatformExpanded(!platformExpanded)}
-                  className={`group flex h-10 w-full items-center justify-between rounded-xl px-4 text-sm font-medium transition-all duration-200 ${
+                  className={`group flex h-9 w-full items-center justify-between rounded-lg px-3 text-[13px] font-medium transition-all duration-150 ${
                     pathname === '/platform'
-                      ? 'border border-indigo-500/20 bg-indigo-600/15 text-indigo-300'
+                      ? 'border border-indigo-500/20 bg-indigo-600/15 text-indigo-300 font-semibold'
                       : 'text-slate-400 hover:bg-white/5 hover:text-slate-200'
                   }`}
                 >
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2.5">
                     <ShieldCheck
-                      className={`h-4.5 w-4.5 ${pathname === '/platform' ? 'text-indigo-400' : 'text-slate-400 group-hover:text-indigo-400'}`}
+                      className={`h-[18px] w-[18px] shrink-0 ${pathname === '/platform' ? 'text-indigo-400' : 'text-slate-400 group-hover:text-indigo-400'}`}
                     />
-                    Platform console
+                    <span>Platform console</span>
                   </div>
                   {platformExpanded ? (
                     <ChevronDown className="h-3.5 w-3.5 text-slate-500 group-hover:text-slate-300" />
@@ -327,7 +314,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                   )}
                 </button>
                 {platformExpanded && (
-                  <Suspense fallback={<div className="py-1 pl-6 text-xs text-slate-500">Loading…</div>}>
+                  <Suspense fallback={<div className="py-1 pl-5 text-xs text-slate-500">Loading…</div>}>
                     <PlatformSubmenuList pathname={pathname} setSidebarOpen={setSidebarOpen} />
                   </Suspense>
                 )}
@@ -336,19 +323,20 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           )}
 
           <div>
-            <div className="my-3 h-px bg-white/10" />
-            <span className="mb-2 block px-4 text-[10px] font-extrabold uppercase tracking-widest text-slate-500">Me</span>
-            <div className="space-y-1">{ME_NAV.map(navItem)}</div>
+            <div className="mt-2.5 pt-2 border-t border-white/10 px-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400/80">
+              Me
+            </div>
+            <div className="space-y-0.5">{ME_NAV.map(navItem)}</div>
           </div>
         </nav>
 
         {/* Footer: theme + user + end session */}
-        <div className="space-y-3 border-t border-white/10 p-4">
+        <div className="space-y-2 border-t border-white/10 p-3">
           <div className="flex items-center gap-2">
             <button
               onClick={() => setShowTheme(!showTheme)}
               title="Change theme"
-              className="flex h-9 flex-1 items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 text-xs font-semibold text-slate-400 hover:bg-white/10 hover:text-slate-200"
+              className="flex h-8 flex-1 items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-2.5 text-xs font-semibold text-slate-400 hover:bg-white/10 hover:text-slate-200 transition"
             >
               <Palette className="h-3.5 w-3.5" style={{ color: 'var(--primary)' }} />
               Themes
@@ -356,19 +344,19 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             <button
               onClick={toggleMode}
               title={mode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-400 hover:bg-white/10 hover:text-slate-200"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-slate-400 hover:bg-white/10 hover:text-slate-200 transition"
             >
               {mode === 'dark' ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
             </button>
           </div>
 
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-slate-800 text-indigo-400">
+          <div className="flex items-center gap-2.5 py-0.5">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-slate-800 text-indigo-400">
               {avatarPath ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={avatarPath} alt="" className="h-full w-full object-cover" onError={(e) => ((e.target as HTMLImageElement).style.display = 'none')} />
               ) : (
-                <UserRound className="h-5 w-5" />
+                <UserRound className="h-4 w-4" />
               )}
             </div>
             <div className="overflow-hidden">
@@ -385,7 +373,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
           <button
             onClick={endSession}
-            className="flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-red-500/10 bg-red-500/5 text-xs font-semibold text-red-400 hover:border-red-500/30 hover:bg-red-500/10 hover:text-red-300"
+            className="flex h-8.5 w-full items-center justify-center gap-2 rounded-lg border border-red-500/10 bg-red-500/5 text-xs font-semibold text-red-400 hover:border-red-500/30 hover:bg-red-500/10 hover:text-red-300 transition"
           >
             <LogOut className="h-3.5 w-3.5" /> End Session
           </button>

@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { LayoutDashboard } from 'lucide-react';
+import { TAGLINE } from '@/lib/brand';
 
 async function getOptionalUser() {
   try {
@@ -59,8 +60,8 @@ export default async function ExploreHeader() {
               <div className="text-[13px] font-black text-white tracking-tight">
                 ABHYAS
               </div>
-              <div className="text-[8px] text-indigo-400 font-semibold tracking-widest mt-0.5">
-                OPERATING SYSTEM FOR<br />COACHING &amp; LEARNING
+              <div className="text-[8px] text-indigo-400 font-semibold uppercase tracking-widest mt-0.5">
+                {TAGLINE}
               </div>
             </div>
           </Link>
