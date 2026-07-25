@@ -245,6 +245,7 @@ export interface MembershipSummary {
   orgStatus: string;
   branchId: string | null;
   status: string;
+  activeRoleKey: string | null;
 }
 
 export async function listMyMemberships(session: SessionContext): Promise<MembershipSummary[]> {
@@ -257,10 +258,13 @@ export async function listMyMemberships(session: SessionContext): Promise<Member
       org_status: string;
       branch_id: string | null;
       status: string;
+      active_role_key: string | null;
     }>(
-      `select m.organization_id, o.name, o.slug, o.org_type, o.status as org_status, m.branch_id, m.status
+      `select m.organization_id, o.name, o.slug, o.org_type, o.status as org_status, m.branch_id, m.status,
+              ar.key as active_role_key
        from memberships m
        join organizations o on o.id = m.organization_id
+       left join roles ar on ar.id = m.active_role_id
        where m.user_id = $1
        order by m.created_at`,
       [session.userId]
@@ -273,6 +277,7 @@ export async function listMyMemberships(session: SessionContext): Promise<Member
       orgStatus: row.org_status,
       branchId: row.branch_id,
       status: row.status,
+      activeRoleKey: row.active_role_key,
     }));
   });
 }
@@ -831,5 +836,62 @@ export async function revokeRole(
          and role_id = (select id from roles where key = $2 and organization_id is null)`,
       [membershipId, roleKey]
     );
+  });
+}
+
+// ── Active role (migration 0022) ─────────────────────────────────
+// A membership can HOLD several roles (membership_roles, unchanged) but
+// only one is ACTIVE at a time — has_perm()/has_perm_branch() check only
+// the active role (see migration 0022's header). Switching is a self-service
+// UPDATE on the caller's own membership row, gated by
+// memberships_switch_active_role_self.
+
+export async function getMyActiveRole(session: SessionContext, organizationId: string): Promise<string | null> {
+  return db.withRequestContext(session, async (client) => {
+    const result = await client.query<{ key: string | null }>(
+      `select r.key
+       from memberships m
+       left join roles r on r.id = m.active_role_id
+       where m.user_id = $1 and m.organization_id = $2 and m.status = 'active'`,
+      [session.userId, organizationId]
+    );
+    return result.rows[0]?.key ?? null;
+  });
+}
+
+// Permission keys of the active role only — used to show/hide nav by what
+// the caller can actually do right now, not by every role they hold.
+export async function getMyActivePermissions(session: SessionContext, organizationId: string): Promise<string[]> {
+  return db.withRequestContext(session, async (client) => {
+    const result = await client.query<{ permission_key: string }>(
+      `select rp.permission_key
+       from memberships m
+       join role_permissions rp on rp.role_id = m.active_role_id
+       where m.user_id = $1 and m.organization_id = $2 and m.status = 'active'`,
+      [session.userId, organizationId]
+    );
+    return result.rows.map((r) => r.permission_key);
+  });
+}
+
+// UPDATE ... FROM only touches the row if a membership_roles match exists
+// for (this membership, roleKey) — rowCount is 0 for a bad key, an org
+// mismatch, or a role the caller doesn't actually hold, so a mistyped
+// roleKey can never blank out active_role_id (unlike a plain subselect,
+// which would silently resolve to NULL and null out the column).
+export async function switchActiveRole(session: SessionContext, organizationId: string, roleKey: string): Promise<void> {
+  await db.withRequestContext(session, async (client) => {
+    const result = await client.query(
+      `update memberships m set active_role_id = mr.role_id
+       from membership_roles mr
+       join roles r on r.id = mr.role_id
+       where m.id = mr.membership_id
+         and m.user_id = $1 and m.organization_id = $2 and m.status = 'active'
+         and r.key = $3 and r.organization_id is null and r.scope = 'org'`,
+      [session.userId, organizationId, roleKey]
+    );
+    if (result.rowCount === 0) {
+      throw new NotAuthorizedError('switch to a role you do not hold in this organization');
+    }
   });
 }

@@ -10,11 +10,11 @@
 // rebuilt on V2's real session (cookie JWT via /api/v1/me, not
 // supabase.auth) and mounted once per route tree via a thin layout.tsx.
 //
-// Nav is intentionally coarse (no per-permission item hiding) — every V2
-// page already does its own access check server-side (see /platform's
-// accessDenied state) and 403s gracefully, so a shown-but-inapplicable nav
-// link costs nothing. Building a full RBAC-aware nav tree is real scope,
-// not a chrome fix.
+// ORG_NAV items are filtered by the caller's ACTIVE role's permissions
+// (migration 0022 — GET .../me/permissions) — a membership can HOLD several
+// roles but only one is active at a time, and the nav follows that one role
+// only, not the union of everything the membership could switch to. 'Me'
+// items stay unfiltered (self-access, not RBAC-mediated per Doc 04 §4).
 
 import { Suspense, useEffect, useState } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
@@ -77,15 +77,18 @@ const ORG_ROLE_LABELS: Record<string, string> = {
   student: 'Student',
 };
 
+// permission: the key that actually gates that page's RLS read policy (not
+// a guess — traced to each module's `*_select_staff` policy), used to
+// show/hide the item by the caller's active role only.
 const ORG_NAV = [
-  { label: 'People', href: '/people', icon: Users },
-  { label: 'Scheduling', href: '/scheduling', icon: CalendarClock },
-  { label: 'Attendance', href: '/attendance', icon: ScanFace },
-  { label: 'Progress', href: '/progress', icon: TrendingUp },
-  { label: 'Finance', href: '/finance', icon: Wallet },
-  { label: 'Staff HR', href: '/staff', icon: UserCog },
-  { label: 'Marketplace', href: '/marketplace', icon: Store },
-  { label: 'Notifications', href: '/notifications', icon: Bell },
+  { label: 'People', href: '/people', icon: Users, permission: 'people.student.read' },
+  { label: 'Scheduling', href: '/scheduling', icon: CalendarClock, permission: 'schedule.calendar.read' },
+  { label: 'Attendance', href: '/attendance', icon: ScanFace, permission: 'attendance.read' },
+  { label: 'Progress', href: '/progress', icon: TrendingUp, permission: 'people.student.read' },
+  { label: 'Finance', href: '/finance', icon: Wallet, permission: 'finance.charge.read' },
+  { label: 'Staff HR', href: '/staff', icon: UserCog, permission: 'hr.staff.onboard' },
+  { label: 'Marketplace', href: '/marketplace', icon: Store, permission: 'market.listing.manage' },
+  { label: 'Notifications', href: '/notifications', icon: Bell, permission: 'notify.log.read' },
 ];
 
 const ME_NAV = [
@@ -134,7 +137,11 @@ function PlatformSubmenuList({ pathname, setSidebarOpen }: { pathname: string; s
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const [displayName, setDisplayName] = useState<string | null>(null);
   const [avatarPath, setAvatarPath] = useState<string | null>(null);
-  const [orgRoleKeys, setOrgRoleKeys] = useState<string[]>([]);
+  const [heldRoleKeys, setHeldRoleKeys] = useState<string[]>([]);
+  const [activeRoleKey, setActiveRoleKey] = useState<string | null>(null);
+  const [activePermissions, setActivePermissions] = useState<Set<string> | null>(null);
+  const [switchingRole, setSwitchingRole] = useState(false);
+  const [roleMenuOpen, setRoleMenuOpen] = useState(false);
   const [platformRoles, setPlatformRoles] = useState<string[]>([]);
   const [activeOrg, setActiveOrg] = useState<Membership | null | undefined>(undefined);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -172,9 +179,18 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       const org = w?.activeOrgId ? orgs?.find((o) => o.organizationId === w.activeOrgId) ?? null : null;
       setActiveOrg(org);
       if (org) {
-        api<{ roleKeys: string[] }>(`/api/v1/orgs/${org.organizationId}/me/roles`)
-          .then((r) => setOrgRoleKeys(r?.roleKeys ?? []))
-          .catch(() => setOrgRoleKeys([]));
+        api<{ roleKeys: string[]; activeRoleKey: string | null }>(`/api/v1/orgs/${org.organizationId}/me/roles`)
+          .then((r) => {
+            setHeldRoleKeys(r?.roleKeys ?? []);
+            setActiveRoleKey(r?.activeRoleKey ?? null);
+          })
+          .catch(() => {
+            setHeldRoleKeys([]);
+            setActiveRoleKey(null);
+          });
+        api<{ permissionKeys: string[] }>(`/api/v1/orgs/${org.organizationId}/me/permissions`)
+          .then((r) => setActivePermissions(new Set(r?.permissionKeys ?? [])))
+          .catch(() => setActivePermissions(new Set()));
       }
     });
   }, []);
@@ -185,7 +201,31 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     router.refresh();
   }
 
+  async function switchRole(roleKey: string) {
+    if (!activeOrg || roleKey === activeRoleKey) {
+      setRoleMenuOpen(false);
+      return;
+    }
+    setSwitchingRole(true);
+    try {
+      const res = await fetch(`/api/v1/orgs/${activeOrg.organizationId}/me/active-role`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roleKey }),
+      });
+      if (!res.ok) throw new Error('switch failed');
+      // Full reload: every page's own data (already fetched under the old
+      // active role's permissions) needs to re-run against the new one, not
+      // just this sidebar's local state.
+      window.location.reload();
+    } catch {
+      setSwitchingRole(false);
+      setRoleMenuOpen(false);
+    }
+  }
+
   const isPlatformStaff = platformRoles.length > 0;
+  const visibleOrgNav = activePermissions ? ORG_NAV.filter((item) => activePermissions.has(item.permission)) : ORG_NAV;
 
   function navItem(item: { label: string; href: string; icon: typeof Users }) {
     const Icon = item.icon;
@@ -281,7 +321,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               <div className="mt-2 pt-2 border-t border-white/10 px-2.5 pb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400/80">
                 Manage
               </div>
-              <div className="space-y-1">{ORG_NAV.map(navItem)}</div>
+              <div className="space-y-1">{visibleOrgNav.map(navItem)}</div>
             </div>
           )}
 
@@ -359,15 +399,58 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 <UserRound className="h-3.5 w-3.5" />
               )}
             </div>
-            <div className="overflow-hidden">
+            <div className="relative min-w-0">
               <h5 className="truncate text-xs font-bold text-slate-200">{displayName ?? '…'}</h5>
-              <span className="inline-flex items-center rounded-full border border-indigo-500/30 bg-indigo-500/10 px-1.5 text-[8px] font-extrabold uppercase tracking-wide text-indigo-300">
-                {isPlatformStaff
-                  ? platformRoles.join(', ').replace(/_/g, ' ')
-                  : activeOrg
-                    ? orgRoleKeys.map((k) => ORG_ROLE_LABELS[k] ?? k).join(', ') || '…'
-                    : 'No workspace'}
-              </span>
+              {isPlatformStaff ? (
+                <span className="inline-flex items-center rounded-full border border-indigo-500/30 bg-indigo-500/10 px-1.5 text-[8px] font-extrabold uppercase tracking-wide text-indigo-300">
+                  {platformRoles.join(', ').replace(/_/g, ' ')}
+                </span>
+              ) : activeOrg ? (
+                heldRoleKeys.length > 1 ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setRoleMenuOpen((v) => !v)}
+                      disabled={switchingRole}
+                      className="inline-flex items-center gap-0.5 rounded-full border border-indigo-500/30 bg-indigo-500/10 px-1.5 text-[8px] font-extrabold uppercase tracking-wide text-indigo-300 hover:bg-indigo-500/20 disabled:opacity-60"
+                    >
+                      {switchingRole ? 'Switching…' : ORG_ROLE_LABELS[activeRoleKey ?? ''] ?? activeRoleKey ?? '…'}
+                      <ChevronDown className="h-2.5 w-2.5" />
+                    </button>
+                    {roleMenuOpen && (
+                      <>
+                        <div className="fixed inset-0 z-40" onClick={() => setRoleMenuOpen(false)} />
+                        <div className="absolute bottom-full left-0 z-50 mb-1.5 w-40 overflow-hidden rounded-lg border border-white/10 bg-slate-900 py-1 shadow-xl">
+                          <div className="px-2.5 pb-1 text-[9px] font-bold uppercase tracking-wider text-slate-500">
+                            Switch role
+                          </div>
+                          {heldRoleKeys.map((k) => (
+                            <button
+                              key={k}
+                              type="button"
+                              onClick={() => switchRole(k)}
+                              className={`flex w-full items-center justify-between px-2.5 py-1.5 text-left text-xs font-medium transition ${
+                                k === activeRoleKey ? 'text-indigo-300' : 'text-slate-300 hover:bg-white/5'
+                              }`}
+                            >
+                              {ORG_ROLE_LABELS[k] ?? k}
+                              {k === activeRoleKey && <span className="text-[10px]">●</span>}
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </>
+                ) : (
+                  <span className="inline-flex items-center rounded-full border border-indigo-500/30 bg-indigo-500/10 px-1.5 text-[8px] font-extrabold uppercase tracking-wide text-indigo-300">
+                    {ORG_ROLE_LABELS[activeRoleKey ?? ''] ?? activeRoleKey ?? '…'}
+                  </span>
+                )
+              ) : (
+                <span className="inline-flex items-center rounded-full border border-indigo-500/30 bg-indigo-500/10 px-1.5 text-[8px] font-extrabold uppercase tracking-wide text-indigo-300">
+                  No workspace
+                </span>
+              )}
             </div>
           </div>
 
