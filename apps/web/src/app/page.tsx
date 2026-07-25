@@ -1,29 +1,24 @@
 import { redirect } from 'next/navigation';
-import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
+import { jwt as platformJwt } from '@abhyas/platform';
+
+// Root route: send a signed-in V2 user to their workspace switcher, everyone
+// else to the public marketplace. Checks the same abhyas_access_token cookie
+// explore/layout.tsx's getOptionalUserId() does — no more Supabase-session
+// check (that was V1's `/admin/dashboard`, now removed).
+async function hasActiveV2Session(): Promise<boolean> {
+  try {
+    const cookieStore = await cookies();
+    const token = cookieStore.get('abhyas_access_token')?.value;
+    if (!token) return false;
+    platformJwt.verifyAccessToken(token);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export default async function Home() {
-  try {
-    if (
-      process.env.NEXT_PUBLIC_SUPABASE_URL &&
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-    ) {
-      const cookieStore = await cookies();
-      const supabase = createServerClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-        {
-          cookies: {
-            getAll() { return cookieStore.getAll(); },
-            setAll() {},
-          },
-        }
-      );
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) redirect('/admin/dashboard');
-    }
-  } catch {
-    // fall through to explore redirect
-  }
-  redirect('/explore');
+  const loggedIn = await hasActiveV2Session();
+  redirect(loggedIn ? '/workspace' : '/explore');
 }

@@ -119,9 +119,7 @@ What exists (don't recreate):
   landing for new users until Phase 3 builds real org onboarding.
 - **Deleted** (superseded, referenced the archived V1 schema): `api/v1/auth/{me,register,
   resolve-identifier,session,signup}/route.ts`, `auth/callback/route.ts`, `auth/register/page.tsx`,
-  `auth/reset-password/page.tsx`. Note: `apps/web/src/app/admin/coaches/page.tsx` and
-  `components/CoachOnboardingWizard.tsx` (untouched V1, Phase 12 territory) still link to
-  the now-deleted `/auth/register` — known, acceptable transitional breakage, not fixed here.
+  `auth/reset-password/page.tsx`.
 - `eslint.config.mjs`: apps/web is no longer globally ignored (gitignore-style negation to
   re-include nested paths doesn't work reliably — verified empirically). Instead specific
   rebuilt paths are added to `V2_WEB_PATHS`/`V2_TREE`; anything not listed there simply
@@ -226,7 +224,10 @@ Phase 3 work so fixed here):**
    magic-link/OAuth flows create a transient Supabase session as a side effect of the PKCE
    exchange, which made `/auth/login` permanently unreachable after any V2 login (blocking,
    e.g., a second person signing in on the same browser). Removed that redirect; `/admin/*`'s
-   guard (unauthenticated → `/auth/login`) is untouched.
+   guard (unauthenticated → `/auth/login`) was left untouched at the time. (2026-07-24: the
+   entire V1 `app/admin/**`/`app/student/**` surface + their V1-only API routes were removed
+   outright — see the "V1 admin/student surface removed" entry below — so `proxy.ts` no longer
+   has any Supabase-session logic at all, just the V2 access-token refresh.)
 3. **Returning-user login landed on `/`**, a V1 page that redirects based on Supabase's
    session, not V2 state. Both auth callbacks (`magic-link/callback`, `oauth/google/callback`)
    now send a returning user to `/workspace` instead (new users still go to `/onboarding`).

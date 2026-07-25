@@ -83,7 +83,7 @@ export default async function ExploreHeader() {
           <div className="flex items-center gap-2 shrink-0">
             {user ? (
               <Link
-                href="/admin/dashboard"
+                href="/workspace"
                 className="btn-premium flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold"
               >
                 <LayoutDashboard className="w-3.5 h-3.5" />

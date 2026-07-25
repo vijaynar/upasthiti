@@ -43,7 +43,7 @@ import {
   ChevronDown,
   ChevronRight,
 } from 'lucide-react';
-import ThemeSelector from '@/app/admin/components/ThemeSelector';
+import ThemeSelector from '@/components/ThemeSelector';
 import { useTheme } from '@/lib/theme';
 import { TAGLINE } from '@/lib/brand';
 

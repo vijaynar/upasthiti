@@ -1,18 +1,19 @@
 // apps/web/src/proxy.ts
 // Next.js Proxy (renamed from `middleware` in Next 16 — a file named
 // middleware.ts alongside this one is a build error) — runs on every
-// request. Responsibilities:
-//   1. V2: silently refresh the abhyas_access_token cookie (Doc 05 §6)
-//   2. V1: refresh Supabase session cookies so JWT stays valid
-//   3. Redirect unauthenticated users away from protected routes
-//   4. Redirect authenticated users away from auth pages
+// request. Responsibility: silently refresh the abhyas_access_token cookie
+// (Doc 05 §6) before the request reaches any route handler.
 //
-// #1 needs a real Postgres connection (identity-auth's refreshSession,
+// This needs a real Postgres connection (identity-auth's refreshSession,
 // packages/platform's db.getServiceClient) and RS256 JWT verification —
 // this only works because Proxy (unlike old-style Edge middleware) always
 // runs on the Node.js runtime.
+//
+// V1's Supabase-session refresh + /admin/* route guard used to live here
+// too — removed along with the rest of the V1 admin/student surface
+// (app/admin/**, app/student/**), which was the only thing reading a
+// Supabase session cookie.
 
-import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 import { jwt as platformJwt } from '@abhyas/platform';
 import { refreshSession } from '@abhyas/module-identity-auth';
@@ -55,87 +56,13 @@ async function refreshV2AccessToken(request: NextRequest, response: NextResponse
 }
 
 export async function proxy(request: NextRequest) {
-  let response = NextResponse.next({
+  const response = NextResponse.next({
     request: {
       headers: request.headers,
     },
   });
 
-  response = await refreshV2AccessToken(request, response);
-
-  try {
-    // Check if env variables are available before constructing client
-    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-      console.warn('[Proxy Middleware] Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY');
-      return response;
-    }
-
-    // Create a Supabase client that can read/write cookies
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-      {
-        cookies: {
-          getAll() {
-            return request.cookies.getAll();
-          },
-          setAll(cookiesToSet: { name: string; value: string; options?: CookieOptions }[]) {
-            cookiesToSet.forEach(({ name, value }) =>
-              request.cookies.set(name, value)
-            );
-            // Carry over any cookies refreshV2AccessToken already set (e.g.
-            // abhyas_access_token) — this rebuilds `response` from scratch
-            // and would otherwise silently drop them if a V1 Supabase
-            // session and a V2 session coexist in the same browser.
-            const priorCookies = response.cookies.getAll();
-            response = NextResponse.next({ request });
-            priorCookies.forEach((c) => response.cookies.set(c));
-            cookiesToSet.forEach(({ name, value, options }) =>
-              response.cookies.set(name, value, options)
-            );
-          },
-        },
-      }
-    );
-
-    // Refresh session — important: always call getUser() to refresh
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    const { pathname } = request.nextUrl;
-
-    // ── Auth route guards ─────────────────────────────────────
-    const isAdminRoute = pathname.startsWith('/admin');
-    const isApiRoute = pathname.startsWith('/api');
-
-    // API routes handle their own auth — skip proxy for them
-    if (isApiRoute) {
-      return response;
-    }
-
-    // NOTE (V2 rebuild, Phase 3): this used to also bounce `/auth/*` away to
-    // `/admin/dashboard` whenever `supabase.auth.getUser()` found a session.
-    // That's now the wrong signal — `/auth/login` is V2's rebuilt login page
-    // (Doc 05), which authenticates against our own JWT
-    // (`abhyas_access_token`), not a Supabase session. The V2 magic-link/
-    // OAuth flows use Supabase's GoTrue transiently (PKCE exchange) and can
-    // leave a Supabase session cookie behind as a side effect, which used to
-    // make `/auth/login` permanently unreachable afterwards — even for a
-    // second person signing in on the same browser. `/admin/*` (still
-    // V1-live, unrebuilt) keeps its guard below unchanged.
-
-    // Redirect unauthenticated users to login for protected routes
-    if (isAdminRoute && !user) {
-      const redirectUrl = new URL('/auth/login', request.url);
-      redirectUrl.searchParams.set('redirect', pathname);
-      return NextResponse.redirect(redirectUrl);
-    }
-  } catch (error) {
-    console.error('[Proxy Middleware] Unexpected error:', error);
-  }
-
-  return response;
+  return refreshV2AccessToken(request, response);
 }
 
 export const config = {
