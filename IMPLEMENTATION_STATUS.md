@@ -13,6 +13,18 @@ re-read only the specific doc a phase needs, not all of them).
   compatibility shims, no dual-schema support. Local `supabase db reset` on
   this branch now serves the V2 schema only; V1's local dev experience is
   intentionally not preserved here (V1 lives on `main`).
+- **Migrations were consolidated (2026-07-26)**: the 24 per-phase files
+  (`0001_extensions.sql` … `0024_public_categories_academy_count.sql`)
+  referenced by file name throughout this doc's phase sections below were
+  merged into 6 final-state files ahead of a fresh Supabase project, since
+  there's no production data to preserve: `0001_extensions.sql`,
+  `0002_core_schema.sql` (tables), `0003_indexes.sql`,
+  `0004_functions_triggers.sql`, `0005_security.sql` (RLS + grants + storage
+  buckets), `0006_seed_reference_data.sql`. Every table/policy/function
+  reflects its FINAL shape — no dropped-and-replaced policies, no
+  added-then-dropped columns. The phase narrative below (what shipped when,
+  why) is still accurate history — just don't expect the old filenames to
+  exist on disk anymore.
 - **Roadmap**: 17 phases, defined in full in conversation history (not
   re-pasted here — regenerate from `docsV2/00-15,17` if truly lost, but it
   shouldn't be: phase list is Core Infra → Auth/Identity → Multi-Tenancy →
