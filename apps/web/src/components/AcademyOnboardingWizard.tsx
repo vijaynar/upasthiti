@@ -35,7 +35,6 @@ import {
 import { Chip } from '@/components/Chip';
 import { CategoryPicker, type CategorySelection } from '@/components/CategoryPicker';
 import { useCategoryTaxonomy } from '@/lib/useCategoryTaxonomy';
-import { INDIAN_STATES, CITIES_BY_STATE } from '@/lib/indianStatesCities';
 import { useTheme } from '@/lib/theme';
 import {
   PaymentPricingStep,
@@ -179,6 +178,11 @@ export default function AcademyOnboardingWizard({
 
   // Taxonomy & Geo reference data
   const [sportsTaxonomy, setSportsTaxonomy] = useState<Sport[]>([]);
+  // Real geo_cities rows (Doc 07 city_key FK) — city selection must be
+  // restricted to these, not the full INDIAN_STATES/CITIES_BY_STATE list,
+  // since submitting a city outside geo_cities fails the listing's FK
+  // constraint (this previously failed silently — see handleSubmitAll).
+  const [cities, setCities] = useState<GeoCityApi[]>([]);
 
   // Step 1: Basic Info & Branding
   const [name, setName] = useState(academyName);
@@ -235,6 +239,11 @@ export default function AcademyOnboardingWizard({
     api<TaxonomyResponse>('/api/v1/public/taxonomy')
       .then((t) => {
         setSportsTaxonomy(t.sports);
+        setCities(t.cities);
+        if (t.cities.length && !t.cities.some((c) => c.label === cityName)) {
+          setStateName(t.cities[0].state ?? t.cities[0].label);
+          setCityName(t.cities[0].label);
+        }
       })
       .catch(() => {});
 
@@ -291,13 +300,14 @@ export default function AcademyOnboardingWizard({
     }
 
     if (step === 2) {
-      const randState = INDIAN_STATES[Math.floor(Math.random() * INDIAN_STATES.length)];
-      const stateCities = CITIES_BY_STATE[randState] ?? [];
-      const randCity = stateCities[Math.floor(Math.random() * stateCities.length)] ?? 'Hyderabad';
+      // Pick only from launched (geo_cities-backed) cities — the free-form
+      // INDIAN_STATES/CITIES_BY_STATE list includes cities with no valid
+      // city_key, which fails the listing insert silently (see submit handler).
+      const randCityRow = cities.length ? cities[Math.floor(Math.random() * cities.length)] : null;
       setBranchName('Main Campus');
       setAddressLine('Plot 42, Financial District, Nanakramguda');
-      setStateName(randState);
-      setCityName(randCity);
+      setStateName(randCityRow?.state ?? stateName);
+      setCityName(randCityRow?.label ?? cityName);
       setAreaName('Indiranagar');
       setPincode(Math.floor(100000 + Math.random() * 899999).toString());
       setGeofenceRadius(100);
@@ -401,15 +411,16 @@ export default function AcademyOnboardingWizard({
       // skill-level selection — same taxonomy coach onboarding writes to
       // coach_profiles, now persisted on the listing instead of dropped).
       const slugCandidate = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-      await fetch(`/api/v1/orgs/${targetOrgId}/listing`, {
+      const matchedCity = cities.find((c) => c.label === cityName);
+      if (!matchedCity) throw new Error(`"${cityName}" isn't a launched city yet — pick a listed city.`);
+      await api(`/api/v1/orgs/${targetOrgId}/listing`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           slug: slugCandidate,
           headline: tagline || undefined,
           description: description || undefined,
           sportKeys: selectedSportKeys,
-          cityKey: cityName.toLowerCase().replace(/\s+/g, '_'),
+          cityKey: matchedCity.key,
           areaKeys: areaName ? [areaName.toLowerCase().replace(/\s+/g, '_')] : [],
           categoryId: categorySelection.categoryId ?? undefined,
           subcategoryIds: categorySelection.subcategoryIds,
@@ -447,7 +458,7 @@ export default function AcademyOnboardingWizard({
       // 'pending_verification' until platform staff approve the org
       // (activateOrgListings() then promotes it). Without this call the
       // listing never appears on /explore even after approval.
-      await fetch(`/api/v1/orgs/${targetOrgId}/listing/publish`, { method: 'POST' }).catch(() => {});
+      await api(`/api/v1/orgs/${targetOrgId}/listing/publish`, { method: 'POST' });
 
       onDone();
     } catch (err) {
@@ -679,12 +690,14 @@ export default function AcademyOnboardingWizard({
                 value={stateName}
                 onChange={(e) => {
                   setStateName(e.target.value);
-                  const citiesList = CITIES_BY_STATE[e.target.value] || [];
-                  if (citiesList.length) setCityName(citiesList[0]);
+                  const citiesList = cities.filter((c) => c.state === e.target.value);
+                  if (citiesList.length) setCityName(citiesList[0].label);
                 }}
                 className={fieldClass()}
               >
-                {INDIAN_STATES.map((s) => (
+                {/* Only states with a launched (geo_cities-backed) city are offered —
+                    picking a state with no live cities has no valid cityKey to submit. */}
+                {Array.from(new Set(cities.map((c) => c.state).filter((s): s is string => !!s))).map((s) => (
                   <option key={s} value={s} className="bg-slate-900 text-white">
                     {s}
                   </option>
@@ -699,12 +712,15 @@ export default function AcademyOnboardingWizard({
                 onChange={(e) => setCityName(e.target.value)}
                 className={fieldClass()}
               >
-                {(CITIES_BY_STATE[stateName] || ['Hyderabad', 'Bengaluru', 'Mumbai', 'Delhi']).map((c) => (
-                  <option key={c} value={c} className="bg-slate-900 text-white">
-                    {c}
-                  </option>
-                ))}
+                {cities
+                  .filter((c) => c.state === stateName)
+                  .map((c) => (
+                    <option key={c.key} value={c.label} className="bg-slate-900 text-white">
+                      {c.label}
+                    </option>
+                  ))}
               </select>
+              <p className="mt-1 text-xs text-slate-500">Only cities Abhyas has launched in are listed.</p>
             </div>
 
             <div>

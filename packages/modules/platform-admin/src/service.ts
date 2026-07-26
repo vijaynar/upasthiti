@@ -251,6 +251,21 @@ export async function decideOrganizationVerification(
   // touches rows still pending_verification.
   if (decision === 'approved') {
     await queue.enqueue('platform.org_verified', { organizationId }, { idempotencyKey: `platform.org_verified:${organizationId}` });
+
+    // TEMPORARY: apps/worker isn't running in any environment yet, so the
+    // queued job above never gets consumed and listings stay stuck in
+    // pending_verification forever. Until the worker is actually deployed
+    // and polling, also run the promotion inline right here. Safe to do
+    // both: activate_org_listings() only touches rows still
+    // pending_verification, so the queued job becomes a harmless no-op
+    // once a worker eventually does pick it up. Remove this block (keep
+    // just the enqueue above) once the worker is confirmed running.
+    const client = await db.getServiceClient();
+    try {
+      await client.query('select activate_org_listings($1)', [organizationId]);
+    } finally {
+      client.release();
+    }
   }
 }
 
