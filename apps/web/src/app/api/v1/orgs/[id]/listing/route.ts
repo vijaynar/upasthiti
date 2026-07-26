@@ -31,6 +31,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       areaKeys: Array.isArray(body.areaKeys) ? body.areaKeys : undefined,
       priceDisplay: body.priceDisplay,
       mediaPaths: Array.isArray(body.mediaPaths) ? body.mediaPaths : undefined,
+      categoryId: typeof body.categoryId === 'string' ? body.categoryId : undefined,
+      subcategoryIds: Array.isArray(body.subcategoryIds) ? body.subcategoryIds : undefined,
+      primarySubcategoryId: typeof body.primarySubcategoryId === 'string' ? body.primarySubcategoryId : undefined,
+      tagIds: Array.isArray(body.tagIds) ? body.tagIds : undefined,
+      ageGroups: Array.isArray(body.ageGroups) ? body.ageGroups : undefined,
+      skillLevels: Array.isArray(body.skillLevels) ? body.skillLevels : undefined,
     });
     return jsonData(listing);
   } catch (err) {

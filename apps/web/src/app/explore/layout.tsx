@@ -2,8 +2,14 @@
 // wireframe 5a's header (logo, nav, Log in/Dashboard), reusing the same
 // dark glass-panel look as the rest of the app (admin console, auth pages)
 // rather than a bespoke light theme — matches V1's `ExploreHeader` almost
-// exactly, trimmed to routes that actually exist in this phase (no
-// /explore/coaches, /explore/academies, /explore/about pages yet).
+// exactly. Container is max-w-7xl to match every page's own content width
+// (/explore, /explore/search, /explore/academies, /explore/about all use
+// max-w-7xl) so the logo's left edge lines up with the content below it
+// instead of sitting in a narrower max-w-6xl shell. Nav is absolutely
+// centered on the header bar (`left-1/2 -translate-x-1/2`) rather than
+// `justify-between`-positioned between logo and auth buttons — with logo
+// and auth buttons at very different widths, `justify-between` doesn't
+// land the nav at the visual center, just at some point between them.
 
 import Link from 'next/link';
 import { cookies } from 'next/headers';
@@ -24,7 +30,9 @@ async function getOptionalUserId(): Promise<string | null> {
 
 const NAV_LINKS = [
   { label: 'Browse', href: '/explore' },
-  { label: 'For Institutions', href: '/auth/login' },
+  { label: 'Coaches', href: '/explore/search' },
+  { label: 'Academies', href: '/explore/academies' },
+  { label: 'About Us', href: '/explore/about' },
 ];
 
 export default async function ExploreLayout({ children }: { children: React.ReactNode }) {
@@ -35,8 +43,8 @@ export default async function ExploreLayout({ children }: { children: React.Reac
       <div className="radial-mesh-bg" />
 
       <header className="sticky top-0 z-50 glass-panel border-b border-white/[0.08]">
-        <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
-          <div className="flex h-16 items-center justify-between gap-4">
+        <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="flex h-16 items-center">
             <Link href="/explore" className="flex shrink-0 items-center gap-2.5">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src="/logo.svg" alt="Abhyas" className="h-8 w-auto object-contain" />
@@ -48,7 +56,7 @@ export default async function ExploreLayout({ children }: { children: React.Reac
               </div>
             </Link>
 
-            <nav className="hidden items-center gap-0.5 md:flex">
+            <nav className="absolute left-1/2 hidden -translate-x-1/2 items-center gap-0.5 md:flex">
               {NAV_LINKS.map((item) => (
                 <Link
                   key={item.label}
@@ -60,7 +68,7 @@ export default async function ExploreLayout({ children }: { children: React.Reac
               ))}
             </nav>
 
-            <div className="flex shrink-0 items-center gap-2">
+            <div className="ml-auto flex shrink-0 items-center gap-2">
               {userId ? (
                 <Link
                   href="/workspace"

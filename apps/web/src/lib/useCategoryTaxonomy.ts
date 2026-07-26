@@ -27,6 +27,7 @@ export interface Category {
   icon: string | null;
   display_order: number;
   coachCount: number;
+  academyCount: number;
   subcategories: Subcategory[];
 }
 

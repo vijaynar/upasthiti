@@ -12,6 +12,10 @@
 // endpoint's data. It's counted from coach_profiles.category_id instead
 // (migration 0019) — V2's real "what a coach teaches" column — now that
 // that data genuinely exists.
+//
+// academyCount is the same idea over listings.category_id (migration 0023,
+// the same taxonomy the Academies onboarding wizard now actually persists)
+// — live listings only, same as /explore/academies' own search filters.
 import { adminDb, ok, err } from '@/lib/api';
 
 export async function GET() {
@@ -23,6 +27,7 @@ export async function GET() {
       { data: subcategories, error: subErr },
       { data: tags, error: tagErr },
       { data: coachProfileRows, error: cpErr },
+      { data: listingRows, error: listErr },
     ] = await Promise.all([
       db.from('categories').select('id, name, slug, icon, display_order')
         .eq('is_active', true).order('display_order'),
@@ -31,17 +36,25 @@ export async function GET() {
       db.from('tags').select('id, subcategory_id, tag_type, name, slug, display_order')
         .order('display_order'),
       db.from('coach_profiles').select('category_id').not('category_id', 'is', null),
+      db.from('listings').select('category_id').eq('status', 'live').not('category_id', 'is', null),
     ]);
 
     if (catErr) throw catErr;
     if (subErr) throw subErr;
     if (tagErr) throw tagErr;
     if (cpErr) throw cpErr;
+    if (listErr) throw listErr;
 
     const coachesByCategory = new Map<string, number>();
     for (const row of coachProfileRows ?? []) {
       if (!row.category_id) continue;
       coachesByCategory.set(row.category_id, (coachesByCategory.get(row.category_id) ?? 0) + 1);
+    }
+
+    const academiesByCategory = new Map<string, number>();
+    for (const row of listingRows ?? []) {
+      if (!row.category_id) continue;
+      academiesByCategory.set(row.category_id, (academiesByCategory.get(row.category_id) ?? 0) + 1);
     }
 
     // Global tags (subcategory_id IS NULL, e.g. Board) only make sense within
@@ -55,6 +68,7 @@ export async function GET() {
     const tree = (categories ?? []).map(cat => ({
       ...cat,
       coachCount: coachesByCategory.get(cat.id) ?? 0,
+      academyCount: academiesByCategory.get(cat.id) ?? 0,
       subcategories: (subcategories ?? [])
         .filter(sub => sub.category_id === cat.id)
         .map(sub => ({

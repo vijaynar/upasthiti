@@ -1,29 +1,23 @@
 'use client';
 
-// Discovery search results (wireframe frame 5b, "full filter rail"). Reached
-// by clicking a category tile or searching on /explore's hero, instead of
-// scrolling to an in-page results section — a genuinely separate results
-// page, matching the wireframe's "5a discovery landing -> 5b search results"
-// two-step flow.
-//
-// Searches coach_profiles (GET /api/v1/public/coaches), not org `listings` —
-// the wireframe's baseline facets beyond Category (Speciality, Age Group,
-// Skill Level) only exist as coach_profiles columns; listings has no
-// equivalent. The wireframe's "new" (blue, beyond-current-schema) facets —
-// area+radius, mode, availability, fees, batch type, coach gender/languages
-// slider, trust, rating — have no V2 data source (no coach rating/review
-// table) and are left out rather than faked; see the API route's own header
-// for the same note.
-//
-// Sizes mirror V1's /explore/coaches (main branch) throughout — filter rail
-// section labels, category list max-height, chip sizing (via the shared
-// Chip component V1 used here), and the results card layout — rather than
-// ad hoc values.
+// Academies discovery — the "Academies" nav counterpart to /explore/search
+// (coaches). Same results-grid layout AND same filter rail (Category ->
+// Speciality, Age Group, Skill Level), backed by GET /api/v1/public/listings
+// (org listings, Doc 08 §10) instead of coach_profiles. As of migration 0023
+// listings carry the same categories/subcategories/tags/age_groups/
+// skill_levels taxonomy coach_profiles does — the Academies onboarding
+// wizard already collected this in its Step 3 picker, it just wasn't
+// persisted anywhere until now — so this filters on real data, not a
+// lookalike UI over a different taxonomy. City/text search stay listings-
+// specific (coach_profiles has no city column, listings has no free-text
+// bio), and pagination is cursor-based ("Load more") since listings has no
+// total count. Each card links to /explore/[slug], the existing listing
+// detail + lead-capture page.
 
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, ChevronRight, MapPin, Search, SlidersHorizontal, X } from 'lucide-react';
+import { ArrowLeft, ChevronRight, MapPin, Search, SlidersHorizontal, Star, X } from 'lucide-react';
 import { useCategoryTaxonomy, type Category } from '@/lib/useCategoryTaxonomy';
 import { Chip } from '@/components/Chip';
 
@@ -34,16 +28,26 @@ async function api<T>(url: string): Promise<T> {
   return body.data as T;
 }
 
-interface CoachResult {
+interface ListingCategory {
   id: string;
-  bio: string | null;
-  experienceYears: number | null;
-  languagesKnown: string[];
-  category: { id: string; name: string; slug: string; icon: string | null } | null;
+  name: string;
+  slug: string;
+  icon: string | null;
+}
+
+interface ListingResult {
+  slug: string;
+  headline: string | null;
+  cityKey: string;
+  sportKeys: string[];
+  priceDisplay: unknown;
+  mediaPaths: string[] | null;
+  featured: boolean;
+  avgRating: number | null;
+  reviewCount: number;
+  category: ListingCategory | null;
   primarySubcategoryName: string | null;
   specialtyNames: string[];
-  displayName: string | null;
-  avatarPath: string | null;
 }
 
 interface City {
@@ -58,37 +62,41 @@ function toggle(list: string[], item: string): string[] {
   return list.includes(item) ? list.filter((x) => x !== item) : [...list, item];
 }
 
-// Same free-text-with-datalist resolution /explore's hero uses (city is a
-// real geo_cities key, not free text) — match the typed label case-
-// insensitively against known cities, fall back to the raw text so an
-// unresolved typo still degrades to the existing "no results" state.
+// Same free-text-with-datalist resolution /explore's hero and /explore/search
+// use — match the typed label case-insensitively against known cities, fall
+// back to the raw text so an unresolved typo still degrades to the existing
+// "no results" state.
 function resolveCityKey(typed: string, cities: City[]): string {
   const match = cities.find((c) => c.label.toLowerCase() === typed.trim().toLowerCase());
   return match?.key ?? typed.trim();
 }
 
-function initials(name: string | null): string {
-  if (!name) return '';
-  const parts = name.trim().split(/\s+/);
-  return ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase();
+function priceLabel(priceDisplay: unknown): string | null {
+  if (priceDisplay && typeof priceDisplay === 'object' && 'amountMinor' in (priceDisplay as Record<string, unknown>)) {
+    const amountMinor = (priceDisplay as { amountMinor?: number }).amountMinor;
+    const per = (priceDisplay as { per?: string }).per ?? 'mo';
+    if (typeof amountMinor === 'number') return `₹${(amountMinor / 100).toLocaleString('en-IN')}/${per}`;
+  }
+  return null;
 }
 
-export default function SearchResultsPage() {
+export default function AcademiesPage() {
   return (
     <Suspense fallback={null}>
-      <SearchResults />
+      <AcademiesSearch />
     </Suspense>
   );
 }
 
-function SearchResults() {
+function AcademiesSearch() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { categories } = useCategoryTaxonomy();
   const [cities, setCities] = useState<City[]>([]);
-  const [coaches, setCoaches] = useState<CoachResult[]>([]);
-  const [total, setTotal] = useState(0);
+  const [listings, setListings] = useState<ListingResult[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const cityInputRef = useRef<HTMLInputElement>(null);
   const qInputRef = useRef<HTMLInputElement>(null);
@@ -107,7 +115,7 @@ function SearchResults() {
         if (value) next.set(key, value);
         else next.delete(key);
       }
-      router.push(`/explore/search?${next.toString()}`);
+      router.push(`/explore/academies?${next.toString()}`);
     },
     [router, searchParams]
   );
@@ -125,33 +133,50 @@ function SearchResults() {
     });
   }
 
-  useEffect(() => {
-    setLoading(true);
+  function buildQuery(cursor?: string) {
     const params = new URLSearchParams();
     if (categoryId) params.set('categoryId', categoryId);
     if (subcategoryIds.length) params.set('subcategoryIds', subcategoryIds.join(','));
     if (ageGroups.length) params.set('ageGroups', ageGroups.join(','));
     if (skillLevels.length) params.set('skillLevels', skillLevels.join(','));
     if (city) params.set('city', city);
-    if (q) params.set('search', q);
-    api<{ coaches: CoachResult[]; total: number }>(`/api/v1/public/coaches?${params.toString()}`)
+    if (q) params.set('q', q);
+    if (cursor) params.set('cursor', cursor);
+    return params.toString();
+  }
+
+  useEffect(() => {
+    setLoading(true);
+    api<{ listings: ListingResult[]; nextCursor: string | null }>(`/api/v1/public/listings?${buildQuery()}`)
       .then((r) => {
-        setCoaches(r.coaches);
-        setTotal(r.total);
+        setListings(r.listings);
+        setNextCursor(r.nextCursor);
       })
       .catch(() => {
-        setCoaches([]);
-        setTotal(0);
+        setListings([]);
+        setNextCursor(null);
       })
       .finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [categoryId, subcategoryIds.join(','), ageGroups.join(','), skillLevels.join(','), city, q]);
+
+  function loadMore() {
+    if (!nextCursor) return;
+    setLoadingMore(true);
+    api<{ listings: ListingResult[]; nextCursor: string | null }>(`/api/v1/public/listings?${buildQuery(nextCursor)}`)
+      .then((r) => {
+        setListings((prev) => [...prev, ...r.listings]);
+        setNextCursor(r.nextCursor);
+      })
+      .finally(() => setLoadingMore(false));
+  }
 
   const activeCategory = categories.find((c) => c.id === categoryId) ?? null;
   const activeFilterCount =
     (categoryId ? 1 : 0) + subcategoryIds.length + ageGroups.length + skillLevels.length + (city ? 1 : 0);
 
   function clearAll() {
-    router.push('/explore/search');
+    router.push('/explore/academies');
   }
 
   return (
@@ -165,22 +190,21 @@ function SearchResults() {
           <ArrowLeft className="h-3.5 w-3.5" /> Back to Discovery
         </Link>
 
-        {/* Same city+search field composition as /explore's hero (free-text
-            city with a datalist, explicit Search button) instead of a
-            native <select> + Enter-only text input, just shorter. */}
+        {/* Same city+search field composition as /explore/search — see that
+            page's header for why, just shorter. */}
         <div className="flex min-w-0 flex-1 flex-col gap-1.5 rounded-xl glass-panel p-1.5 sm:flex-row sm:items-center">
           <div className="flex flex-1 items-center gap-2 px-2.5 py-0.5">
             <MapPin className="h-3.5 w-3.5 shrink-0 text-indigo-400" />
             <input
               key={city}
               ref={cityInputRef}
-              list="coach-search-city-options"
+              list="academy-search-city-options"
               defaultValue={cities.find((c) => c.key === city)?.label ?? ''}
               onKeyDown={(e) => { if (e.key === 'Enter') submitSearch(); }}
               placeholder="City or Area (e.g. Hyderabad)"
               className="w-full min-w-0 bg-transparent text-sm text-slate-200 placeholder-slate-500 outline-none"
             />
-            <datalist id="coach-search-city-options">
+            <datalist id="academy-search-city-options">
               {cities.map((c) => (
                 <option key={c.key} value={c.label} />
               ))}
@@ -193,7 +217,7 @@ function SearchResults() {
               ref={qInputRef}
               defaultValue={q}
               onKeyDown={(e) => { if (e.key === 'Enter') submitSearch(); }}
-              placeholder="Search bio, e.g. badminton coach…"
+              placeholder="Search academies…"
               className="w-full min-w-0 bg-transparent text-sm text-slate-200 placeholder-slate-500 outline-none"
             />
           </div>
@@ -230,7 +254,7 @@ function SearchResults() {
         <div className="min-w-0 flex-1">
           <div className="mb-4 flex flex-wrap items-center gap-2">
             <p className="text-sm text-slate-400">
-              {loading ? 'Searching…' : `${total} coach${total === 1 ? '' : 'es'} found`}
+              {loading ? 'Searching…' : `${listings.length}${nextCursor ? '+' : ''} academ${listings.length === 1 ? 'y' : 'ies'} found`}
             </p>
             {activeFilterCount > 0 && (
               <>
@@ -263,10 +287,10 @@ function SearchResults() {
             )}
           </div>
 
-          {!loading && coaches.length === 0 ? (
+          {!loading && listings.length === 0 ? (
             <div className="py-24 text-center">
-              <p className="mb-3 text-4xl">🔍</p>
-              <p className="text-sm text-slate-400">No coaches found for your search.</p>
+              <p className="mb-3 text-4xl">🏫</p>
+              <p className="text-sm text-slate-400">No academies found for your search.</p>
               <p className="mt-1 text-xs text-slate-600">Try different keywords, category or location.</p>
               {activeFilterCount > 0 && (
                 <button onClick={clearAll} className="mt-4 text-xs text-indigo-400 transition-colors hover:text-indigo-300">
@@ -275,11 +299,24 @@ function SearchResults() {
               )}
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {coaches.map((coach) => (
-                <CoachCard key={coach.id} coach={coach} />
-              ))}
-            </div>
+            <>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {listings.map((listing) => (
+                  <ListingCard key={listing.slug} listing={listing} />
+                ))}
+              </div>
+              {nextCursor && (
+                <div className="mt-6 flex justify-center">
+                  <button
+                    onClick={loadMore}
+                    disabled={loadingMore}
+                    className="rounded-xl border border-white/10 bg-white/[0.04] px-6 py-2.5 text-sm font-medium text-slate-300 transition-colors hover:bg-white/[0.08] disabled:opacity-50"
+                  >
+                    {loadingMore ? 'Loading…' : 'Load more'}
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -319,6 +356,11 @@ function FilterChip({ label, onRemove }: { label: string; onRemove: () => void }
   );
 }
 
+// Identical to /explore/search's FilterRail (same sections, same sizes) —
+// the two filter rails are meant to feel like one shared component, just
+// wired to listings instead of coach_profiles. Shows academyCount (live
+// listings per category, migration 0024) instead of Coaches' coachCount —
+// same shared /api/v1/public/categories tree, different count column.
 function FilterRail({
   categories,
   activeCategory,
@@ -344,8 +386,6 @@ function FilterRail({
     <div className="glass-panel sticky top-24 space-y-6 rounded-2xl p-4">
       <div>
         <h3 className="mb-3 text-[10px] font-extrabold uppercase tracking-widest text-slate-400">Category</h3>
-        {/* Capped to V1's max-h-64 (7ish rows) — the rest scroll rather than
-            pushing the other facets (Speciality/Age/Skill) below the fold. */}
         <div className="no-scrollbar max-h-64 space-y-0.5 overflow-y-auto">
           {categories.map((c) => (
             <button
@@ -355,7 +395,7 @@ function FilterRail({
                 categoryId === c.id ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-white/[0.05] hover:text-slate-200'
               }`}
             >
-              {c.icon ? `${c.icon} ` : ''}{c.name} ({c.coachCount})
+              {c.icon ? `${c.icon} ` : ''}{c.name} ({c.academyCount})
             </button>
           ))}
         </div>
@@ -408,29 +448,43 @@ function FilterRail({
   );
 }
 
-function CoachCard({ coach }: { coach: CoachResult }) {
-  const name = coach.displayName || 'Coach';
+function ListingCard({ listing }: { listing: ListingResult }) {
+  const name = listing.headline || 'Academy';
+  const price = priceLabel(listing.priceDisplay);
+  const cover = listing.mediaPaths?.[0] ?? null;
 
   return (
-    <Link href={`/coaches/${coach.id}`} className="glass-panel glass-panel-hover group overflow-hidden rounded-2xl transition-all duration-200">
+    <Link href={`/explore/${listing.slug}`} className="glass-panel glass-panel-hover group overflow-hidden rounded-2xl transition-all duration-200">
       <div className="relative flex h-40 items-center justify-center overflow-hidden bg-gradient-to-br from-indigo-900/40 to-slate-900/60">
-        {coach.avatarPath ? (
+        {cover ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={coach.avatarPath} alt={name} className="h-full w-full object-cover" />
+          <img src={cover} alt={name} className="h-full w-full object-cover" />
         ) : (
-          <div className="flex h-20 w-20 items-center justify-center rounded-full border border-indigo-500/30 bg-indigo-500/20 text-2xl font-black text-indigo-200">
-            {initials(name)}
+          <span className="text-4xl">🏫</span>
+        )}
+        {listing.featured && (
+          <div className="absolute right-2 top-2 rounded-full border border-amber-400/40 bg-amber-500/20 px-2 py-0.5 text-[10px] font-semibold text-amber-300 backdrop-blur-sm">
+            ★ Featured
           </div>
         )}
         <div className="absolute bottom-2 left-2 rounded-full bg-indigo-600/80 px-2 py-0.5 text-[10px] font-semibold text-white backdrop-blur-sm">
-          {coach.primarySubcategoryName ?? coach.category?.name ?? 'Coach'}
+          {listing.primarySubcategoryName ?? listing.category?.name ?? 'Academy'}
         </div>
       </div>
       <div className="p-4">
         <h3 className="truncate text-sm font-bold text-slate-100 transition-colors group-hover:text-indigo-300">{name}</h3>
-        {coach.bio && <p className="mt-2 line-clamp-2 text-xs text-slate-600">{coach.bio}</p>}
+        <p className="mt-2 flex items-center gap-1 text-xs text-slate-500">
+          <MapPin className="h-3 w-3" /> {listing.cityKey}
+        </p>
         <div className="mt-3 flex items-center justify-between">
-          <span className="text-xs text-slate-500">{coach.experienceYears !== null ? `${coach.experienceYears}+ yrs exp` : ''}</span>
+          <span className="flex items-center gap-2 text-xs text-slate-500">
+            {listing.avgRating !== null && (
+              <span className="flex items-center gap-0.5">
+                <Star className="h-3 w-3 fill-amber-400 text-amber-400" /> {listing.avgRating.toFixed(1)}
+              </span>
+            )}
+            {price}
+          </span>
           <span className="flex items-center gap-0.5 text-xs text-indigo-400">
             View <ChevronRight className="h-3 w-3" />
           </span>

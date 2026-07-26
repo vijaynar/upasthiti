@@ -290,7 +290,10 @@ export default function AcademyOnboardingWizard({
         }),
       });
 
-      // 2. Update Marketplace Listing (slug, headline, description, sportKeys, cityKey)
+      // 2. Update Marketplace Listing (slug, headline, description, sportKeys,
+      // cityKey, plus the Step 3 category/subcategory/tag/age-group/
+      // skill-level selection — same taxonomy coach onboarding writes to
+      // coach_profiles, now persisted on the listing instead of dropped).
       const slugCandidate = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
       await fetch(`/api/v1/orgs/${targetOrgId}/listing`, {
         method: 'PATCH',
@@ -302,6 +305,12 @@ export default function AcademyOnboardingWizard({
           sportKeys: selectedSportKeys,
           cityKey: cityName.toLowerCase().replace(/\s+/g, '_'),
           areaKeys: areaName ? [areaName.toLowerCase().replace(/\s+/g, '_')] : [],
+          categoryId: categorySelection.categoryId ?? undefined,
+          subcategoryIds: categorySelection.subcategoryIds,
+          primarySubcategoryId: categorySelection.primarySubcategoryId ?? undefined,
+          tagIds: categorySelection.tagIds,
+          ageGroups: categorySelection.ageGroups,
+          skillLevels: categorySelection.skillLevels,
         }),
       });
 

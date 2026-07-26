@@ -104,6 +104,12 @@ export interface Listing {
   mediaPaths: string[] | null;
   featuredUntil: string | null;
   publishedAt: string | null;
+  categoryId: string | null;
+  subcategoryIds: string[];
+  primarySubcategoryId: string | null;
+  tagIds: string[];
+  ageGroups: string[];
+  skillLevels: string[];
 }
 
 function mapListingRow(row: {
@@ -121,6 +127,12 @@ function mapListingRow(row: {
   media_paths: string[] | null;
   featured_until: string | null;
   published_at: string | null;
+  category_id: string | null;
+  subcategory_ids: string[];
+  primary_subcategory_id: string | null;
+  tag_ids: string[];
+  age_groups: string[];
+  skill_levels: string[];
 }): Listing {
   return {
     id: row.id,
@@ -137,13 +149,19 @@ function mapListingRow(row: {
     mediaPaths: row.media_paths,
     featuredUntil: row.featured_until,
     publishedAt: row.published_at,
+    categoryId: row.category_id,
+    subcategoryIds: row.subcategory_ids,
+    primarySubcategoryId: row.primary_subcategory_id,
+    tagIds: row.tag_ids,
+    ageGroups: row.age_groups,
+    skillLevels: row.skill_levels,
   };
 }
 
-const LISTING_COLUMNS = `id, organization_id, slug, status, headline, description, content_language, sport_keys, city_key, area_keys, price_display, media_paths, featured_until, published_at`;
+const LISTING_COLUMNS = `id, organization_id, slug, status, headline, description, content_language, sport_keys, city_key, area_keys, price_display, media_paths, featured_until, published_at, category_id, subcategory_ids, primary_subcategory_id, tag_ids, age_groups, skill_levels`;
 const SELECT_MY_LISTING_SQL = `select ${LISTING_COLUMNS} from listings where organization_id = $1`;
-const INSERT_LISTING_SQL = `insert into listings (organization_id, slug, headline, description, content_language, sport_keys, city_key, area_keys, price_display, media_paths)
-   values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) returning ${LISTING_COLUMNS}`;
+const INSERT_LISTING_SQL = `insert into listings (organization_id, slug, headline, description, content_language, sport_keys, city_key, area_keys, price_display, media_paths, category_id, subcategory_ids, primary_subcategory_id, tag_ids, age_groups, skill_levels)
+   values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) returning ${LISTING_COLUMNS}`;
 const UPDATE_LISTING_SQL = `update listings set
      headline = coalesce($1, headline),
      description = coalesce($2, description),
@@ -152,8 +170,14 @@ const UPDATE_LISTING_SQL = `update listings set
      area_keys = coalesce($5, area_keys),
      price_display = coalesce($6, price_display),
      media_paths = coalesce($7, media_paths),
+     category_id = coalesce($8, category_id),
+     subcategory_ids = coalesce($9, subcategory_ids),
+     primary_subcategory_id = coalesce($10, primary_subcategory_id),
+     tag_ids = coalesce($11, tag_ids),
+     age_groups = coalesce($12, age_groups),
+     skill_levels = coalesce($13, skill_levels),
      updated_at = now()
-   where organization_id = $8
+   where organization_id = $14
    returning ${LISTING_COLUMNS}`;
 const UPDATE_LISTING_STATUS_SQL = `update listings set status = $1, updated_at = now() where organization_id = $2 returning ${LISTING_COLUMNS}`;
 const PUBLISH_LISTING_SQL = `update listings set status = $1, published_at = coalesce(published_at, now()), updated_at = now() where organization_id = $2 returning ${LISTING_COLUMNS}`;
@@ -169,12 +193,21 @@ export interface UpsertListingInput {
   areaKeys?: string[];
   priceDisplay?: unknown;
   mediaPaths?: string[];
+  categoryId?: string | null;
+  subcategoryIds?: string[];
+  primarySubcategoryId?: string | null;
+  tagIds?: string[];
+  ageGroups?: string[];
+  skillLevels?: string[];
 }
 
 // market.listing.manage — create-if-none / update the org's single listing.
 // A fresh listing always starts 'draft' regardless of the org's own
 // verification status; publishListing() is the explicit step that moves it
-// toward visibility.
+// toward visibility. Same partial-update convention as the existing fields:
+// an omitted category/subcategory/tag/age-group/skill-level selection
+// leaves the stored value unchanged (coalesce), it can't be cleared to
+// empty via this call.
 export async function upsertMyListing(session: SessionContext, input: UpsertListingInput): Promise<Listing> {
   return db.withRequestContext(session, async (client) => {
     const existing = await client.query<Parameters<typeof mapListingRow>[0]>(SELECT_MY_LISTING_SQL, [input.organizationId]);
@@ -187,6 +220,12 @@ export async function upsertMyListing(session: SessionContext, input: UpsertList
         input.areaKeys ?? null,
         input.priceDisplay ?? null,
         input.mediaPaths ?? null,
+        input.categoryId ?? null,
+        input.subcategoryIds ?? null,
+        input.primarySubcategoryId ?? null,
+        input.tagIds ?? null,
+        input.ageGroups ?? null,
+        input.skillLevels ?? null,
         input.organizationId,
       ]);
       if (result.rowCount === 0) throw new NotAuthorizedError('update this listing');
@@ -205,6 +244,12 @@ export async function upsertMyListing(session: SessionContext, input: UpsertList
       input.areaKeys ?? null,
       input.priceDisplay ?? null,
       input.mediaPaths ?? null,
+      input.categoryId ?? null,
+      input.subcategoryIds ?? [],
+      input.primarySubcategoryId ?? null,
+      input.tagIds ?? [],
+      input.ageGroups ?? [],
+      input.skillLevels ?? [],
     ]);
     return mapListingRow(result.rows[0]);
   });
@@ -469,6 +514,13 @@ export async function respondToReview(session: SessionContext, reviewId: string,
 // aggregate over `reviews` (not stored denormalized on `listings`), computed
 // per-query since search result sets are small (PAGE_SIZE = 20).
 
+export interface PublicListingCategory {
+  id: string;
+  name: string;
+  slug: string;
+  icon: string | null;
+}
+
 export interface PublicListingSummary {
   slug: string;
   headline: string | null;
@@ -479,17 +531,35 @@ export interface PublicListingSummary {
   featured: boolean;
   avgRating: number | null;
   reviewCount: number;
+  category: PublicListingCategory | null;
+  primarySubcategoryName: string | null;
+  specialtyNames: string[];
+  ageGroups: string[];
+  skillLevels: string[];
 }
 
+// city/sport/area/q filter listings' own columns (unchanged); categoryId/
+// subcategoryIds/ageGroups/skillLevels are the same category taxonomy
+// coach search filters on (migration 0023) — same param shapes as
+// GET /api/v1/public/coaches so /explore/academies can share
+// /explore/search's filter-rail UI, not a lookalike with different values.
 export interface SearchPublicListingsInput {
   city?: string;
   sport?: string;
   area?: string;
   q?: string;
+  categoryId?: string;
+  subcategoryIds?: string[];
+  ageGroups?: string[];
+  skillLevels?: string[];
   cursor?: string; // ISO published_at of the last row seen
 }
 
 const PAGE_SIZE = 20;
+
+function nonEmpty<T>(arr: T[] | undefined): T[] | null {
+  return arr && arr.length > 0 ? arr : null;
+}
 
 export async function searchPublicListings(input: SearchPublicListingsInput): Promise<{ listings: PublicListingSummary[]; nextCursor: string | null }> {
   const client = await db.getServiceClient();
@@ -503,23 +573,55 @@ export async function searchPublicListings(input: SearchPublicListingsInput): Pr
       media_paths: string[] | null;
       featured_until: string | null;
       published_at: string | null;
+      age_groups: string[];
+      skill_levels: string[];
+      category_id: string | null;
+      category_name: string | null;
+      category_slug: string | null;
+      category_icon: string | null;
+      primary_subcategory_name: string | null;
+      specialty_names: string[];
       avg_rating: string | null;
       review_count: string;
     }>(
       `select l.slug, l.headline, l.city_key, l.sport_keys, l.price_display, l.media_paths, l.featured_until, l.published_at,
+              l.age_groups, l.skill_levels,
+              cat.id as category_id, cat.name as category_name, cat.slug as category_slug, cat.icon as category_icon,
+              primary_sub.name as primary_subcategory_name,
+              coalesce(
+                (select array_agg(s.name order by s.display_order) from subcategories s where s.id = any(l.subcategory_ids)),
+                '{}'
+              ) as specialty_names,
               avg(r.rating) as avg_rating, count(r.id) as review_count
        from listings l
        left join reviews r on r.listing_id = l.id and r.status = 'published'
+       left join categories cat on cat.id = l.category_id
+       left join subcategories primary_sub on primary_sub.id = l.primary_subcategory_id
        where l.status = 'live'
          and ($1::text is null or l.city_key = $1)
          and ($2::text is null or $2 = any(l.sport_keys))
          and ($3::text is null or $3 = any(l.area_keys))
          and ($4::text is null or to_tsvector('english', coalesce(l.headline, '') || ' ' || coalesce(l.description, '')) @@ plainto_tsquery('english', $4))
          and ($5::timestamptz is null or l.published_at < $5)
-       group by l.id
+         and ($7::uuid is null or l.category_id = $7)
+         and ($8::uuid[] is null or l.subcategory_ids && $8)
+         and ($9::text[] is null or l.age_groups && $9)
+         and ($10::text[] is null or l.skill_levels && $10)
+       group by l.id, cat.id, primary_sub.id
        order by (l.featured_until is not null and l.featured_until > now()) desc, l.published_at desc nulls last
        limit $6`,
-      [input.city ?? null, input.sport ?? null, input.area ?? null, input.q ?? null, input.cursor ?? null, PAGE_SIZE + 1]
+      [
+        input.city ?? null,
+        input.sport ?? null,
+        input.area ?? null,
+        input.q ?? null,
+        input.cursor ?? null,
+        PAGE_SIZE + 1,
+        input.categoryId ?? null,
+        nonEmpty(input.subcategoryIds),
+        nonEmpty(input.ageGroups),
+        nonEmpty(input.skillLevels),
+      ]
     );
     const hasMore = result.rows.length > PAGE_SIZE;
     const rows = result.rows.slice(0, PAGE_SIZE);
@@ -534,6 +636,13 @@ export async function searchPublicListings(input: SearchPublicListingsInput): Pr
         featured: !!(r.featured_until && new Date(r.featured_until) > new Date()),
         avgRating: r.avg_rating === null ? null : Number(r.avg_rating),
         reviewCount: Number(r.review_count),
+        category: r.category_id
+          ? { id: r.category_id, name: r.category_name ?? '', slug: r.category_slug ?? '', icon: r.category_icon }
+          : null,
+        primarySubcategoryName: r.primary_subcategory_name,
+        specialtyNames: r.specialty_names ?? [],
+        ageGroups: r.age_groups ?? [],
+        skillLevels: r.skill_levels ?? [],
       })),
       nextCursor: hasMore ? rows[rows.length - 1]?.published_at ?? null : null,
     };
@@ -562,16 +671,33 @@ export async function getPublicListing(slug: string): Promise<PublicListingDetai
       media_paths: string[] | null;
       featured_until: string | null;
       org_name: string;
+      age_groups: string[];
+      skill_levels: string[];
+      category_id: string | null;
+      category_name: string | null;
+      category_slug: string | null;
+      category_icon: string | null;
+      primary_subcategory_name: string | null;
+      specialty_names: string[];
       avg_rating: string | null;
       review_count: string;
     }>(
       `select l.slug, l.headline, l.description, l.city_key, l.sport_keys, l.area_keys, l.price_display, l.media_paths, l.featured_until, o.name as org_name,
+              l.age_groups, l.skill_levels,
+              cat.id as category_id, cat.name as category_name, cat.slug as category_slug, cat.icon as category_icon,
+              primary_sub.name as primary_subcategory_name,
+              coalesce(
+                (select array_agg(s.name order by s.display_order) from subcategories s where s.id = any(l.subcategory_ids)),
+                '{}'
+              ) as specialty_names,
               avg(r.rating) as avg_rating, count(r.id) as review_count
        from listings l
        join organizations o on o.id = l.organization_id
        left join reviews r on r.listing_id = l.id and r.status = 'published'
+       left join categories cat on cat.id = l.category_id
+       left join subcategories primary_sub on primary_sub.id = l.primary_subcategory_id
        where l.slug = $1 and l.status = 'live'
-       group by l.id, o.name`,
+       group by l.id, o.name, cat.id, primary_sub.id`,
       [slug]
     );
     const row = result.rows[0];
@@ -589,6 +715,13 @@ export async function getPublicListing(slug: string): Promise<PublicListingDetai
       avgRating: row.avg_rating === null ? null : Number(row.avg_rating),
       reviewCount: Number(row.review_count),
       organizationName: row.org_name,
+      category: row.category_id
+        ? { id: row.category_id, name: row.category_name ?? '', slug: row.category_slug ?? '', icon: row.category_icon }
+        : null,
+      primarySubcategoryName: row.primary_subcategory_name,
+      specialtyNames: row.specialty_names ?? [],
+      ageGroups: row.age_groups ?? [],
+      skillLevels: row.skill_levels ?? [],
     };
   } finally {
     client.release();

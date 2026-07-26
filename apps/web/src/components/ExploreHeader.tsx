@@ -33,11 +33,10 @@ async function getOptionalUser() {
 }
 
 const NAV_LINKS = [
-  { label: 'Browse',           href: '/explore' },
-  { label: 'Coaches',          href: '/explore/coaches' },
-  { label: 'Academies',        href: '/explore/academies' },
-  { label: 'About Us',         href: '/explore/about' },
-  { label: 'For Institutions', href: '/auth/login' },
+  { label: 'Browse',    href: '/explore' },
+  { label: 'Coaches',   href: '/explore/search' },
+  { label: 'Academies', href: '/explore/academies' },
+  { label: 'About Us',  href: '/explore/about' },
 ];
 
 export default async function ExploreHeader() {
