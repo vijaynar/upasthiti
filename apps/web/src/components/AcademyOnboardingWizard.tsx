@@ -165,6 +165,18 @@ export default function AcademyOnboardingWizard({
   const [activeOrgId, setActiveOrgId] = useState<string | null>(organizationId ?? null);
   const [orgType, setOrgType] = useState<string>('academy');
 
+  // ?testmode in the URL — same trick CoachProfileWizard uses (itself
+  // carried over from V1's CoachOnboardingWizard) — reveals a per-step
+  // "⚡ Auto-fill Test Data" button. Read directly off window.location
+  // instead of useSearchParams() so this component doesn't force every
+  // caller to wrap it in a <Suspense> boundary just for this.
+  const [isTestMode, setIsTestMode] = useState(false);
+  useEffect(() => {
+    if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('testmode')) {
+      setIsTestMode(true);
+    }
+  }, []);
+
   // Taxonomy & Geo reference data
   const [sportsTaxonomy, setSportsTaxonomy] = useState<Sport[]>([]);
 
@@ -242,6 +254,100 @@ export default function AcademyOnboardingWizard({
 
   function toggleItem<T>(list: T[], val: T): T[] {
     return list.includes(val) ? list.filter((item) => item !== val) : [...list, val];
+  }
+
+  // ⚡ Auto-fill Test Data — only ever fills the CURRENTLY visible step, same
+  // philosophy as CoachProfileWizard's fillTestData: each step's fields are
+  // wired to that step's real setters, so nothing here bypasses actual
+  // validation or backend calls. Step 4's "document upload" is a fake-path
+  // stub even for manual clicks today (see handler above), so this matches
+  // that existing behavior rather than downgrading a real upload.
+  function fillTestData() {
+    const randomId = Math.floor(1000 + Math.random() * 9000);
+
+    if (step === 1) {
+      const randAcademy = [
+        'Ace Badminton Academy',
+        'Champions Cricket Academy',
+        'Elite Football School',
+        'Rising Stars Sports Academy',
+        'Victory Tennis Academy',
+        'Apex Swimming Academy',
+      ][Math.floor(Math.random() * 6)];
+      const randContact = ['Rahul Verma', 'Anjali Nair', 'Karan Mehta', 'Sneha Iyer', 'Arjun Rao', 'Divya Menon'][Math.floor(Math.random() * 6)];
+      const randPhone = Math.floor(6000000000 + Math.random() * 3999999999).toString();
+      const slug = randAcademy.toLowerCase().replace(/[^a-z0-9]+/g, '');
+
+      setName(`${randAcademy} ${randomId}`);
+      setTagline('Nurturing Champions Since 2018');
+      setDescription(
+        'A dedicated training center focused on structured coaching programs, modern facilities, and a track record of developing competitive athletes.'
+      );
+      setContactName(randContact);
+      setContactPhone(randPhone);
+      setContactEmail(`contact@${slug}${randomId}.com`);
+      setLanguages(['English', 'Hindi']);
+      setBrandColor(['#4f46e5', '#0ea5e9', '#f97316', '#16a34a', '#db2777'][Math.floor(Math.random() * 5)]);
+    }
+
+    if (step === 2) {
+      const randState = INDIAN_STATES[Math.floor(Math.random() * INDIAN_STATES.length)];
+      const stateCities = CITIES_BY_STATE[randState] ?? [];
+      const randCity = stateCities[Math.floor(Math.random() * stateCities.length)] ?? 'Hyderabad';
+      setBranchName('Main Campus');
+      setAddressLine('Plot 42, Financial District, Nanakramguda');
+      setStateName(randState);
+      setCityName(randCity);
+      setAreaName('Indiranagar');
+      setPincode(Math.floor(100000 + Math.random() * 899999).toString());
+      setGeofenceRadius(100);
+      setAmenities(['Indoor Courts', 'Parking Available', 'First Aid Station', 'Drinking Water']);
+    }
+
+    if (step === 3) {
+      if (categories.length > 0) {
+        const cat = categories[Math.floor(Math.random() * categories.length)];
+        const sub = cat.subcategories.length > 0 ? cat.subcategories[Math.floor(Math.random() * cat.subcategories.length)] : null;
+        setCategorySelection({
+          categoryId: cat.id,
+          subcategoryIds: sub ? [sub.id] : [],
+          primarySubcategoryId: sub?.id ?? null,
+          tagIds: [],
+          ageGroups: ['8-14', '15-18'],
+          skillLevels: ['Beginner', 'Intermediate'],
+        });
+      }
+      if (sportsTaxonomy.length > 0) {
+        setSelectedSportKeys(sportsTaxonomy.slice(0, 2).map((s) => s.key));
+      }
+      setServiceTypes(['offline', 'online']);
+      setClassTypes(['group', 'one_to_one']);
+    }
+
+    if (step === 4) {
+      setEntityType('private_limited');
+      setPanNumber('ABCPK1234F');
+      setGstin('36ABCPK1234F1Z5');
+      setBankAccountName(name.trim() || 'Sample Academy Pvt Ltd');
+      setBankName('HDFC Bank');
+      setBankAccountNumber('50100012345678');
+      setBankIfsc('HDFC0001234');
+      const filled: Record<string, { path: string; fileName: string }> = {};
+      for (const doc of KYC_DOC_TYPES) {
+        filled[doc.id] = { path: `/documents/${doc.id}.pdf`, fileName: `${doc.id}_sample.pdf` };
+      }
+      setDocUploads(filled);
+    }
+
+    if (step === 5) {
+      // Already valid out of the box (createDefaultPaymentPricingSelection
+      // pre-enables monthly_subscription/per_class/trial_session with valid
+      // rule defaults) — this just enables one more plan for a fuller demo.
+      setPaymentPricing((prev) => ({
+        ...prev,
+        policies: prev.policies.map((p) => (p.policyType === 'package' ? { ...p, enabled: true } : p)),
+      }));
+    }
   }
 
   // --- Step Validations ---
@@ -334,6 +440,15 @@ export default function AcademyOnboardingWizard({
         }).catch(() => {}); // Ignore duplicate branch if already created
       }
 
+      // 4. Publish the listing — upsertMyListing() (step 2 above) always
+      // leaves a fresh listing in 'draft' regardless of org verification
+      // status; this is the explicit transition out of draft (Doc 02 §9),
+      // to 'live' immediately if the org is already active, otherwise
+      // 'pending_verification' until platform staff approve the org
+      // (activateOrgListings() then promotes it). Without this call the
+      // listing never appears on /explore even after approval.
+      await fetch(`/api/v1/orgs/${targetOrgId}/listing/publish`, { method: 'POST' }).catch(() => {});
+
       onDone();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save academy profile.');
@@ -353,12 +468,23 @@ export default function AcademyOnboardingWizard({
           </div>
           <h1 className="mt-1 text-2xl font-bold text-white">{name || 'Set Up Your Academy'}</h1>
         </div>
-        <button
-          onClick={onCancel}
-          className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-slate-400 hover:bg-white/10 hover:text-white"
-        >
-          Cancel
-        </button>
+        <div className="flex items-center gap-2">
+          {isTestMode && step !== 6 && (
+            <button
+              type="button"
+              onClick={fillTestData}
+              className="flex items-center gap-1 rounded-xl bg-indigo-500 px-3 py-1.5 text-[10px] font-bold text-white transition-all hover:bg-indigo-600"
+            >
+              ⚡ Auto-fill Test Data
+            </button>
+          )}
+          <button
+            onClick={onCancel}
+            className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-slate-400 hover:bg-white/10 hover:text-white"
+          >
+            Cancel
+          </button>
+        </div>
       </div>
 
       {/* Progress Dots Bar */}
