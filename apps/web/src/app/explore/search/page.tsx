@@ -88,6 +88,7 @@ function SearchResults() {
   const [cities, setCities] = useState<City[]>([]);
   const [coaches, setCoaches] = useState<CoachResult[]>([]);
   const [total, setTotal] = useState(0);
+  const [categoryCounts, setCategoryCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const cityInputRef = useRef<HTMLInputElement>(null);
@@ -134,14 +135,16 @@ function SearchResults() {
     if (skillLevels.length) params.set('skillLevels', skillLevels.join(','));
     if (city) params.set('city', city);
     if (q) params.set('search', q);
-    api<{ coaches: CoachResult[]; total: number }>(`/api/v1/public/coaches?${params.toString()}`)
+    api<{ coaches: CoachResult[]; total: number; categoryCounts: Record<string, number> }>(`/api/v1/public/coaches?${params.toString()}`)
       .then((r) => {
         setCoaches(r.coaches);
         setTotal(r.total);
+        setCategoryCounts(r.categoryCounts);
       })
       .catch(() => {
         setCoaches([]);
         setTotal(0);
+        setCategoryCounts({});
       })
       .finally(() => setLoading(false));
   }, [categoryId, subcategoryIds.join(','), ageGroups.join(','), skillLevels.join(','), city, q]);
@@ -217,6 +220,7 @@ function SearchResults() {
         <aside className="hidden w-56 shrink-0 lg:block">
           <FilterRail
             categories={categories}
+            categoryCounts={categoryCounts}
             activeCategory={activeCategory}
             categoryId={categoryId}
             subcategoryIds={subcategoryIds}
@@ -293,6 +297,7 @@ function SearchResults() {
             </div>
             <FilterRail
               categories={categories}
+              categoryCounts={categoryCounts}
               activeCategory={activeCategory}
               categoryId={categoryId}
               subcategoryIds={subcategoryIds}
@@ -321,6 +326,7 @@ function FilterChip({ label, onRemove }: { label: string; onRemove: () => void }
 
 function FilterRail({
   categories,
+  categoryCounts,
   activeCategory,
   categoryId,
   subcategoryIds,
@@ -330,6 +336,7 @@ function FilterRail({
   clearAll,
 }: {
   categories: Category[];
+  categoryCounts: Record<string, number>;
   activeCategory: Category | null;
   categoryId: string;
   subcategoryIds: string[];
@@ -355,7 +362,7 @@ function FilterRail({
                 categoryId === c.id ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-white/[0.05] hover:text-slate-200'
               }`}
             >
-              {c.icon ? `${c.icon} ` : ''}{c.name} ({c.coachCount})
+              {c.icon ? `${c.icon} ` : ''}{c.name} ({categoryCounts[c.id] ?? 0})
             </button>
           ))}
         </div>

@@ -40,8 +40,27 @@ export async function GET(req: Request) {
       if (error) throw error;
       cityAreaKeys = (data ?? []).map(r => r.key);
       if (cityAreaKeys.length === 0) {
-        return ok({ coaches: [], total: 0, page, limit });
+        return ok({ coaches: [], total: 0, page, limit, categoryCounts: {} });
       }
+    }
+
+    // Counts per category under the currently active city/ageGroups/
+    // skillLevels/search filters, but NOT categoryId/subcategoryIds/tagIds —
+    // so the filter rail can show "how many match everything else I've
+    // picked" per category instead of a static global count that goes stale
+    // (and contradicts a "0 found") the moment a city/age/skill filter
+    // narrows the result set.
+    let countQuery = db.from('coach_profiles').select('category_id').not('category_id', 'is', null);
+    if (ageGroups.length)   countQuery = countQuery.overlaps('age_groups', ageGroups);
+    if (skillLevels.length) countQuery = countQuery.overlaps('skill_levels', skillLevels);
+    if (cityAreaKeys)       countQuery = countQuery.overlaps('service_area_keys', cityAreaKeys);
+    if (search)              countQuery = countQuery.ilike('bio', `%${search}%`);
+    const { data: countRows, error: countErr } = await countQuery;
+    if (countErr) throw countErr;
+    const categoryCounts: Record<string, number> = {};
+    for (const row of countRows ?? []) {
+      if (!row.category_id) continue;
+      categoryCounts[row.category_id] = (categoryCounts[row.category_id] ?? 0) + 1;
     }
 
     let query = db
@@ -113,7 +132,7 @@ export async function GET(req: Request) {
       };
     });
 
-    return ok({ coaches, total: count ?? 0, page, limit });
+    return ok({ coaches, total: count ?? 0, page, limit, categoryCounts });
   } catch (e: unknown) {
     return err(e instanceof Error ? e.message : 'Internal server error', 500);
   }

@@ -574,9 +574,41 @@ function nonEmpty<T>(arr: T[] | undefined): T[] | null {
   return arr && arr.length > 0 ? arr : null;
 }
 
-export async function searchPublicListings(input: SearchPublicListingsInput): Promise<{ listings: PublicListingSummary[]; nextCursor: string | null }> {
+export async function searchPublicListings(input: SearchPublicListingsInput): Promise<{ listings: PublicListingSummary[]; nextCursor: string | null; categoryCounts: Record<string, number> }> {
   const client = await db.getServiceClient();
   try {
+    // Counts per category under the currently active city/sport/area/q/
+    // ageGroups/skillLevels filters, but NOT categoryId/subcategoryIds — so
+    // the Academies filter rail can show "how many match everything else
+    // I've picked" per category instead of a static global count that goes
+    // stale (and contradicts a "0 found") the moment a city/age/skill filter
+    // narrows the result set.
+    const countsResult = await client.query<{ category_id: string; count: string }>(
+      `select l.category_id, count(*) as count
+       from listings l
+       where l.status = 'live'
+         and l.category_id is not null
+         and ($1::text is null or l.city_key = $1)
+         and ($2::text is null or $2 = any(l.sport_keys))
+         and ($3::text is null or $3 = any(l.area_keys))
+         and ($4::text is null or to_tsvector('english', coalesce(l.headline, '') || ' ' || coalesce(l.description, '')) @@ plainto_tsquery('english', $4))
+         and ($5::text[] is null or l.age_groups && $5)
+         and ($6::text[] is null or l.skill_levels && $6)
+       group by l.category_id`,
+      [
+        input.city ?? null,
+        input.sport ?? null,
+        input.area ?? null,
+        input.q ?? null,
+        nonEmpty(input.ageGroups),
+        nonEmpty(input.skillLevels),
+      ]
+    );
+    const categoryCounts: Record<string, number> = {};
+    for (const row of countsResult.rows) {
+      categoryCounts[row.category_id] = Number(row.count);
+    }
+
     const result = await client.query<{
       slug: string;
       headline: string | null;
@@ -658,6 +690,7 @@ export async function searchPublicListings(input: SearchPublicListingsInput): Pr
         skillLevels: r.skill_levels ?? [],
       })),
       nextCursor: hasMore ? rows[rows.length - 1]?.published_at ?? null : null,
+      categoryCounts,
     };
   } finally {
     client.release();
