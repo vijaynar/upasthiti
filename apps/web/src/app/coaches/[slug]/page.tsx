@@ -21,6 +21,12 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Award, Globe, Languages, Lock, MapPin, UserRound, Wifi } from 'lucide-react';
 
+interface ServiceArea {
+  key: string;
+  label: string;
+  cityLabel: string | null;
+}
+
 async function api<T>(url: string): Promise<T> {
   const res = await fetch(url);
   const body = await res.json();
@@ -44,6 +50,8 @@ interface CoachDetail {
   tagNames: string[];
   displayName: string | null;
   avatarPath: string | null;
+  serviceAreas: ServiceArea[];
+  cityLabels: string[];
 }
 
 export default function PublicCoachProfilePage() {
@@ -56,7 +64,7 @@ export default function PublicCoachProfilePage() {
 
   if (coach === undefined) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#060814]">
+      <div className="flex min-h-[60vh] items-center justify-center">
         <p className="text-sm text-slate-500">Loading…</p>
       </div>
     );
@@ -64,7 +72,7 @@ export default function PublicCoachProfilePage() {
 
   if (coach === null) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-[#060814] px-4 text-center">
+      <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3 px-4 text-center">
         <p className="text-sm font-medium text-slate-300">This coach profile isn&apos;t available.</p>
         <Link href="/explore/search" className="text-sm text-indigo-400 hover:text-indigo-300 hover:underline">← Back to search</Link>
       </div>
@@ -75,11 +83,8 @@ export default function PublicCoachProfilePage() {
   const otherSpecialties = coach.specialtyNames.filter((n) => n !== coach.primarySubcategoryName);
 
   return (
-    <div className="min-h-screen bg-[#060814] font-sans text-slate-100">
-      <div className="fixed left-1/4 top-0 h-[500px] w-[500px] rounded-full bg-indigo-500/10 blur-[120px] pointer-events-none" />
-      <div className="fixed bottom-0 right-1/4 h-[400px] w-[400px] rounded-full bg-emerald-500/5 blur-[100px] pointer-events-none" />
-
-      <div className="relative z-10 mx-auto max-w-5xl space-y-8 px-4 py-8 lg:py-14">
+    <div className="pb-16">
+      <div className="mx-auto max-w-5xl space-y-8 px-4 py-8 lg:py-14">
         <Link href="/explore/search" className="flex w-fit items-center gap-1.5 text-sm text-slate-400 hover:text-white">
           <ArrowLeft className="h-4 w-4" /> Back to search
         </Link>
@@ -135,7 +140,10 @@ export default function PublicCoachProfilePage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
+        {/* Arbitrary-value grid-template-columns (not `lg:grid-cols-3`) — globals.css force-collapses
+            any class containing the substring "grid-cols-3" to 2 columns below 900px, which would
+            otherwise turn this "1 column until desktop" layout into a squeezed 2-column mobile view. */}
+        <div className="grid grid-cols-1 gap-8 lg:[grid-template-columns:repeat(3,minmax(0,1fr))]">
           {/* COLUMN 1 */}
           <div className="space-y-6 lg:col-span-2">
             <div className="glass-panel space-y-3 rounded-2xl p-6 sm:p-7">
@@ -189,6 +197,22 @@ export default function PublicCoachProfilePage() {
                 )}
               </div>
             )}
+
+            {coach.serviceAreas.length > 0 && (
+              <div className="glass-panel space-y-3 rounded-2xl p-6 sm:p-7">
+                <h2 className="flex items-center gap-2 text-lg font-bold text-slate-100">
+                  <MapPin className="h-5 w-5 text-indigo-400" /> Service city &amp; areas
+                </h2>
+                {coach.cityLabels.length > 0 && (
+                  <p className="text-sm text-slate-300">{coach.cityLabels.join(', ')}</p>
+                )}
+                <div className="flex flex-wrap gap-1.5">
+                  {coach.serviceAreas.map((a) => (
+                    <span key={a.key} className="rounded-full bg-white/[0.06] px-2.5 py-1 text-xs text-slate-300">{a.label}</span>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* COLUMN 2 — Contact */}
@@ -199,8 +223,9 @@ export default function PublicCoachProfilePage() {
                 <h3 className="mt-1 text-xl font-bold text-slate-100">Get in touch with Coach {name}</h3>
               </div>
 
-              <div className="relative overflow-hidden rounded-2xl">
-                <div aria-hidden className="pointer-events-none space-y-3 select-none blur-sm">
+              <div className="relative isolate overflow-hidden rounded-2xl">
+                {/* Blur is confined to this background-only layer so it can never bleed onto the CTA's own text (a real risk when backdrop-filter and its content share one clipped, rounded element). */}
+                <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 space-y-3 select-none blur-sm">
                   <div className="flex items-center justify-between rounded-xl border border-white/5 bg-slate-950/20 p-4">
                     <div className="space-y-2">
                       <div className="h-3 w-32 rounded bg-slate-700/60" />
@@ -208,7 +233,7 @@ export default function PublicCoachProfilePage() {
                     </div>
                   </div>
                 </div>
-                <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 rounded-2xl bg-slate-950/70 px-6 py-8 backdrop-blur-[2px]">
+                <div className="relative flex flex-col items-center gap-3 rounded-2xl bg-slate-950/85 px-6 py-8">
                   <div className="flex h-10 w-10 items-center justify-center rounded-full border border-indigo-500/20 bg-indigo-500/10">
                     <Lock className="h-4 w-4 text-indigo-400" />
                   </div>
@@ -217,7 +242,7 @@ export default function PublicCoachProfilePage() {
                   </p>
                   <Link
                     href={`/auth/login?redirect=/coaches/${coach.id}`}
-                    className="btn-premium rounded-xl px-6 py-2.5 text-sm font-semibold"
+                    className="btn-premium rounded-xl px-6 py-2.5 text-sm font-semibold text-white"
                   >
                     Login / Register
                   </Link>

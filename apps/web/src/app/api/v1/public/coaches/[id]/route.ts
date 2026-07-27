@@ -15,7 +15,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       .from('coach_profiles')
       .select(
         `id, bio, experience_years, qualification, languages_known,
-         age_groups, skill_levels, service_types, class_types,
+         age_groups, skill_levels, service_types, class_types, service_area_keys,
          category_id, subcategory_ids, primary_subcategory_id, tag_ids,
          user:users(display_name, avatar_path)`
       )
@@ -25,7 +25,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     if (error) throw error;
     if (!coach) return ok(null);
 
-    const [{ data: category }, { data: subcategories }, { data: tags }] = await Promise.all([
+    const [{ data: category }, { data: subcategories }, { data: tags }, { data: areas }] = await Promise.all([
       coach.category_id
         ? db.from('categories').select('id, name, slug, icon').eq('id', coach.category_id).maybeSingle()
         : Promise.resolve({ data: null as { id: string; name: string; slug: string; icon: string | null } | null }),
@@ -35,7 +35,17 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       (coach.tag_ids ?? []).length
         ? db.from('tags').select('id, name').in('id', coach.tag_ids ?? [])
         : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+      (coach.service_area_keys ?? []).length
+        ? db.from('geo_areas').select('key, label, city:geo_cities(label)').in('key', coach.service_area_keys ?? [])
+        : Promise.resolve({ data: [] as { key: string; label: string; city: { label: string } | null }[] }),
     ]);
+
+    const serviceAreas = (areas ?? []).map((a) => ({
+      key: a.key,
+      label: a.label,
+      cityLabel: (a.city as { label?: string } | null)?.label ?? null,
+    }));
+    const cityLabels = [...new Set(serviceAreas.map((a) => a.cityLabel).filter(Boolean))] as string[];
 
     const primarySubcategoryName = coach.primary_subcategory_id
       ? (subcategories ?? []).find(s => s.id === coach.primary_subcategory_id)?.name ?? null
@@ -55,6 +65,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       primarySubcategoryName,
       specialtyNames: (subcategories ?? []).map(s => s.name),
       tagNames: (tags ?? []).map(t => t.name),
+      serviceAreas,
+      cityLabels,
       displayName: (coach.user as { display_name?: string } | null)?.display_name ?? null,
       avatarPath: (coach.user as { avatar_path?: string | null } | null)?.avatar_path ?? null,
     });
