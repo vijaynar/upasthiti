@@ -592,3 +592,82 @@ export async function materializeBatchSessions(batchId: string, windowDays = 30)
     client.release();
   }
 }
+
+// ── Historical backfill (2026-07-26 decision, migration
+// 0007_seed_historical_backdating.sql) ──────────────────────────────
+//
+// materializeOneBatch above is intentionally forward-only (rangeStart is
+// always max(schedule.startDate, today)) — real attendance is never marked
+// against a session that hasn't happened yet, so the rolling job has no
+// reason to ever look backward. This is a SEPARATE, narrower capability for
+// producing realistic historical demo/test data: an explicit past date
+// range, gated by BOTH the org's `historical_backdating` feature flag (off
+// by default) and a dedicated `schedule.batch.backfill` permission (Owner/Org
+// Admin only — narrower than `schedule.calendar.manage`, which Coach/Branch
+// Admin also hold, since backfilling history is a different risk profile
+// than creating today's/tomorrow's real sessions). Backfilled sessions land
+// as 'completed' (they're in the past), not 'scheduled'.
+
+export class FeatureDisabledError extends Error {
+  constructor(flagKey: string) {
+    super(`[scheduling] The "${flagKey}" feature is not enabled for this organization.`);
+  }
+}
+
+export interface BackfillBatchSessionsInput {
+  organizationId: string;
+  batchId: string;
+  fromDate: string; // YYYY-MM-DD, inclusive
+  toDate: string; // YYYY-MM-DD, inclusive, must be < today (use materialize for today-forward)
+}
+
+const SELECT_BATCH_FOR_BACKFILL_SQL = `select b.id, b.organization_id, b.branch_id, b.schedule, o.timezone
+   from batches b join organizations o on o.id = b.organization_id
+   where b.id = $1 and b.organization_id = $2`;
+
+export async function backfillBatchSessions(
+  session: SessionContext,
+  input: BackfillBatchSessionsInput
+): Promise<{ sessionsUpserted: number }> {
+  return db.withRequestContext(session, async (client) => {
+    const flagOn = await db.isOrgFeatureEnabled(input.organizationId, 'historical_backdating');
+    if (!flagOn) throw new FeatureDisabledError('historical_backdating');
+
+    const batchResult = await client.query<BatchForMaterialization>(SELECT_BATCH_FOR_BACKFILL_SQL, [input.batchId, input.organizationId]);
+    const batch = batchResult.rows[0];
+    if (!batch) throw new Error('batch not found');
+
+    const permResult = await client.query<{ ok: boolean }>('select has_perm_branch($1, $2) as ok', ['schedule.batch.backfill', batch.branch_id]);
+    if (!permResult.rows[0]?.ok) throw new NotAuthorizedError('backfill sessions for this batch');
+
+    if (input.fromDate > input.toDate) return { sessionsUpserted: 0 };
+
+    const holidaysResult = await client.query<{ on_date: string }>(HOLIDAYS_IN_RANGE_SQL, [
+      batch.organization_id,
+      batch.branch_id,
+      input.fromDate,
+      input.toDate,
+    ]);
+    const holidaySet = new Set(holidaysResult.rows.map((r) => r.on_date));
+
+    const sessionDates: string[] = [];
+    const startsAts: Date[] = [];
+    const endsAts: Date[] = [];
+    const statuses: ClassSessionStatus[] = [];
+
+    let cursor = input.fromDate;
+    while (cursor <= input.toDate) {
+      if (batch.schedule.days.includes(isoDayOfWeek(cursor))) {
+        sessionDates.push(cursor);
+        startsAts.push(zonedTimeToUtc(cursor, batch.schedule.startTime, batch.timezone));
+        endsAts.push(zonedTimeToUtc(cursor, batch.schedule.endTime, batch.timezone));
+        statuses.push(holidaySet.has(cursor) ? 'holiday' : 'completed');
+      }
+      cursor = addDays(cursor, 1);
+    }
+    if (sessionDates.length === 0) return { sessionsUpserted: 0 };
+
+    await client.query(UPSERT_CLASS_SESSIONS_SQL, [batch.organization_id, batch.branch_id, batch.id, sessionDates, startsAts, endsAts, statuses]);
+    return { sessionsUpserted: sessionDates.length };
+  });
+}

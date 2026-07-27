@@ -3,7 +3,7 @@
 // payment, which settles instantly (no separate approval step) — see
 // @abhyas/module-finance's recordManualPayment.
 import type { NextRequest } from 'next/server';
-import { listPayments, recordManualPayment, NotAuthorizedError, type PaymentStatus } from '@abhyas/module-finance';
+import { listPayments, recordManualPayment, NotAuthorizedError, FeatureDisabledError, type PaymentStatus } from '@abhyas/module-finance';
 import { getSessionFromRequest, jsonData, jsonError, isRlsDenied } from '@/lib/v2-session';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -39,9 +39,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       amountMinor,
       currency: typeof body?.currency === 'string' ? body.currency : undefined,
       chargeIds,
+      createdAt: typeof body?.createdAt === 'string' ? body.createdAt : undefined,
     });
     return jsonData(payment, 201);
   } catch (err) {
+    if (err instanceof FeatureDisabledError) return jsonError('feature_disabled', err.message, 403);
     if (err instanceof NotAuthorizedError || isRlsDenied(err)) return jsonError('forbidden', 'You do not have permission to record a payment here.', 403);
     throw err;
   }

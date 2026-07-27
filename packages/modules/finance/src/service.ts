@@ -24,6 +24,13 @@ export class NotAuthorizedError extends Error {
   }
 }
 
+// historical_backdating feature flag (migration 0007_seed_historical_backdating.sql)
+export class FeatureDisabledError extends Error {
+  constructor(flagKey: string) {
+    super(`[finance] The "${flagKey}" feature is not enabled for this organization.`);
+  }
+}
+
 export class PaymentGatewayNotConfiguredError extends Error {
   constructor() {
     super('[finance] No payment gateway is configured yet — record cash/waiver payments or accept proof-of-payment uploads instead.');
@@ -342,6 +349,8 @@ function mapPaymentRow(row: {
 const PAYMENT_COLUMNS = `id, organization_id, payer_user_id, method, proof_path, amount_minor, currency, status, verified_by, verified_at, rejection_reason`;
 const INSERT_PAYMENT_SQL = `insert into payments (organization_id, payer_user_id, method, proof_path, amount_minor, currency, status)
    values ($1, $2, $3, $4, $5, $6, $7) returning ${PAYMENT_COLUMNS}`;
+const INSERT_PAYMENT_WITH_CREATED_AT_SQL = `insert into payments (organization_id, payer_user_id, method, proof_path, amount_minor, currency, status, created_at)
+   values ($1, $2, $3, $4, $5, $6, $7, coalesce($8, now())) returning ${PAYMENT_COLUMNS}`;
 const LIST_PAYMENTS_SQL = `select ${PAYMENT_COLUMNS} from payments
    where organization_id = $1 and ($2::text is null or status = $2)
    order by created_at desc`;
@@ -384,7 +393,8 @@ async function postSettlementLedger(
   organizationId: string,
   amountMinor: number,
   currency: string,
-  paymentId: string
+  paymentId: string,
+  occurredAt?: string // historical_backdating feature flag only — see recordManualPayment
 ): Promise<void> {
   const receivable = await client.query<{ get_or_create_ledger_account: string }>('select get_or_create_ledger_account($1, $2)', [organizationId, 'org_receivable']);
   const cash = await client.query<{ get_or_create_ledger_account: string }>('select get_or_create_ledger_account($1, $2)', [organizationId, 'org_cash']);
@@ -392,18 +402,20 @@ async function postSettlementLedger(
   // literal, not JSON — unlike a plain object (e.g. fee_policies.fine_policy
   // elsewhere in this file), which it does auto-JSON.stringify. A jsonb
   // *array* parameter needs an explicit JSON.stringify.
-  await client.query('select post_ledger_entries($1)', [
+  await client.query('select post_ledger_entries($1, coalesce($2, now()))', [
     JSON.stringify([
       { accountId: receivable.rows[0].get_or_create_ledger_account, amountMinor: -amountMinor, currency, refType: 'payment', refId: paymentId },
       { accountId: cash.rows[0].get_or_create_ledger_account, amountMinor, currency, refType: 'payment', refId: paymentId },
     ]),
+    occurredAt ?? null,
   ]);
 }
 
 async function allocateAndSettle(
   client: Awaited<ReturnType<typeof db.getServiceClient>>,
   payment: { id: string; organizationId: string; amountMinor: number; currency: string },
-  chargeIds: string[]
+  chargeIds: string[],
+  occurredAt?: string // historical_backdating feature flag only — see recordManualPayment
 ): Promise<void> {
   let remaining = payment.amountMinor;
   for (const chargeId of chargeIds) {
@@ -422,7 +434,7 @@ async function allocateAndSettle(
     }
     remaining -= allocation;
   }
-  await postSettlementLedger(client, payment.organizationId, payment.amountMinor, payment.currency, payment.id);
+  await postSettlementLedger(client, payment.organizationId, payment.amountMinor, payment.currency, payment.id, occurredAt);
 }
 
 // Staff-recorded cash/waiver payment — settles instantly (no separate
@@ -440,11 +452,16 @@ export interface RecordManualPaymentInput {
   amountMinor: number;
   currency?: string;
   chargeIds: string[];
+  createdAt?: string; // historical_backdating feature flag only — also backdates the posted ledger entries
 }
 
 export async function recordManualPayment(session: SessionContext, input: RecordManualPaymentInput): Promise<Payment> {
   return db.withRequestContext(session, async (client) => {
-    const result = await client.query<Parameters<typeof mapPaymentRow>[0]>(INSERT_PAYMENT_SQL, [
+    if (input.createdAt && !(await db.isOrgFeatureEnabled(input.organizationId, 'historical_backdating'))) {
+      throw new FeatureDisabledError('historical_backdating');
+    }
+
+    const result = await client.query<Parameters<typeof mapPaymentRow>[0]>(INSERT_PAYMENT_WITH_CREATED_AT_SQL, [
       input.organizationId,
       input.payerUserId,
       input.method,
@@ -452,9 +469,10 @@ export async function recordManualPayment(session: SessionContext, input: Record
       input.amountMinor,
       input.currency ?? 'INR',
       'succeeded',
+      input.createdAt ?? null,
     ]);
     const payment = mapPaymentRow(result.rows[0]);
-    await allocateAndSettle(client, { id: payment.id, organizationId: payment.organizationId, amountMinor: payment.amountMinor, currency: payment.currency }, input.chargeIds);
+    await allocateAndSettle(client, { id: payment.id, organizationId: payment.organizationId, amountMinor: payment.amountMinor, currency: payment.currency }, input.chargeIds, input.createdAt);
     return payment;
   });
 }

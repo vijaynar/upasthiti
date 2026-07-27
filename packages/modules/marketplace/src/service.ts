@@ -25,6 +25,13 @@ export class NotAuthorizedError extends Error {
   }
 }
 
+// historical_backdating feature flag (migration 0007_seed_historical_backdating.sql)
+export class FeatureDisabledError extends Error {
+  constructor(flagKey: string) {
+    super(`[marketplace] The "${flagKey}" feature is not enabled for this organization.`);
+  }
+}
+
 export class PlatformPermissionError extends Error {
   constructor(action = 'perform this platform action') {
     super(`[marketplace] You do not have permission to ${action}.`);
@@ -456,8 +463,8 @@ function mapReviewRow(row: {
 }
 
 const REVIEW_COLUMNS = `id, listing_id, organization_id, author_user_id, enrollment_id, rating, body, org_response, status, created_at`;
-const INSERT_REVIEW_SQL = `insert into reviews (listing_id, organization_id, author_user_id, enrollment_id, rating, body)
-   values ($1, $2, $3, $4, $5, $6) returning ${REVIEW_COLUMNS}`;
+const INSERT_REVIEW_SQL = `insert into reviews (listing_id, organization_id, author_user_id, enrollment_id, rating, body, created_at)
+   values ($1, $2, $3, $4, $5, $6, coalesce($7, now())) returning ${REVIEW_COLUMNS}`;
 const LIST_ORG_REVIEWS_SQL = `select ${REVIEW_COLUMNS} from reviews where organization_id = $1 order by created_at desc`;
 const RESPOND_TO_REVIEW_SQL = `update reviews set org_response = $1, updated_at = now() where id = $2 returning ${REVIEW_COLUMNS}`;
 
@@ -467,10 +474,15 @@ export interface CreateReviewInput {
   enrollmentId: string;
   rating: number;
   body?: string;
+  createdAt?: string; // historical_backdating feature flag only
 }
 
 export async function createReview(session: SessionContext, input: CreateReviewInput): Promise<Review> {
   return db.withRequestContext(session, async (client) => {
+    if (input.createdAt && !(await db.isOrgFeatureEnabled(input.organizationId, 'historical_backdating'))) {
+      throw new FeatureDisabledError('historical_backdating');
+    }
+
     const result = await client.query<Parameters<typeof mapReviewRow>[0]>(INSERT_REVIEW_SQL, [
       input.listingId,
       input.organizationId,
@@ -478,6 +490,7 @@ export async function createReview(session: SessionContext, input: CreateReviewI
       input.enrollmentId,
       input.rating,
       input.body ?? null,
+      input.createdAt ?? null,
     ]);
     return mapReviewRow(result.rows[0]);
   });

@@ -19,6 +19,17 @@ export class NotAuthorizedError extends Error {
   }
 }
 
+// historical_backdating feature flag (migration 0007_seed_historical_backdating.sql)
+// — see scheduling's backfillBatchSessions for the full rationale. Attendance's
+// own base permissions (attendance.record/.override) still gate the write
+// itself via RLS; this only additionally gates the recordedAt OVERRIDE param.
+export class FeatureDisabledError extends Error {
+  constructor(flagKey: string) {
+    super(`[attendance] The "${flagKey}" feature is not enabled for this organization.`);
+  }
+}
+
+
 // Same thresholds the archived V1 face-scan UI used (packages/common's
 // FACE_MATCH_THRESHOLD_CONFIDENT/_REVIEW) — this phase reuses that UI's
 // face-api.js integration wholesale (see migration 0010's header), so the
@@ -268,12 +279,12 @@ const ATTENDANCE_EVENT_COLUMNS_AE = `ae.${ATTENDANCE_EVENT_COLUMNS.split(', ').j
 
 const SELECT_CLASS_SESSION_SCOPE_SQL = `select organization_id, branch_id from class_sessions where id = $1`;
 
-const INSERT_ATTENDANCE_EVENT_SQL = `insert into attendance_events (organization_id, branch_id, class_session_id, enrollment_id, status, method, confidence, recorded_by)
-   values ($1, $2, $3, $4, $5, $6, $7, $8)
+const INSERT_ATTENDANCE_EVENT_SQL = `insert into attendance_events (organization_id, branch_id, class_session_id, enrollment_id, status, method, confidence, recorded_by, recorded_at)
+   values ($1, $2, $3, $4, $5, $6, $7, $8, coalesce($9, now()))
    returning ${ATTENDANCE_EVENT_COLUMNS}`;
 
-const INSERT_ATTENDANCE_OVERRIDE_SQL = `insert into attendance_events (organization_id, branch_id, class_session_id, enrollment_id, status, method, recorded_by)
-   values ($1, $2, $3, $4, $5, 'override', $6)
+const INSERT_ATTENDANCE_OVERRIDE_SQL = `insert into attendance_events (organization_id, branch_id, class_session_id, enrollment_id, status, method, recorded_by, recorded_at)
+   values ($1, $2, $3, $4, $5, 'override', $6, coalesce($7, now()))
    returning ${ATTENDANCE_EVENT_COLUMNS}`;
 
 const SUPERSEDE_ATTENDANCE_EVENTS_SQL = `update attendance_events set superseded_by = $1
@@ -296,6 +307,9 @@ export interface RecordAttendanceInput {
   status: AttendanceStatus;
   method: Exclude<AttendanceMethod, 'override'>;
   confidence?: number;
+  // historical_backdating feature flag only (see FeatureDisabledError above) —
+  // omit for normal real-time recording, zero extra query in that path.
+  recordedAt?: string;
 }
 
 // RLS-gated (attendance_events_insert_staff, migration 0010) — requires
@@ -307,6 +321,10 @@ export async function recordAttendance(session: SessionContext, input: RecordAtt
     const s = sessionRow.rows[0];
     if (!s) throw new Error('class session not found');
 
+    if (input.recordedAt && !(await db.isOrgFeatureEnabled(s.organization_id, 'historical_backdating'))) {
+      throw new FeatureDisabledError('historical_backdating');
+    }
+
     const result = await client.query<Parameters<typeof mapAttendanceEventRow>[0]>(INSERT_ATTENDANCE_EVENT_SQL, [
       s.organization_id,
       s.branch_id,
@@ -316,6 +334,7 @@ export async function recordAttendance(session: SessionContext, input: RecordAtt
       input.method,
       input.confidence ?? null,
       session.userId,
+      input.recordedAt ?? null,
     ]);
     const event = mapAttendanceEventRow(result.rows[0]);
     await ensureAbsenceEvalJobScheduled();
@@ -327,6 +346,7 @@ export interface OverrideAttendanceInput {
   classSessionId: string;
   enrollmentId: string;
   status: AttendanceStatus;
+  recordedAt?: string; // historical_backdating feature flag only, see above
 }
 
 // Append-only correction (Doc 07 §8: "corrections append, never edit"):
@@ -339,6 +359,10 @@ export async function overrideAttendance(session: SessionContext, input: Overrid
     const s = sessionRow.rows[0];
     if (!s) throw new Error('class session not found');
 
+    if (input.recordedAt && !(await db.isOrgFeatureEnabled(s.organization_id, 'historical_backdating'))) {
+      throw new FeatureDisabledError('historical_backdating');
+    }
+
     const inserted = await client.query<Parameters<typeof mapAttendanceEventRow>[0]>(INSERT_ATTENDANCE_OVERRIDE_SQL, [
       s.organization_id,
       s.branch_id,
@@ -346,6 +370,7 @@ export async function overrideAttendance(session: SessionContext, input: Overrid
       input.enrollmentId,
       input.status,
       session.userId,
+      input.recordedAt ?? null,
     ]);
     const newEvent = inserted.rows[0];
 

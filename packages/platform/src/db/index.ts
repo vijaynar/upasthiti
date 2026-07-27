@@ -48,3 +48,39 @@ export async function withRequestContext<T>(
 export async function getServiceClient(): Promise<PoolClient> {
   return getPool().connect();
 }
+
+/**
+ * Resolves an org's effective on/off value for a `feature_flags` key —
+ * `org_feature_flags`'s per-org override if one exists, else the flag's own
+ * `default_on` (migration 0007_platform_admin's feature-flag mechanism).
+ *
+ * Service-role, NOT the caller's own `withRequestContext` client — this was
+ * tried first and is a real bug class this codebase has hit before (Phase
+ * 10's notification-muting-floor bug, see IMPLEMENTATION_STATUS.md): the
+ * naive version ran on the caller's own session, but `org_feature_flags`'
+ * RLS (`organization_id = current_org()`) only matches when the CALLER's
+ * currently active workspace happens to equal the org being checked. A
+ * caller legitimately acting on an org that isn't their active workspace
+ * (e.g. a student submitting a review to an org via URL path, never having
+ * called `/me/workspace` for it) got zero rows back — RLS silently, not an
+ * error — so this always fell through to `default_on` (false) regardless
+ * of the org's real setting. "Is org X's flag on" is inherently
+ * context-independent of who's asking (a separate permission check already
+ * gates whether the caller may act at all), so it reads via service-role
+ * like any other legitimately cross-actor lookup (SERVICE_ROLE_MANIFEST).
+ */
+export async function isOrgFeatureEnabled(organizationId: string, flagKey: string): Promise<boolean> {
+  const client = await getServiceClient();
+  try {
+    const result = await client.query<{ enabled: boolean }>(
+      `select coalesce(off.enabled, ff.default_on, false) as enabled
+       from feature_flags ff
+       left join org_feature_flags off on off.organization_id = $2 and off.flag_key = ff.key
+       where ff.key = $1`,
+      [flagKey, organizationId]
+    );
+    return result.rows[0]?.enabled ?? false;
+  } finally {
+    client.release();
+  }
+}

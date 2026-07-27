@@ -63,3 +63,7 @@ coverage
 *.mobileprovision
 *.orig.*
 web-build/
+
+# Local seed-framework run state (testing/) — resumability
+# manifests, never data to commit.
+testing/.state/
