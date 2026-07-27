@@ -99,6 +99,18 @@ async function main() {
     const staff = await owner.client.get(`/api/v1/orgs/${sampleAcademy.organizationId}/staff`);
     return Array.isArray(staff) && staff.length > 0;
   });
+  check('Every offline coach profile has service city/areas set', async () => {
+    const staff = await owner.client.get(`/api/v1/orgs/${sampleAcademy.organizationId}/staff`);
+    if (!Array.isArray(staff) || staff.length === 0) return false;
+    let sawOfflineProfile = false;
+    for (const s of staff) {
+      const profile = await owner.client.get(`/api/v1/orgs/${sampleAcademy.organizationId}/staff/${s.id}/coach-profile`).catch(() => null);
+      if (!profile?.serviceTypes?.includes('offline')) continue;
+      sawOfflineProfile = true;
+      if (!profile.serviceAreaKeys?.length) return false;
+    }
+    return sawOfflineProfile; // at least one real offline coach must have been checked
+  });
   check('Org listing is live or pending_verification (marketplace-visible)', async () => {
     const listing = await owner.client.get(`/api/v1/orgs/${sampleAcademy.organizationId}/listing`);
     return ['live', 'pending_verification', 'paused'].includes(listing?.status);
@@ -113,6 +125,16 @@ async function main() {
       await coach.client.post('/api/v1/me/workspace', { orgId: sampleIndie.organizationId }).catch(() => {});
       const profile = await coach.client.get('/api/v1/me/coach-profile');
       return profile != null;
+    });
+    check('If the independent coach offers offline classes, service city/areas are set', async () => {
+      const ownerKey = Object.entries(state.organizations ?? {}).find(([, v]) => v.organizationId === sampleIndie.organizationId)?.[0];
+      const email = ownerKey?.split('-').slice(2).join('-');
+      if (!email) return false;
+      const coach = await authProvider.login(email);
+      await coach.client.post('/api/v1/me/workspace', { orgId: sampleIndie.organizationId }).catch(() => {});
+      const profile = await coach.client.get('/api/v1/me/coach-profile');
+      if (!profile?.serviceTypes?.includes('offline')) return true; // online-only coach — nothing to assert
+      return (profile.serviceAreaKeys?.length ?? 0) > 0;
     });
   }
 

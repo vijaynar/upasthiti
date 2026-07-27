@@ -10,7 +10,7 @@ import { createHttpClient } from './lib/apiClient.mjs';
 import { loadState, saveState } from './lib/state.mjs';
 import { log, count, printSummary, getCounters } from './lib/log.mjs';
 import { mapPool } from './lib/concurrency.mjs';
-import { fetchTaxonomy, REQUESTED_CATEGORY_MAP } from './lib/taxonomy.mjs';
+import { fetchTaxonomy, REQUESTED_CATEGORY_MAP, areasForCity } from './lib/taxonomy.mjs';
 import * as fake from './lib/fakeData.mjs';
 import { isoDate, daysAgo } from './lib/dates.mjs';
 
@@ -376,11 +376,16 @@ async function main() {
       coachMemberships.push(membership.membershipId);
 
       if (roleKey === 'coach') {
+        // serviceTypes is always ['offline'] here, so service areas must be
+        // populated (mirrors CoachProfileWizard's own city/areas fields) —
+        // seeded from the org's own launched city, same one its listing uses.
+        const coachAreas = areasForCity(taxonomy, org.cityKey);
         await coachEnt.setStaffCoachProfile(org.owner.client, org.organizationId, staffProfile.id, {
           bio: fake.coachBio(cr, person.firstName, cr.int(2, 15), org.specialty), experienceYears: cr.int(2, 15),
           qualification: fake.randomQualification(cr), languagesKnown: cr.sample(fake.LANGUAGES, cr.int(1, 3)),
           ageGroups: ['Kids', 'Teens'], skillLevels: ['Beginner', 'Intermediate'],
           serviceTypes: ['offline'], classTypes: ['group'], allowStudentOverrides: false,
+          serviceAreaKeys: coachAreas.length ? cr.sample(coachAreas, cr.int(1, Math.min(3, coachAreas.length))).map((a) => a.key) : [],
           categoryId: org.sub?.categoryId, subcategoryIds: org.sub ? [org.sub.id] : [], primarySubcategoryId: org.sub?.id,
         }).catch((err) => log.warn(`[soft-fail] ${err.message}`));
       }
@@ -435,11 +440,17 @@ async function main() {
     if (!org) return;
 
     const experienceYears = r.int(2, 20);
+    const serviceTypes = r.sample(['offline', 'online'], r.int(1, 2));
+    // Only offline coaches need service areas (CoachProfileWizard shows the
+    // field regardless, but a purely-online coach has no real reason to set
+    // one) — seeded from the org's own launched city, same one its listing uses.
+    const indieAreas = serviceTypes.includes('offline') ? areasForCity(taxonomy, org.cityKey) : [];
     await coachEnt.onboardSelfCoach(org.owner.client, {
       bio: fake.coachBio(r, person.firstName, experienceYears, specialty), experienceYears,
       qualification: fake.randomQualification(r), languagesKnown: r.sample(fake.LANGUAGES, r.int(1, 3)),
       ageGroups: ['Kids', 'Teens', 'Adults'], skillLevels: ['Beginner', 'Intermediate', 'Advanced'],
-      serviceTypes: r.sample(['offline', 'online'], r.int(1, 2)), classTypes: r.sample(['group', 'one_to_one'], r.int(1, 2)),
+      serviceTypes, classTypes: r.sample(['group', 'one_to_one'], r.int(1, 2)),
+      serviceAreaKeys: indieAreas.length ? r.sample(indieAreas, r.int(1, Math.min(3, indieAreas.length))).map((a) => a.key) : [],
       allowStudentOverrides: r.bool(0.3), categoryId: org.sub?.categoryId, subcategoryIds: org.sub ? [org.sub.id] : [], primarySubcategoryId: org.sub?.id,
     }).catch((err) => log.warn(`onboardSelfCoach failed: ${err.message}`));
     await coachEnt.setSelfPricing(org.owner.client, [
