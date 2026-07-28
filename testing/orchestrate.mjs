@@ -544,13 +544,18 @@ async function main() {
         // populated (mirrors CoachProfileWizard's own city/areas fields) —
         // seeded from the org's own launched city, same one its listing uses.
         const coachAreas = areasForCity(taxonomy, org.cityKey);
-        await coachEnt.setStaffCoachProfile(org.owner.client, org.organizationId, staffProfile.id, {
+        // categoryId is mandatory (API rejects profiles without one). Fall back
+        // to the org's sub's parent category, or the first taxonomy category if
+        // the subcategory lookup failed — a coach must always have a category.
+        const staffCategoryId = org.sub?.categoryId ?? taxonomy.categories[0]?.id;
+        if (!staffCategoryId) { log.warn(`no category available for academy coach in ${org.slug}; skipping coach profile`); }
+        else await coachEnt.setStaffCoachProfile(org.owner.client, org.organizationId, staffProfile.id, {
           bio: fake.coachBio(cr, person.firstName, cr.int(2, 15), org.specialty), experienceYears: cr.int(2, 15),
           qualification: fake.randomQualification(cr), languagesKnown: cr.sample(fake.LANGUAGES, cr.int(1, 3)),
           ageGroups: ['Kids', 'Teens'], skillLevels: ['Beginner', 'Intermediate'],
           serviceTypes: ['offline'], classTypes: ['group'], allowStudentOverrides: false,
           serviceAreaKeys: coachAreas.length ? cr.sample(coachAreas, cr.int(1, Math.min(3, coachAreas.length))).map((a) => a.key) : [],
-          categoryId: org.sub?.categoryId, subcategoryIds: org.sub ? [org.sub.id] : [], primarySubcategoryId: org.sub?.id,
+          categoryId: staffCategoryId, subcategoryIds: org.sub ? [org.sub.id] : [], primarySubcategoryId: org.sub?.id,
         }).catch((err) => log.warn(`[soft-fail] ${err.message}`));
       }
       await addCoachDocuments(org.owner.client, org.organizationId, staffProfile.id, person.fullName);
@@ -607,13 +612,18 @@ async function main() {
     // field regardless, but a purely-online coach has no real reason to set
     // one) — seeded from the org's own launched city, same one its listing uses.
     const indieAreas = serviceTypes.includes('offline') ? areasForCity(taxonomy, org.cityKey) : [];
+    // categoryId is mandatory (API rejects profiles without one). Fall back
+    // to the org's sub's parent category, or the first taxonomy category if
+    // the subcategory lookup failed — a coach must always have a category.
+    const indieCategoryId = org.sub?.categoryId ?? taxonomy.categories[0]?.id;
+    if (!indieCategoryId) log.warn(`no category available for indie coach ${person.fullName}; onboardSelfCoach will fail`);
     const selfCoachProfile = await coachEnt.onboardSelfCoach(org.owner.client, {
       bio: fake.coachBio(r, person.firstName, experienceYears, specialty), experienceYears,
       qualification: fake.randomQualification(r), languagesKnown: r.sample(fake.LANGUAGES, r.int(1, 3)),
       ageGroups: ['Kids', 'Teens', 'Adults'], skillLevels: ['Beginner', 'Intermediate', 'Advanced'],
       serviceTypes, classTypes: r.sample(['group', 'one_to_one'], r.int(1, 2)),
       serviceAreaKeys: indieAreas.length ? r.sample(indieAreas, r.int(1, Math.min(3, indieAreas.length))).map((a) => a.key) : [],
-      allowStudentOverrides: r.bool(0.3), categoryId: org.sub?.categoryId, subcategoryIds: org.sub ? [org.sub.id] : [], primarySubcategoryId: org.sub?.id,
+      allowStudentOverrides: r.bool(0.3), categoryId: indieCategoryId, subcategoryIds: org.sub ? [org.sub.id] : [], primarySubcategoryId: org.sub?.id,
     }).catch((err) => { log.warn(`onboardSelfCoach failed: ${err.message}`); return null; });
     // selfOnboardAsCoach creates the caller's own staff_profiles row under
     // the hood (see onboard-coach route's own comment) — same document set
