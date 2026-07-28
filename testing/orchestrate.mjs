@@ -69,6 +69,31 @@ async function main() {
   const state = loadState(config);
   const persist = () => saveState(config, state);
 
+  // Login-reference index (Requirement: "output a creds table to login
+  // manually and check") — every real identity this run creates, so
+  // `testing/credentials.mjs` can export/filter it afterward. No passwords
+  // exist in this app (magic-link/OAuth only, see README's "Auth bootstrap"
+  // section) — this is a find-the-actor-you-want index, not a secret store,
+  // so it's safe to persist to the (gitignored) state file as plain JSON.
+  state.data.actors = state.data.actors ?? [];
+  const actorsByEmail = new Map(state.data.actors.map((a) => [a.email, a]));
+  // Merges into one row per email — a real identity CAN hold more than one
+  // role (e.g. a single membership with multiple membership_roles), and the
+  // credentials table should show "coach,org_admin" on one row rather than
+  // two separate rows for the same login.
+  function recordActor({ email, name, role, type, orgSlug, organizationId }) {
+    const existing = actorsByEmail.get(email);
+    if (existing) {
+      const roles = new Set(existing.role.split(',').map((r) => r.trim()).filter(Boolean));
+      roles.add(role);
+      existing.role = [...roles].join(',');
+      return;
+    }
+    const actor = { email, name, role, type, orgSlug: orgSlug ?? null, organizationId: organizationId ?? null };
+    state.data.actors.push(actor);
+    actorsByEmail.set(email, actor);
+  }
+
   log.step('Fetching real platform taxonomy (categories, sports, cities)');
   const taxonomy = state.data.categories ?? (await fetchTaxonomy(anon));
   state.data.categories = taxonomy;
@@ -78,19 +103,31 @@ async function main() {
   log.step('Bootstrapping platform administration (Requirement #14)');
   const superAdminEmail = process.env.SEED_SUPERADMIN_EMAIL ?? 'superadmin@abhyas.local';
   const superAdmin = await platformAdmin.ensureSuperAdmin(config, authProvider, superAdminEmail);
+  recordActor({ email: superAdminEmail, name: 'Super Admin (seed)', role: 'super_admin', type: 'platform' });
 
   const PLATFORM_STAFF_ROLES = ['verification_ops', 'support', 'platform_finance', 'marketplace_partner'];
   for (const roleKey of PLATFORM_STAFF_ROLES) {
-    const email = `${roleKey}@platform.demo.abhyas.local`;
-    if (state.data.platformStaff[email]) continue;
+    // Keyed by roleKey, not email — email now embeds a per-run counter (see
+    // fakeData.mjs's emailFor), so it's no longer stable enough to double as
+    // a resume-idempotency key the way the old `roleKey@platform.demo...`
+    // literal email was.
+    if (state.data.platformStaff[roleKey]) continue;
+    const pr = rng.child(`platformstaff-${roleKey}`);
+    const person = fake.randomName(pr, pr.bool() ? 'F' : 'M');
+    const email = fake.emailFor(person.firstName, person.lastName, `platform.${roleKey}`, config.runTag);
     const staffIdentity = await identity.loginIdentity(authProvider, email);
-    await identity.updateProfile(staffIdentity.client, { displayName: `${roleKey.replace(/_/g, ' ')} (seed)` });
+    const staffAgeYears = pr.int(28, 55);
+    await identity.updateProfile(staffIdentity.client, {
+      displayName: person.fullName, gender: person.gender, phone: fake.randomPhone(pr),
+      dob: daysAgo(today, staffAgeYears * 365), avatarPath: fake.avatarFor(pr, person.firstName, person.lastName),
+    });
     try {
       await platformAdmin.grantPlatformRole(superAdmin.client, staffIdentity.userId, roleKey);
     } catch (err) {
       log.warn(`grantPlatformRole(${roleKey}) for ${email}: ${err.message}`);
     }
-    state.data.platformStaff[email] = { userId: staffIdentity.userId, roleKey };
+    state.data.platformStaff[roleKey] = { userId: staffIdentity.userId, roleKey, email };
+    recordActor({ email, name: person.fullName, role: roleKey, type: 'platform' });
   }
   await platformAdmin.createAnnouncement(superAdmin.client, {
     audience: 'all', title: 'Welcome to Abhyas', body: 'Platform seeded with demo data for development.',
@@ -105,6 +142,15 @@ async function main() {
 
   // ── Guardian pool (shared across siblings, ~1.4 kids/guardian) ──────
   const guardianEmails = [];
+  // guardianEmail -> [{orgType, orgId, wardUserId}, ...] for every ward the
+  // BULK-enroll path (buildBatchesAndStudents' main loop) creates — lets the
+  // "cross-org guardian siblings" pass below pick a guardian who's only ever
+  // had kids at ONE org type and deliberately give them a second child at
+  // the OTHER type, with concrete (orgId, wardUserId) evidence validate.mjs
+  // can check, instead of relying on the 35% guardian-reuse chance to
+  // produce this by luck (it often does, but never guaranteed, especially
+  // at --dataset=smoke scale).
+  const guardianLinks = new Map();
 
   async function getGuardian(r) {
     const reuse = guardianEmails.length > 0 && r.bool(0.35);
@@ -113,20 +159,28 @@ async function main() {
       return identity.loginIdentity(authProvider, email);
     }
     const person = fake.randomName(r, r.bool() ? 'F' : 'M');
-    const email = fake.emailFor(person.firstName, person.lastName, 'guardians.demo.abhyas.local', config.runTag);
+    const email = fake.emailFor(person.firstName, person.lastName, 'guardian', config.runTag);
     const g = await identity.loginIdentity(authProvider, email);
-    await identity.updateProfile(g.client, { displayName: person.fullName, phone: fake.randomPhone(r) }).catch((err) => log.warn(`[soft-fail] ${err.message}`));
+    const guardianAgeYears = r.int(28, 55);
+    await identity.updateProfile(g.client, {
+      displayName: person.fullName, gender: person.gender, phone: fake.randomPhone(r),
+      dob: daysAgo(today, guardianAgeYears * 365), avatarPath: fake.avatarFor(r, person.firstName, person.lastName),
+    }).catch((err) => log.warn(`[soft-fail] ${err.message}`));
     guardianEmails.push(email);
+    recordActor({ email, name: person.fullName, role: 'guardian', type: 'parent' });
     return g;
   }
 
   // ── Shared org pipeline (used by both academies and independent coaches) ──
-  async function setupOrgCore(r, { orgType, name, ownerEmail, ownerName, state: stateName, specialty }) {
+  async function setupOrgCore(r, { orgType, name, ownerEmail, ownerPerson, state: stateName, specialty }) {
     const slug = `${slugify(name)}-${r.int(1000, 9999)}`;
     const owner = await identity.loginIdentity(authProvider, ownerEmail);
     const addr = fake.randomAddress(r, stateName);
+    const ownerAgeYears = r.int(30, 60);
     await identity.updateProfile(owner.client, {
-      displayName: ownerName, phone: fake.randomPhone(r), state: addr.state, city: addr.city, area: addr.area, addressLine: addr.addressLine,
+      displayName: ownerPerson.fullName, gender: ownerPerson.gender, phone: fake.randomPhone(r),
+      dob: daysAgo(today, ownerAgeYears * 365), avatarPath: fake.avatarFor(r, ownerPerson.firstName, ownerPerson.lastName),
+      state: addr.state, city: addr.city, area: addr.area, addressLine: addr.addressLine,
     }).catch((err) => log.warn(`[soft-fail] ${err.message}`));
 
     const created = await orgs.createOrganization(owner.client, { orgType, name, slug });
@@ -158,10 +212,32 @@ async function main() {
     await orgs.publishListing(owner.client, created.organizationId).catch((err) => log.warn(`publish ${slug}: ${err.message}`));
     await platformAdmin.enableHistoricalBackdating(superAdmin.client, created.organizationId).catch((err) => log.warn(`flag ${slug}: ${err.message}`));
 
+    recordActor({ email: ownerEmail, name: ownerPerson.fullName, role: 'owner', type: orgType, orgSlug: slug, organizationId: created.organizationId });
     return { ...created, slug, owner, specialty, sub, sportKey, cityKey: cityRow.key, verificationOutcome };
   }
 
-  async function buildBatchesAndStudents(r, { orgId, branchId, owner, coachMemberships, sub, targetStudents, targetBatches, feePolicyId, listingId, orgSlug }) {
+  // Aadhaar-equivalent + address-proof documents (Requirement: "mandatory
+  // fields... Aadhar, Address proof") — this app has no dedicated Aadhaar-
+  // number field anywhere (confirmed against every migration); the closest
+  // real mechanism is `staff_documents.doc_type IN ('id_proof','address_proof',
+  // 'certification', ...)`, a generic file-reference row (storage_path only,
+  // same as the existing certification doc below — no real upload pipeline
+  // built yet, see coaches.mjs's own comment). Every coach-like identity
+  // that gets a staff_profile (academy coaches, sub-coaches, self-onboarded
+  // independent coaches) gets all three document types.
+  async function addCoachDocuments(client, orgId, staffId, fullName) {
+    for (const [docType, folder, suffix] of [
+      ['certification', 'certifications', 'cert'],
+      ['id_proof', 'id-proof', 'aadhaar'],
+      ['address_proof', 'address-proof', 'address'],
+    ]) {
+      await coachEnt.addStaffDocument(client, orgId, staffId, {
+        docType, storagePath: `/documents/${folder}/${slugify(fullName)}-${suffix}.pdf`,
+      }).catch((err) => log.warn(`[soft-fail] ${err.message}`));
+    }
+  }
+
+  async function buildBatchesAndStudents(r, { orgId, branches, owner, coachMemberships, sub, targetStudents, targetBatches, feePolicyId, listingId, orgSlug, orgType }) {
     const program = await scheduling.createProgram(owner.client, orgId, {
       name: sub?.name ?? 'General Training', sportKey: undefined, description: `${sub?.name ?? 'General'} program`,
     }).catch((err) => { log.warn(`[soft-fail] ${err.message}`); return null; });
@@ -171,8 +247,12 @@ async function main() {
     for (let i = 0; i < targetBatches; i++) {
       const days = r.sample([1, 2, 3, 4, 5, 6, 7], r.int(2, 4)).sort();
       const hour = r.int(6, 19);
+      // Multi-branch academies: spread batches across every real branch
+      // (not just the default one) so each branch gets its own sessions/
+      // attendance/roster, exercising branch-scoped RLS end to end.
+      const batchBranch = r.pick(branches);
       const batch = await scheduling.createBatch(owner.client, orgId, {
-        branchId, name: `${r.pick(BATCH_NAMES)} Batch ${i + 1}`, mode: 'in_person', programId: program?.id,
+        branchId: batchBranch.id, name: `${r.pick(BATCH_NAMES)} Batch ${i + 1}`, mode: 'in_person', programId: program?.id,
         capacity: r.int(10, 30),
         schedule: { days, startTime: `${String(hour).padStart(2, '0')}:00`, endTime: `${String(hour + 1).padStart(2, '0')}:00`, startDate: batchStart, endDate: null },
         graceMinutes: 15,
@@ -180,8 +260,13 @@ async function main() {
       if (!batch) continue;
       batches.push(batch);
 
-      for (const membershipId of coachMemberships.slice(0, r.int(1, Math.min(2, coachMemberships.length || 1)))) {
-        await scheduling.assignCoach(owner.client, orgId, batch.id, { membershipId, role: 'primary', days }).catch((err) => log.warn(`[soft-fail] ${err.message}`));
+      // Prefer coaches whose own membership is scoped to this batch's branch
+      // (or org-wide); fall back to any coach if none match (small academies
+      // with few coaches spread across branches).
+      const branchCoaches = coachMemberships.filter((cm) => cm.branchId == null || cm.branchId === batchBranch.id);
+      const assignPool = branchCoaches.length ? branchCoaches : coachMemberships;
+      for (const cm of assignPool.slice(0, r.int(1, Math.min(2, assignPool.length || 1)))) {
+        await scheduling.assignCoach(owner.client, orgId, batch.id, { membershipId: cm.membershipId, role: 'primary', days }).catch((err) => log.warn(`[soft-fail] ${err.message}`));
       }
 
       // Real materialization only ever covers today..+29 days forward (see
@@ -204,13 +289,16 @@ async function main() {
       const attendanceProfile = attendanceEnt.pickAttendanceProfile(sr);
 
       let studentUserId;
-      let studentClient = null;
+      let guardianEmail = null;
       if (isSelfAccount) {
-        const email = fake.emailFor(person.firstName, person.lastName, 'students.demo.abhyas.local', config.runTag);
+        const email = fake.emailFor(person.firstName, person.lastName, 'student', config.runTag);
         const acct = await identity.loginIdentity(authProvider, email);
-        await identity.updateProfile(acct.client, { displayName: person.fullName, dob: daysAgo(today, ageYears * 365) }).catch((err) => log.warn(`[soft-fail] ${err.message}`));
+        await identity.updateProfile(acct.client, {
+          displayName: person.fullName, gender: person.gender, phone: fake.randomPhone(sr),
+          dob: daysAgo(today, ageYears * 365), avatarPath: fake.avatarFor(sr, person.firstName, person.lastName),
+        }).catch((err) => log.warn(`[soft-fail] ${err.message}`));
         studentUserId = acct.userId;
-        studentClient = acct.client;
+        recordActor({ email, name: person.fullName, role: 'student', type: orgType, orgSlug, organizationId: orgId });
       } else {
         const guardian = await getGuardian(sr);
         const ward = await identity.createWard(guardian.client, {
@@ -219,13 +307,19 @@ async function main() {
         }).catch((err) => { log.warn(`createWard failed: ${err.message}`); return null; });
         if (!ward) continue;
         studentUserId = ward.wardUserId;
+        guardianEmail = guardian.email;
       }
 
       const enrollment = await studentEnt.enrollDirect(owner.client, orgId, {
-        branchId, studentUserId, rollNumber: `${orgSlug.slice(0, 4).toUpperCase()}-${String(i + 1).padStart(4, '0')}`, startedOn: enrolledFrom,
+        branchId: batch.branchId, studentUserId, rollNumber: `${orgSlug.slice(0, 4).toUpperCase()}-${String(i + 1).padStart(4, '0')}`, startedOn: enrolledFrom,
       }).catch((err) => { log.warn(`enroll failed: ${err.message}`); return null; });
       if (!enrollment) continue;
       studentsEnrolled += 1;
+      if (guardianEmail) {
+        const links = guardianLinks.get(guardianEmail) ?? [];
+        links.push({ orgType, orgId, wardUserId: studentUserId });
+        guardianLinks.set(guardianEmail, links);
+      }
 
       await scheduling.addToRoster(owner.client, orgId, batch.id, enrollment.id).catch((err) => log.warn(`[soft-fail] ${err.message}`));
 
@@ -240,7 +334,7 @@ async function main() {
         for (let c = 0; c < chargeCount; c++) {
           const dueOn = daysAgo(today, sr.int(0, config.attendanceDays));
           const charge = await financeEnt.createCharge(owner.client, orgId, {
-            branchId, enrollmentId: enrollment.id, kind: 'fee', description: 'Monthly tuition fee',
+            branchId: batch.branchId, enrollmentId: enrollment.id, kind: 'fee', description: 'Monthly tuition fee',
             amountMinor: sr.int(1500, 4000) * 100, dueOn, feePolicyId,
           }).catch((err) => { log.warn(`[soft-fail] ${err.message}`); return null; });
           if (!charge) continue;
@@ -283,10 +377,16 @@ async function main() {
       let actorClient;
       let subjectUserId;
       if (asSelf) {
-        const email = fake.emailFor(person.firstName, person.lastName, 'students.demo.abhyas.local', config.runTag);
+        const email = fake.emailFor(person.firstName, person.lastName, 'student', config.runTag);
         const acct = await identity.loginIdentity(authProvider, email).catch(() => null);
         if (!acct) continue;
         actorClient = acct.client;
+        const selfAgeYears = jr.int(7, 45);
+        await identity.updateProfile(acct.client, {
+          displayName: person.fullName, gender: person.gender, phone: fake.randomPhone(jr),
+          dob: daysAgo(today, selfAgeYears * 365), avatarPath: fake.avatarFor(jr, person.firstName, person.lastName),
+        }).catch((err) => log.warn(`[soft-fail] ${err.message}`));
+        recordActor({ email, name: person.fullName, role: 'student', type: orgType, orgSlug, organizationId: orgId });
       } else {
         const guardian = await getGuardian(jr);
         const ward = await identity.createWard(guardian.client, {
@@ -296,7 +396,7 @@ async function main() {
         actorClient = guardian.client;
         subjectUserId = ward.wardUserId;
       }
-      const joinReq = await orgs.createJoinRequest(actorClient, orgId, { requestedRole: 'student', branchId, subjectUserId }).catch((err) => { log.warn(`[soft-fail] ${err.message}`); return null; });
+      const joinReq = await orgs.createJoinRequest(actorClient, orgId, { requestedRole: 'student', branchId: jr.pick(branches).id, subjectUserId }).catch((err) => { log.warn(`[soft-fail] ${err.message}`); return null; });
       if (!joinReq) continue;
       const decision = jr.weighted([{ value: 'approved', weight: 60 }, { value: 'rejected', weight: 15 }, { value: null, weight: 25 }]);
       if (!decision) continue;
@@ -332,11 +432,11 @@ async function main() {
     const stateName = r.pick(states);
     const name = fake.academyName(r, specialty);
     const contact = fake.randomName(r, r.bool() ? 'F' : 'M');
-    const ownerEmail = fake.emailFor(contact.firstName, contact.lastName, 'owners.demo.abhyas.local', config.runTag);
+    const ownerEmail = fake.emailFor(contact.firstName, contact.lastName, 'owner', config.runTag);
     const orgKey = `academy-${i}-${ownerEmail}`;
     if (state.data.organizations[orgKey]) { log.progress('academies', i + 1, config.dataset.academies); return; }
 
-    const org = await setupOrgCore(r, { orgType: 'academy', name, ownerEmail, ownerName: contact.fullName, state: stateName, specialty }).catch((err) => {
+    const org = await setupOrgCore(r, { orgType: 'academy', name, ownerEmail, ownerPerson: contact, state: stateName, specialty }).catch((err) => {
       log.warn(`academy ${i} setup failed: ${err.message}`); return null;
     });
     if (!org) return;
@@ -349,19 +449,82 @@ async function main() {
       accountHolderName: name, bankName: r.pick(['HDFC Bank', 'ICICI Bank', 'SBI', 'Axis Bank']), accountLast4: String(r.int(1000, 9999)),
     }).catch((err) => log.warn(`[soft-fail] ${err.message}`));
 
+    // Branches (academies with multiple physical locations) — most stay
+    // single-branch (55%), the rest get a real 2nd/3rd branch via
+    // POST /branches, each with its own batches/coaches/branch_admin below.
+    // `branches[0]` is always the default branch createOrganization already made.
+    const branchCount = r.weighted([{ value: 1, weight: 55 }, { value: 2, weight: 30 }, { value: 3, weight: 15 }]);
+    const branches = [{ id: org.branchId, name: 'Main Branch' }];
+    for (let b = 1; b < branchCount; b++) {
+      const branchName = ['North Branch', 'South Branch', 'East Branch', 'West Branch'][b - 1] ?? `Branch ${b + 1}`;
+      const created = await orgs.createBranch(org.owner.client, org.organizationId, branchName).catch((err) => { log.warn(`[soft-fail] ${err.message}`); return null; });
+      if (created?.branchId) branches.push({ id: created.branchId, name: branchName });
+    }
+
+    // Org-level roles beyond coach/assistant_coach (Requirement: "different
+    // roles people in academy") — one org_admin, one front_desk, one
+    // accountant per academy, org-wide (no branchId), real invite->accept->
+    // active-role flow. These are pure RBAC roles, not HR-tracked staff, so
+    // no staff_profile/coach_profile is created for them (only real coaches
+    // go through that onboarding path).
+    for (const roleKey of ['org_admin', 'front_desk', 'accountant']) {
+      const pr = r.child(`orgrole-${roleKey}`);
+      const person = fake.randomName(pr, pr.bool() ? 'F' : 'M');
+      const email = fake.emailFor(person.firstName, person.lastName, roleKey, config.runTag);
+      const invite = await orgs.inviteMember(org.owner.client, org.organizationId, { email, roleKeys: [roleKey] }).catch((err) => { log.warn(`[soft-fail] ${err.message}`); return null; });
+      if (!invite) continue;
+      const roleIdentity = await identity.loginIdentity(authProvider, email);
+      await orgs.acceptInvitation(roleIdentity.client, invite.token).catch((err) => log.warn(`[soft-fail] ${err.message}`));
+      const orgRoleAgeYears = pr.int(25, 55);
+      await identity.updateProfile(roleIdentity.client, {
+        displayName: person.fullName, gender: person.gender, phone: fake.randomPhone(pr),
+        dob: daysAgo(today, orgRoleAgeYears * 365), avatarPath: fake.avatarFor(pr, person.firstName, person.lastName),
+      }).catch((err) => log.warn(`[soft-fail] ${err.message}`));
+      await orgs.activateWorkspace(roleIdentity.client, org.organizationId).catch((err) => log.warn(`[soft-fail] ${err.message}`));
+      await orgs.setActiveRole(roleIdentity.client, org.organizationId, roleKey).catch((err) => log.warn(`[soft-fail] ${err.message}`));
+      count(`organizations.org_role_${roleKey}_added`);
+      recordActor({ email, name: person.fullName, role: roleKey, type: 'academy', orgSlug: org.slug, organizationId: org.organizationId });
+    }
+
+    // Branch admins — one per branch BEYOND the default one (a single-branch
+    // academy relies on the owner; only extra branches need their own admin).
+    for (let b = 1; b < branches.length; b++) {
+      const br = r.child(`branchadmin-${b}`);
+      const person = fake.randomName(br, br.bool() ? 'F' : 'M');
+      const email = fake.emailFor(person.firstName, person.lastName, 'branch_admin', config.runTag);
+      const invite = await orgs.inviteMember(org.owner.client, org.organizationId, { email, roleKeys: ['branch_admin'], branchId: branches[b].id }).catch((err) => { log.warn(`[soft-fail] ${err.message}`); return null; });
+      if (!invite) continue;
+      const baIdentity = await identity.loginIdentity(authProvider, email);
+      await orgs.acceptInvitation(baIdentity.client, invite.token).catch((err) => log.warn(`[soft-fail] ${err.message}`));
+      const branchAdminAgeYears = br.int(25, 55);
+      await identity.updateProfile(baIdentity.client, {
+        displayName: person.fullName, gender: person.gender, phone: fake.randomPhone(br),
+        dob: daysAgo(today, branchAdminAgeYears * 365), avatarPath: fake.avatarFor(br, person.firstName, person.lastName),
+      }).catch((err) => log.warn(`[soft-fail] ${err.message}`));
+      await orgs.activateWorkspace(baIdentity.client, org.organizationId).catch((err) => log.warn(`[soft-fail] ${err.message}`));
+      await orgs.setActiveRole(baIdentity.client, org.organizationId, 'branch_admin').catch((err) => log.warn(`[soft-fail] ${err.message}`));
+      count('organizations.branch_admins_added');
+      recordActor({ email, name: person.fullName, role: 'branch_admin', type: 'academy', orgSlug: org.slug, organizationId: org.organizationId });
+    }
+
     // Academy Coaches (Requirement #7): head coach + N additional coaches with real invite/accept flow.
     const coachCount = Math.max(1, Math.round(config.dataset.academyCoachesTarget / config.dataset.academies) + r.int(-1, 1));
     const coachMemberships = [];
     for (let c = 0; c < coachCount; c++) {
       const cr = r.child(`coach-${c}`);
       const person = fake.randomName(cr, cr.bool() ? 'F' : 'M');
-      const email = fake.emailFor(person.firstName, person.lastName, 'coaches.demo.abhyas.local', config.runTag);
       const roleKey = c === 0 ? 'coach' : cr.pick(['coach', 'coach', 'assistant_coach']);
-      const invite = await orgs.inviteMember(org.owner.client, org.organizationId, { email, roleKeys: [roleKey] }).catch((err) => { log.warn(`[soft-fail] ${err.message}`); return null; });
+      const email = fake.emailFor(person.firstName, person.lastName, roleKey, config.runTag);
+      const coachBranch = cr.pick(branches);
+      const invite = await orgs.inviteMember(org.owner.client, org.organizationId, { email, roleKeys: [roleKey], branchId: coachBranch.id }).catch((err) => { log.warn(`[soft-fail] ${err.message}`); return null; });
       if (!invite) continue;
       const coachIdentity = await identity.loginIdentity(authProvider, email);
       await orgs.acceptInvitation(coachIdentity.client, invite.token).catch((err) => log.warn(`[soft-fail] ${err.message}`));
-      await identity.updateProfile(coachIdentity.client, { displayName: person.fullName, phone: fake.randomPhone(cr), gender: person.gender }).catch((err) => log.warn(`[soft-fail] ${err.message}`));
+      const coachAgeYears = cr.int(23, 55);
+      await identity.updateProfile(coachIdentity.client, {
+        displayName: person.fullName, gender: person.gender, phone: fake.randomPhone(cr),
+        dob: daysAgo(today, coachAgeYears * 365), avatarPath: fake.avatarFor(cr, person.firstName, person.lastName),
+      }).catch((err) => log.warn(`[soft-fail] ${err.message}`));
       await orgs.activateWorkspace(coachIdentity.client, org.organizationId).catch((err) => log.warn(`[soft-fail] ${err.message}`));
       await orgs.setActiveRole(coachIdentity.client, org.organizationId, roleKey).catch((err) => log.warn(`[soft-fail] ${err.message}`));
 
@@ -373,7 +536,8 @@ async function main() {
         employmentType: cr.pick(['full_time', 'part_time', 'contract']),
       }).catch((err) => { log.warn(`[soft-fail] ${err.message}`); return null; });
       if (!staffProfile) continue;
-      coachMemberships.push(membership.membershipId);
+      coachMemberships.push({ membershipId: membership.membershipId, branchId: coachBranch.id });
+      recordActor({ email, name: person.fullName, role: roleKey, type: 'academy', orgSlug: org.slug, organizationId: org.organizationId });
 
       if (roleKey === 'coach') {
         // serviceTypes is always ['offline'] here, so service areas must be
@@ -389,9 +553,7 @@ async function main() {
           categoryId: org.sub?.categoryId, subcategoryIds: org.sub ? [org.sub.id] : [], primarySubcategoryId: org.sub?.id,
         }).catch((err) => log.warn(`[soft-fail] ${err.message}`));
       }
-      await coachEnt.addStaffDocument(org.owner.client, org.organizationId, staffProfile.id, {
-        docType: 'certification', storagePath: `/documents/certifications/${slugify(person.fullName)}-cert.pdf`,
-      }).catch((err) => log.warn(`[soft-fail] ${err.message}`));
+      await addCoachDocuments(org.owner.client, org.organizationId, staffProfile.id, person.fullName);
 
       // Leave requests (approval-queue variety).
       if (cr.bool(0.4)) {
@@ -408,11 +570,11 @@ async function main() {
     const targetBatches = Math.max(1, Math.round(config.dataset.batchesTarget / totalOrgs));
     const listing = await org.owner.client.get(`/api/v1/orgs/${org.organizationId}/listing`).catch((err) => { log.warn(`[soft-fail] ${err.message}`); return null; });
     const { studentsEnrolled } = await buildBatchesAndStudents(r, {
-      orgId: org.organizationId, branchId: org.branchId, owner: org.owner, coachMemberships, sub: org.sub,
-      targetStudents: studentsPerOrg, targetBatches, feePolicyId: feePolicy?.id, listingId: listing?.id, orgSlug: org.slug,
+      orgId: org.organizationId, branches, owner: org.owner, coachMemberships, sub: org.sub,
+      targetStudents: studentsPerOrg, targetBatches, feePolicyId: feePolicy?.id, listingId: listing?.id, orgSlug: org.slug, orgType: 'academy',
     });
 
-    state.data.organizations[orgKey] = { organizationId: org.organizationId, branchId: org.branchId, orgType: 'academy', slug: org.slug };
+    state.data.organizations[orgKey] = { organizationId: org.organizationId, branchId: org.branchId, orgType: 'academy', slug: org.slug, branchCount: branches.length };
     count('organizations.academies_complete');
     log.progress('academies', i + 1, config.dataset.academies);
     if (i % 5 === 0) persist();
@@ -429,12 +591,12 @@ async function main() {
     const gender = r.bool() ? 'F' : 'M';
     const person = fake.randomName(r, gender);
     const stateName = r.pick(states);
-    const email = fake.emailFor(person.firstName, person.lastName, 'coaches.demo.abhyas.local', config.runTag);
+    const email = fake.emailFor(person.firstName, person.lastName, 'owner', config.runTag);
     const orgKey = `indie-${i}-${email}`;
     if (state.data.organizations[orgKey]) { log.progress('independent coaches', i + 1, config.dataset.independentCoaches); return; }
 
     const name = `${person.fullName} ${specialty} Coaching`;
-    const org = await setupOrgCore(r, { orgType: 'independent_coach', name, ownerEmail: email, ownerName: person.fullName, state: stateName, specialty }).catch((err) => {
+    const org = await setupOrgCore(r, { orgType: 'independent_coach', name, ownerEmail: email, ownerPerson: person, state: stateName, specialty }).catch((err) => {
       log.warn(`independent coach ${i} setup failed: ${err.message}`); return null;
     });
     if (!org) return;
@@ -445,14 +607,20 @@ async function main() {
     // field regardless, but a purely-online coach has no real reason to set
     // one) — seeded from the org's own launched city, same one its listing uses.
     const indieAreas = serviceTypes.includes('offline') ? areasForCity(taxonomy, org.cityKey) : [];
-    await coachEnt.onboardSelfCoach(org.owner.client, {
+    const selfCoachProfile = await coachEnt.onboardSelfCoach(org.owner.client, {
       bio: fake.coachBio(r, person.firstName, experienceYears, specialty), experienceYears,
       qualification: fake.randomQualification(r), languagesKnown: r.sample(fake.LANGUAGES, r.int(1, 3)),
       ageGroups: ['Kids', 'Teens', 'Adults'], skillLevels: ['Beginner', 'Intermediate', 'Advanced'],
       serviceTypes, classTypes: r.sample(['group', 'one_to_one'], r.int(1, 2)),
       serviceAreaKeys: indieAreas.length ? r.sample(indieAreas, r.int(1, Math.min(3, indieAreas.length))).map((a) => a.key) : [],
       allowStudentOverrides: r.bool(0.3), categoryId: org.sub?.categoryId, subcategoryIds: org.sub ? [org.sub.id] : [], primarySubcategoryId: org.sub?.id,
-    }).catch((err) => log.warn(`onboardSelfCoach failed: ${err.message}`));
+    }).catch((err) => { log.warn(`onboardSelfCoach failed: ${err.message}`); return null; });
+    // selfOnboardAsCoach creates the caller's own staff_profiles row under
+    // the hood (see onboard-coach route's own comment) — same document set
+    // real academy coaches get.
+    if (selfCoachProfile?.staffProfileId) {
+      await addCoachDocuments(org.owner.client, org.organizationId, selfCoachProfile.staffProfileId, person.fullName);
+    }
     await coachEnt.setSelfPricing(org.owner.client, [
       { policyType: 'monthly_subscription', enabled: true, isDefault: true, rules: [{ amount: r.int(1500, 4000), currency: 'INR', billingCycle: 'Monthly', autoRenew: true }] },
     ]).catch((err) => log.warn(`[soft-fail] ${err.message}`));
@@ -461,18 +629,26 @@ async function main() {
       name: 'Monthly Fee', kind: 'recurring_monthly', amountMinor: r.int(1500, 4000) * 100,
     }).catch((err) => { log.warn(`[soft-fail] ${err.message}`); return null; });
 
+    // Independent coaches are single-location by nature — no branches API
+    // call needed, just the default branch createOrganization already made.
+    const branches = [{ id: org.branchId, name: 'Main Branch' }];
+
     // Sub-coaches reporting to this independent coach (Requirement #3) —
     // only a subset of independent coaches get one, until the budget runs out.
     const coachMemberships = [];
     if (subCoachBudget > 0 && r.bool(0.3)) {
       const cr = r.child('subcoach');
       const scPerson = fake.randomName(cr, cr.bool() ? 'F' : 'M');
-      const scEmail = fake.emailFor(scPerson.firstName, scPerson.lastName, 'subcoaches.demo.abhyas.local', config.runTag);
+      const scEmail = fake.emailFor(scPerson.firstName, scPerson.lastName, 'assistant_coach', config.runTag);
       const invite = await orgs.inviteMember(org.owner.client, org.organizationId, { email: scEmail, roleKeys: ['assistant_coach'] }).catch((err) => { log.warn(`[soft-fail] ${err.message}`); return null; });
       if (invite) {
         const scIdentity = await identity.loginIdentity(authProvider, scEmail);
         await orgs.acceptInvitation(scIdentity.client, invite.token).catch((err) => log.warn(`[soft-fail] ${err.message}`));
-        await identity.updateProfile(scIdentity.client, { displayName: scPerson.fullName, phone: fake.randomPhone(cr) }).catch((err) => log.warn(`[soft-fail] ${err.message}`));
+        const subCoachAgeYears = cr.int(22, 45);
+        await identity.updateProfile(scIdentity.client, {
+          displayName: scPerson.fullName, gender: scPerson.gender, phone: fake.randomPhone(cr),
+          dob: daysAgo(today, subCoachAgeYears * 365), avatarPath: fake.avatarFor(cr, scPerson.firstName, scPerson.lastName),
+        }).catch((err) => log.warn(`[soft-fail] ${err.message}`));
         await orgs.activateWorkspace(scIdentity.client, org.organizationId).catch((err) => log.warn(`[soft-fail] ${err.message}`));
         await orgs.setActiveRole(scIdentity.client, org.organizationId, 'assistant_coach').catch((err) => log.warn(`[soft-fail] ${err.message}`));
         const onboardable = await orgs.listOnboardableMembers(org.owner.client, org.organizationId).catch((err) => { log.warn(`[soft-fail] ${err.message}`); return []; });
@@ -482,9 +658,11 @@ async function main() {
             membershipId: membership.membershipId, designation: 'Assistant Coach', employmentType: cr.pick(['part_time', 'full_time']),
           }).catch((err) => { log.warn(`[soft-fail] ${err.message}`); return null; });
           if (staffProfile) {
-            coachMemberships.push(membership.membershipId);
+            coachMemberships.push({ membershipId: membership.membershipId, branchId: org.branchId });
             count('subCoaches.onboarded');
             subCoachBudget -= 1;
+            recordActor({ email: scEmail, name: scPerson.fullName, role: 'assistant_coach', type: 'independent_coach', orgSlug: org.slug, organizationId: org.organizationId });
+            await addCoachDocuments(org.owner.client, org.organizationId, staffProfile.id, scPerson.fullName);
           }
         }
       }
@@ -493,8 +671,8 @@ async function main() {
     const targetBatches = Math.max(1, Math.round(config.dataset.batchesTarget / totalOrgs));
     const listing = await org.owner.client.get(`/api/v1/orgs/${org.organizationId}/listing`).catch((err) => { log.warn(`[soft-fail] ${err.message}`); return null; });
     await buildBatchesAndStudents(r, {
-      orgId: org.organizationId, branchId: org.branchId, owner: org.owner, coachMemberships, sub: org.sub,
-      targetStudents: Math.max(1, Math.round(studentsPerOrg * 0.6)), targetBatches, feePolicyId: feePolicy?.id, listingId: listing?.id, orgSlug: org.slug,
+      orgId: org.organizationId, branches, owner: org.owner, coachMemberships, sub: org.sub,
+      targetStudents: Math.max(1, Math.round(studentsPerOrg * 0.6)), targetBatches, feePolicyId: feePolicy?.id, listingId: listing?.id, orgSlug: org.slug, orgType: 'independent_coach',
     });
 
     state.data.organizations[orgKey] = { organizationId: org.organizationId, branchId: org.branchId, orgType: 'independent_coach', slug: org.slug };
@@ -505,8 +683,67 @@ async function main() {
   for (const r of indieResults) if (!r.ok) log.error(`independent coach pipeline error: ${r.error?.stack ?? r.error}`);
   persist();
 
+  // ── Cross-org guardian siblings (explicit, guaranteed scenario) ─────
+  // A parent with one child at an academy AND another at an independent
+  // coach already happens incidentally (getGuardian's 35% reuse chance
+  // draws from ONE pool shared across both loops above) — but that's luck,
+  // not a guarantee, and easy to miss entirely at --dataset=smoke scale.
+  // Force a deterministic handful here, with concrete (orgId, wardUserId)
+  // evidence recorded to state.crossOrgSiblings so validate.mjs can assert
+  // it really happened, not just hope for it.
+  log.step('Adding cross-org guardian siblings (parent with kids at two different orgs)');
+  const crossOrgCandidates = [...guardianLinks.entries()].filter(([, links]) => new Set(links.map((l) => l.orgType)).size === 1);
+  const crossOrgTarget = Math.min(crossOrgCandidates.length, Math.max(1, Math.round((config.dataset.academies + config.dataset.independentCoaches) * 0.03)));
+  if (crossOrgCandidates.length < crossOrgTarget) {
+    log.warn(`Only ${crossOrgCandidates.length} single-org-type guardians available (wanted ${crossOrgTarget}) — dataset may be too small for full cross-org coverage.`);
+  }
+  const orgsByType = {
+    academy: Object.entries(state.data.organizations).filter(([, o]) => o.orgType === 'academy'),
+    independent_coach: Object.entries(state.data.organizations).filter(([, o]) => o.orgType === 'independent_coach'),
+  };
+  state.data.crossOrgSiblings = state.data.crossOrgSiblings ?? [];
+  for (let i = 0; i < crossOrgTarget; i++) {
+    const [guardianEmail, links] = crossOrgCandidates[i];
+    const existingLink = links[0];
+    const targetType = existingLink.orgType === 'academy' ? 'independent_coach' : 'academy';
+    const pool = orgsByType[targetType];
+    if (pool.length === 0) continue;
+    const cr = rng.child(`cross-org-sibling-${i}`);
+    const [targetOrgKey, targetOrg] = cr.pick(pool);
+    const targetOwnerEmail = targetOrgKey.split('-').slice(2).join('-');
+    if (!targetOwnerEmail) continue;
+
+    const targetOwner = await identity.loginIdentity(authProvider, targetOwnerEmail);
+    const batches = await targetOwner.client.get(`/api/v1/orgs/${targetOrg.organizationId}/batches`).catch(() => []);
+    if (!Array.isArray(batches) || batches.length === 0) continue;
+    const batch = cr.pick(batches);
+
+    const guardian = await identity.loginIdentity(authProvider, guardianEmail);
+    const person = fake.randomName(cr, cr.bool() ? 'F' : 'M');
+    const ward = await identity.createWard(guardian.client, {
+      displayName: person.fullName, relationship: cr.pick(['father', 'mother', 'guardian']),
+      dob: daysAgo(today, cr.int(7, 16) * 365), consentAuthority: true,
+    }).catch((err) => { log.warn(`cross-org sibling ward failed: ${err.message}`); return null; });
+    if (!ward) continue;
+
+    const enrollment = await studentEnt.enrollDirect(targetOwner.client, targetOrg.organizationId, {
+      branchId: batch.branchId, studentUserId: ward.wardUserId, rollNumber: `SIB-${String(i + 1).padStart(4, '0')}`, startedOn: daysAgo(today, cr.int(0, 30)),
+    }).catch((err) => { log.warn(`cross-org sibling enroll failed: ${err.message}`); return null; });
+    if (!enrollment) continue;
+    await scheduling.addToRoster(targetOwner.client, targetOrg.organizationId, batch.id, enrollment.id).catch((err) => log.warn(`[soft-fail] ${err.message}`));
+
+    state.data.crossOrgSiblings.push({
+      guardianEmail,
+      linkA: { orgType: existingLink.orgType, orgId: existingLink.orgId, wardUserId: existingLink.wardUserId },
+      linkB: { orgType: targetType, orgId: targetOrg.organizationId, wardUserId: ward.wardUserId },
+    });
+    count('students.cross_org_siblings');
+  }
+  persist();
+
   printSummary();
   log.info(`State file: ${state.file}`);
+  log.info(`${state.data.actors.length} login-able identities recorded — run "node testing/credentials.mjs --run-tag=${config.runTag}" for a filterable email/role/type table (no passwords exist; sign in via magic link, see README's "Auth bootstrap").`);
   return getCounters();
 }
 

@@ -9,6 +9,30 @@ sessions for every actor. No SQL scripts, no direct database writes for
 seed *data* (see "Auth bootstrap" below for the one, narrow, pre-existing
 exception this relies on, which predates this framework).
 
+## Scenario coverage
+
+What a seed run actually produces, so it's clear what "seeding" means here
+without reading the whole script. Every row below is real data through a
+real API call — see "Data generation order & dependencies" for exactly
+where in `orchestrate.mjs` each one happens.
+
+| Scenario | Coverage |
+|---|---|
+| Batches | Created per org, spread across every real branch, real weekly schedule, capacity |
+| Students enrolling in batches | Bulk direct-enroll (majority) + a smaller real join-request→approve/reject path |
+| Student attendance | Weighted present/late/absent history against backfilled + forward sessions |
+| Coaches in an academy | Head coach + N coaches, real invite→accept→onboard, certifications, leave requests |
+| Different roles in an academy | `owner`, `coach`, `assistant_coach`, `org_admin`, `front_desk`, `accountant`, and `branch_admin` (for academies with 2-3 branches) — every seeded org-scope role except `student`, which is covered separately |
+| Academies with multiple branches | ~45% of academies get a real 2nd/3rd branch (`POST /branches`); batches, coach assignments, and a dedicated `branch_admin` are all branch-scoped |
+| Different roles at the platform level | `super_admin` (bootstrap) + `verification_ops`/`support`/`platform_finance`/`marketplace_partner` |
+| Parent (guardian) enrollment | Guardian creates a ward (`POST /me/wards`, no auth round trip) → staff direct-enrolls the ward |
+| Parent with 2+ kids at different academies/independent coaches | Happens incidentally at scale (35% guardian-reuse pool shared across both org-type loops) **and** is separately force-guaranteed by a dedicated post-pass (see "Cross-org guardian siblings" below), so it's never left to chance alone |
+| Independent coaches + sub-coaches | Self-serve onboarding (`POST /me/onboard-coach`); ~30% get one `assistant_coach` sub-coach |
+| Finance | Charges with paid/open/waived/cancelled outcomes, ledger entries, payouts |
+| Marketplace | Listings, verification queue, reviews (self-account students only — see "Reviews" below) |
+| Profile completeness | Every real (logged-in) identity gets display name, gender, phone, DOB, and a lightweight generated avatar — not just a bare display name. See "Profile completeness" below for what's still out of reach (wards) and why |
+| Coach documents | Every coach-like identity with a `staff_profile` (academy coaches, sub-coaches, self-onboarded independent coaches) gets all three real `staff_documents` types: `certification`, `id_proof` (this app's closest real equivalent to "Aadhaar" — no dedicated govt-ID field exists anywhere in the schema), and `address_proof` |
+
 ## Quick start
 
 ```bash
@@ -18,12 +42,140 @@ npm run dev:web           # the app must be running on :3000 — OAuth/magic-lin
                            # redirect URLs are hardcoded to localhost:3000
 npm run seed:small        # in a second terminal
 npm run seed:validate -- --dataset=small
+npm run seed:credentials -- --dataset=small   # who did it just create? (see below)
 ```
 
 Every demo identity signs in via the app's real magic-link flow — nothing
 to remember, but if you want to browse as one of them yourself, open
 `http://127.0.0.1:54324` (Mailpit) and request a fresh magic link for that
 email from `/auth/login`.
+
+## Login-reference table (`credentials.mjs`)
+
+**Yes — any time, as many times as you want, for any past run.** There are
+no passwords anywhere in this app (Google OAuth + email magic-link only —
+see "Auth bootstrap" below), so `orchestrate.mjs` records every real
+identity it creates (email, display name, role, org type, org slug) to
+`state.actors` in that run's `.state/<run-tag>.json` file as it goes.
+`testing/credentials.mjs` is a **separate, read-only** script that just
+reads that file back and prints/exports a filterable table — it does NOT
+need the dev server, Supabase, or Mailpit running, and does not touch the
+network at all. Run it immediately after a seed finishes, or weeks later,
+or ten times in a row with different filters — it's just reading JSON off
+disk.
+
+The one thing it needs is the **same `--dataset`/`--seed`/`--run-tag`
+combination the seed run used**, so it resolves to the same state file
+(default run-tag is `<dataset>-<seed>`, e.g. `small-42`). If you don't
+remember it, the file itself is right there: `ls testing/.state/`.
+
+### Email format
+
+Every generated email embeds its own role, so you can tell what an identity
+is for from the address alone, without cross-referencing anything
+(`lib/fakeData.mjs`'s `emailFor`):
+
+- Non-platform (org-scoped) identities: `<firstName>.<lastName>.<role>.<counter>@abhyas.local`
+  — e.g. `priya.sharma.coach.small-42.17@abhyas.local`, `arjun.reddy.owner.small-42.3@abhyas.local`,
+  `meera.iyer.guardian.small-42.44@abhyas.local`.
+- Platform-staff identities: `<firstName>.<lastName>.platform.<role>.<counter>@abhyas.local`
+  — e.g. `rohan.gupta.platform.verification_ops.small-42.2@abhyas.local`.
+- `<role>` is one of `owner` / `coach` / `assistant_coach` / `org_admin` /
+  `front_desk` / `accountant` / `branch_admin` / `student` / `guardian`, or
+  (for platform identities) `verification_ops` / `support` /
+  `platform_finance` / `marketplace_partner`. Super Admin is the one
+  exception — it's a fixed, env-configurable identity
+  (`SEED_SUPERADMIN_EMAIL`, default `superadmin@abhyas.local`), not
+  generated.
+- `<counter>` is `<run-tag>.<sequence-number>` (the run-tag keeps two
+  different seed runs against the same DB from colliding, same as before).
+
+```bash
+# Basic: everyone from the last `small` run, as a console table
+node testing/credentials.mjs --dataset=small
+npm run seed:credentials -- --dataset=small          # equivalent, via package.json
+
+# Filter by role / type / specific org
+node testing/credentials.mjs --dataset=small --role=coach
+node testing/credentials.mjs --dataset=small --role=branch_admin
+node testing/credentials.mjs --dataset=small --type=academy         # academy-side identities only
+node testing/credentials.mjs --dataset=small --type=parent          # guardians only
+node testing/credentials.mjs --dataset=small --org=some-academy-1234  # one specific org's people
+node testing/credentials.mjs --dataset=small --role=coach --type=academy --limit=10
+
+# A non-default run (custom --seed, --run-tag, or --environment used at seed time)
+node testing/credentials.mjs --dataset=medium --seed=12345
+node testing/credentials.mjs --run-tag=my-custom-tag
+node testing/credentials.mjs --dataset=small --environment=staging
+
+# Export instead of printing
+node testing/credentials.mjs --dataset=small --format=csv                    # CSV to stdout
+node testing/credentials.mjs --dataset=small --format=csv --out=actors.csv   # CSV to a file
+```
+
+`type` is `academy` / `independent_coach` / `platform` / `parent`; `role` is
+the actual functional role (`owner`, `coach`, `assistant_coach`, `org_admin`,
+`front_desk`, `accountant`, `branch_admin`, `student`, `guardian`,
+`super_admin`, or one of the platform staff roles). **If one identity holds
+more than one role, the `role` column shows all of them comma-separated on a
+single row** (`coach,org_admin`), rather than one row per role — this
+framework's own seeding never assigns a single generated identity more than
+one role, but a live org can, and `--live` reconstruction respects
+`roleKeys` arrays with more than one entry the same way. Wards
+(guardian-created profile-only children) have no email/login of their own
+and are correctly absent from this table — only real authenticated
+identities appear. To actually log in as any row: go to `/auth/login`, enter
+that email, then fetch the magic link from Mailpit
+(`http://127.0.0.1:54324` locally) and click it — identical to what a real
+user does, see "Auth bootstrap" below.
+
+### `--live`: reconstruct from the running app when disk has nothing (or is incomplete)
+
+If `state.actors` is empty — most commonly a state file seeded **before**
+actor-tracking existed, e.g. an existing `small` dataset seeded with an
+older version of `orchestrate.mjs` — `--resume` won't fix it: resume skips
+recreating any org that's already in the state file, so `recordActor()`
+never runs for those pre-existing identities, no matter how many times you
+re-run the seed. Two ways forward:
+
+- `--clean`: a full fresh re-seed. Complete, but slow and throws away the
+  existing data.
+- **`--live`: reconstructs what it can from the live app itself**, via real
+  API calls (same "no direct SQL for data" rule the whole framework
+  follows — see "Architecture" below), and writes the result back into the
+  state file so this only has to happen once. Unlike every other
+  `credentials.mjs` invocation, `--live` is NOT a pure disk read — it makes
+  real magic-link logins, so (same prerequisites as `orchestrate.mjs`
+  itself) the dev server, local Supabase, and Mailpit all need to be running:
+
+```bash
+# Reconstruct actors for an existing `small` dataset that predates this
+# feature, writing the result back to disk, then show the table
+node testing/credentials.mjs --dataset=small --live
+
+# Same, but only print coaches from the reconstructed set
+node testing/credentials.mjs --dataset=small --live --role=coach
+
+# After the first --live run, disk now has the data — plain runs work again
+node testing/credentials.mjs --dataset=small
+```
+
+What `--live` can and can't recover:
+
+| Identity | Recoverable via `--live`? | How |
+|---|---|---|
+| Org owners | Yes, from disk alone | Owner email is embedded in the org's own state-file key (`academy-<i>-<ownerEmail>`) |
+| Coaches, assistant coaches, org_admin, front_desk, accountant, branch_admin, sub-coaches | Yes, real API call | `GET /orgs/{id}/invitations`, logged in as the org owner — invitation rows never disappear after acceptance, and this is the only place the app exposes a member's email back to anyone but themselves. Only invitations with `acceptedAt` set are used (unaccepted ones never became a real login) |
+| Platform staff + Super Admin | Yes, from disk alone | Already tracked separately in `state.platformStaff`, no live call needed |
+| Guardians, self-account students | **No** | This app has no org-scoped (or any) API that exposes a user's email to anyone but themselves — a deliberate privacy/RLS boundary, not a gap `--live` can work around. Only a fresh `--clean` seed run recovers these |
+
+Reconstructed rows also can't recover the *exact* originally-generated
+display name (invitations only carry the target email) — `--live` derives a
+readable name from the email's own `firstname.lastname.*` shape instead (see
+`lib/fakeData.mjs`'s `emailFor`), which won't reflect a name changed after
+signup. `--live` makes one real magic-link-authenticated API call per
+organization, so it's not instant on a `medium`/`large` dataset — the
+console shows progress as it scans.
 
 ## Architecture
 
@@ -32,6 +184,7 @@ testing/
   orchestrate.mjs        # main entrypoint — wires everything below in
                           # dependency order per dataset profile
   validate.mjs            # post-seed validation (requirement #21)
+  credentials.mjs          # login-reference table export/query (see above)
   config/
     index.mjs              # CLI/env/--dataset resolution, env-file guardrails
     profiles.mjs            # small/medium/large count targets
@@ -151,27 +304,48 @@ later with the exact same pattern if it turns out to matter.
       (weighted: mostly approved, some left pending, some rejected — Requirement
       #14 variety) → publish → enable `historical_backdating`.
    b. Fee policy + bank account.
-   c. **Academies only**: N coaches via the real invite→accept→onboard
+   c. **Academies only, branches**: ~55% stay single-branch, ~30% get a real
+      2nd branch, ~15% get a 3rd (`POST /branches`) — every batch/coach/
+      student below is spread across whichever branches the org actually has.
+   d. **Academies only, org-level roles**: one `org_admin`, one `front_desk`,
+      one `accountant` (org-wide, real invite→accept→active-role, no HR
+      profile needed for these); one `branch_admin` per branch BEYOND the
+      default one (branch-scoped membership).
+   e. **Academies only**: N coaches via the real invite→accept→onboard
       pipeline (`staff_profiles` + `coach_profiles`, mirroring
-      `CoachProfileWizard`'s admin mode), certifications, leave requests.
-   d. **Independent coaches only**: self-onboard via `POST /me/onboard-coach`
+      `CoachProfileWizard`'s admin mode), each scoped to one of the org's real
+      branches, certifications, leave requests.
+   f. **Independent coaches only**: self-onboard via `POST /me/onboard-coach`
       + pricing (mirroring the wizard's self mode); a subset get one
-      sub-coach (`assistant_coach` role, same invite pipeline).
-   e. Programs + batches (real taxonomy-matched sport/category) → coach
-      assignment → **session backfill** (past window) — batch creation's own
-      forward materialization covers the rest.
-   f. Students: majority via guardian → `POST /me/wards` (no auth round
+      sub-coach (`assistant_coach` role, same invite pipeline). Independent
+      coaches are single-location by nature — no extra branches.
+   g. Programs + batches (real taxonomy-matched sport/category, spread across
+      the org's branches) → coach assignment (preferring a coach scoped to
+      the same branch) → **session backfill** (past window) — batch
+      creation's own forward materialization covers the rest.
+   h. Students: majority via guardian → `POST /me/wards` (no auth round
       trip) → staff direct-enrolls the ward; a smaller self-account subset
       get a real login (needed for reviews — see below); a further small
       slice goes through a real join-request → staff decide (pending/
       approved/rejected mix, Requirement #14).
-   g. Per enrolled student: batch roster, attendance history (weighted
+   i. Per enrolled student: batch roster, attendance history (weighted
       present/late/absent profile, against backfilled + forward sessions
       only — never a future 'scheduled' session), 1-3 charges with a mixed
       paid/open/waived/cancelled outcome, backdated payments.
-   h. Reviews — **only** from the self-account student subset (RLS requires
+   j. Reviews — **only** from the self-account student subset (RLS requires
       the review's own author session; a profile-only ward has none, see
       "Known gaps").
+4. **Cross-org guardian siblings** (after every academy and independent
+   coach exists): every bulk-enrolled ward's `(orgType, orgId, wardUserId)`
+   is tracked per guardian email as it's created in step 3h above. Once both
+   loops finish, a dedicated pass picks guardians who (so far) only have kids
+   at ONE org type and deliberately enrolls a second ward for them at a real
+   org of the OTHER type — so "a parent with kids at both an academy and an
+   independent coach" is a guaranteed scenario, not left to the 35%
+   guardian-reuse chance in step 3h alone. Recorded to
+   `state.crossOrgSiblings` (`{guardianEmail, linkA, linkB}`, each link an
+   `{orgType, orgId, wardUserId}`) so `validate.mjs` can assert it really
+   happened.
 
 `state/organizations/coaches/students` keys in the `.state/<run-tag>.json`
 manifest make a re-run skip already-created top-level entities (orgs,
@@ -202,6 +376,48 @@ only the self-account student subset (a configurable ~20% of students) is
 eligible, and `reviewsTarget` is a soft cap sized against that subset, not
 the full student count — don't expect literally `reviewsTarget` rows if the
 self-account subset is smaller than that.
+
+## Profile completeness: gender/DOB/avatar/documents
+
+Every real (logged-in) identity this framework creates — org owners,
+coaches, sub-coaches, org_admin/front_desk/accountant, branch_admin,
+platform staff, guardians, self-account students — gets a full `PATCH /me`
+call with `displayName`, `gender`, `phone`, `dob` (age range varies
+realistically by role, e.g. owners 30-60, students 7-45), and a real
+`avatarPath`. Coaches additionally get all three real `staff_documents`
+types (`certification`, `id_proof`, `address_proof`) via
+`addCoachDocuments()` — applied to academy coaches, sub-coaches, *and*
+self-onboarded independent coaches (whose own `staff_profile` is created
+implicitly by `selfOnboardAsCoach`, confirmed by reading the
+`/me/onboard-coach` route's own comment).
+
+**Avatars are a tiny inline SVG data URI** (`fake.avatarFor` — an initials-
+on-a-colored-square image, a few hundred bytes, base64-encoded), not a real
+Supabase Storage upload. `avatarPath` is rendered as a plain `<img src=...>`
+everywhere in the app (confirmed by reading the public coach profile page),
+so a `data:` URI works identically to a real signed-upload public URL with
+zero network calls and zero real file storage — genuinely "very
+lightweight," not a placeholder that needs replacing later.
+
+**"Aadhaar" maps to `id_proof`, not a new field** — this app has no
+dedicated Aadhaar/government-ID column anywhere in the schema (confirmed
+against every migration; `docsV2/00_gap_analysis.md` even flags the
+KYC-document-storage question as an open risk). The closest real mechanism
+is `staff_documents.doc_type IN ('id_proof', 'address_proof',
+'certification', 'background_check', 'other')` — a generic file-reference
+row (`storage_path` is free text, no real upload pipeline, same as the
+pre-existing certification doc). `id_proof`/`address_proof` reuse that
+exact mechanism rather than inventing a new schema field this framework has
+no business adding on its own.
+
+**Wards are the one real gap, and it's an app limitation, not a framework
+one**: `POST /me/wards` only accepts `displayName`/`relationship`/`dob`/
+`consentAuthority` — no `gender`, no `avatarPath`, and there is no
+`PATCH /me/wards/{wardUserId}` route at all to set them afterward (checked
+directly). A profile-only ward already gets a real DOB (age-appropriate,
+7-16 for the join-request path, matching its guardian-created sibling in
+the bulk path) — gender and avatar simply aren't settable for a ward
+through any real API today.
 
 ## Idempotency & resumability — the actual grain
 
@@ -245,8 +461,8 @@ per `--environment` (same env-file convention the rest of this repo uses).
 | `--clean` | — | off | fresh run, ignores/overwrites the state file |
 | `--resume` | — | on (unless `--clean`) | skip already-created organizations |
 | `--run-tag` | `SEED_RUN_TAG` | `<dataset>-<seed>` | state file name + email uniqueness tag — set explicitly to run two datasets against the same DB without collisions |
-| `--auth-concurrency` | `SEED_AUTH_CONCURRENCY` | 8 | parallel magic-link round trips (Mailpit-bound) |
-| `--write-concurrency` | `SEED_WRITE_CONCURRENCY` | 16 | parallel organization pipelines |
+| `--auth-concurrency` | `SEED_AUTH_CONCURRENCY` | 4 | parallel magic-link round trips (Mailpit-bound) — currently unused by `orchestrate.mjs` itself (reserved for a future parallel-auth pass), doesn't affect current run speed |
+| `--write-concurrency` | `SEED_WRITE_CONCURRENCY` | 3 | parallel organization pipelines — deliberately conservative for `next dev` + the app's 10-connection Postgres pool (see `config/index.mjs`'s own comment for the load-testing history); raise it once you're on a production build or a bigger pool |
 | `SEED_SUPERADMIN_EMAIL` | — | `superadmin@abhyas.local` | which identity becomes/is the seed Super Admin |
 | `SEED_MAILBOX_URL` | — | `http://127.0.0.1:54324` | Mailpit base URL |
 

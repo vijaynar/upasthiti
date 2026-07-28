@@ -29,10 +29,12 @@ function emptyState() {
     students: {},        // wardId or self email -> { userId, guardianEmail, organizationId, enrollmentId, batchId }
     guardians: {},        // email -> { userId }
     batches: {},           // "orgSlug/batchName" -> { batchId, branchId }
-    platformStaff: {},      // email -> { userId, roleKeys: [] }
+    platformStaff: {},      // roleKey -> { userId, roleKey, email } (keyed by role, not email — email now embeds a per-run counter, see fakeData.mjs's emailFor, so it can't double as the resume key)
     approvals: { count: 0 },
     reviews: { count: 0 },
     attendanceDone: {},      // enrollmentId -> last date attendance was generated through
+    actors: [],               // login-reference index for testing/credentials.mjs — [{email, name, role, type, orgSlug, organizationId}]
+    crossOrgSiblings: [],      // [{guardianEmail, linkA, linkB}] — see orchestrate.mjs's "Cross-org guardian siblings" pass
   };
 }
 

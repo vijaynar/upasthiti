@@ -66,11 +66,32 @@ export function randomPhone(rng) {
   return '9' + Array.from({ length: 9 }, () => rng.int(0, 9)).join('');
 }
 
+const AVATAR_COLORS = ['4f46e5', '0ea5e9', 'f97316', '16a34a', 'db2777', '9333ea', '0d9488', 'ca8a04', 'dc2626', '2563eb'];
+
+// Every profile needs SOME avatar (Requirement: "very lightweight" photos) —
+// a tiny inline initials-on-a-colored-square SVG, base64 data URI. Renders
+// directly via `<img src=...>` exactly like a real Supabase Storage public
+// URL would (see CoachProfileWizard's avatarPath field), with no upload
+// round trip, no real file storage, and no network dependency at all —
+// the whole point of "lightweight" here.
+export function avatarFor(rng, firstName, lastName) {
+  const initials = `${firstName?.[0] ?? '?'}${lastName?.[0] ?? ''}`.toUpperCase();
+  const bg = rng.pick(AVATAR_COLORS);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128"><rect width="128" height="128" rx="24" fill="#${bg}"/><text x="64" y="80" text-anchor="middle" font-family="Arial, sans-serif" font-size="52" fill="#ffffff">${initials}</text></svg>`;
+  return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
+}
+
+// Role goes IN the address on purpose (not a subdomain) — the email alone
+// then tells you what the identity is for, which matters most for
+// `testing/credentials.mjs --live`: reconstructed rows have no other source
+// of truth for role/name than the email itself. Pass a bare role
+// ('coach', 'guardian', 'owner', ...) for org-scoped identities, or
+// 'platform.<roleKey>' for platform staff — see orchestrate.mjs call sites.
 let emailCounter = 0;
-export function emailFor(firstName, lastName, domain, runTag) {
+export function emailFor(firstName, lastName, role, runTag) {
   emailCounter += 1;
   const tag = runTag ? `${runTag}.` : '';
-  return `${firstName.toLowerCase()}.${lastName.toLowerCase()}.${tag}${emailCounter}@${domain}`;
+  return `${firstName.toLowerCase()}.${lastName.toLowerCase()}.${role}.${tag}${emailCounter}@abhyas.local`;
 }
 
 export function randomAddress(rng, state) {

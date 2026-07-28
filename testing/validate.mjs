@@ -65,6 +65,10 @@ async function main() {
     return Array.isArray(r) ? r.length > 0 : (r.entries?.length ?? 0) > 0;
   });
 
+  check('Org owner profile is complete (gender, DOB, avatar all set)', async () => {
+    const profile = await owner.client.get('/api/v1/me');
+    return Boolean(profile?.gender) && Boolean(profile?.dob) && Boolean(profile?.avatarPath);
+  });
   check('Owner dashboard has data for the sample academy', async () => {
     const d = await owner.client.get(`/api/v1/orgs/${sampleAcademy.organizationId}/dashboard/owner`);
     return d && Object.keys(d).length > 0;
@@ -115,6 +119,57 @@ async function main() {
     const listing = await owner.client.get(`/api/v1/orgs/${sampleAcademy.organizationId}/listing`);
     return ['live', 'pending_verification', 'paused'].includes(listing?.status);
   });
+  check('Every academy coach has certification, id_proof, and address_proof documents', async () => {
+    const staff = await owner.client.get(`/api/v1/orgs/${sampleAcademy.organizationId}/staff`);
+    if (!Array.isArray(staff) || staff.length === 0) return false;
+    for (const s of staff) {
+      const docs = await owner.client.get(`/api/v1/orgs/${sampleAcademy.organizationId}/staff/${s.id}/documents`).catch(() => []);
+      const types = new Set((Array.isArray(docs) ? docs : []).map((d) => d.docType));
+      if (!['certification', 'id_proof', 'address_proof'].every((t) => types.has(t))) return false;
+    }
+    return true;
+  });
+  check('Academy has org_admin/front_desk/accountant members, not just coaches', async () => {
+    const members = await owner.client.get(`/api/v1/orgs/${sampleAcademy.organizationId}/members`);
+    const roles = new Set((Array.isArray(members) ? members : []).flatMap((m) => m.roleKeys ?? []));
+    return ['org_admin', 'front_desk', 'accountant', 'coach'].every((k) => roles.has(k));
+  });
+
+  const multiBranchAcademy = orgEntries.find((o) => o.orgType === 'academy' && (o.branchCount ?? 1) > 1);
+  if (multiBranchAcademy) {
+    check('A multi-branch academy has real branches with a branch_admin', async () => {
+      const ownerKey = Object.entries(state.organizations ?? {}).find(([, v]) => v.organizationId === multiBranchAcademy.organizationId)?.[0];
+      const email = ownerKey?.split('-').slice(2).join('-');
+      if (!email) return false;
+      const mbOwner = await authProvider.login(email);
+      const branches = await mbOwner.client.get(`/api/v1/orgs/${multiBranchAcademy.organizationId}/branches`).catch(() => []);
+      if (!Array.isArray(branches) || branches.length < 2) return false;
+      const members = await mbOwner.client.get(`/api/v1/orgs/${multiBranchAcademy.organizationId}/members`).catch(() => []);
+      return (Array.isArray(members) ? members : []).some((m) => (m.roleKeys ?? []).includes('branch_admin') && m.branchId);
+    });
+  } else {
+    console.log('  (no multi-branch academy found in this run — skipping branch_admin check, not a failure)');
+  }
+
+  const crossOrgSiblings = state.crossOrgSiblings ?? [];
+  if (crossOrgSiblings.length > 0) {
+    check('At least one guardian has children enrolled at two different org types', async () => {
+      const { linkA, linkB } = crossOrgSiblings[0];
+      if (linkA.orgType === linkB.orgType) return false;
+      for (const link of [linkA, linkB]) {
+        const orgKey = Object.entries(state.organizations ?? {}).find(([, v]) => v.organizationId === link.orgId)?.[0];
+        const linkOwnerEmail = orgKey?.split('-').slice(2).join('-');
+        if (!linkOwnerEmail) return false;
+        const linkOwner = await authProvider.login(linkOwnerEmail);
+        const enrollments = await linkOwner.client.get(`/api/v1/orgs/${link.orgId}/enrollments`).catch(() => []);
+        const found = (Array.isArray(enrollments) ? enrollments : []).some((e) => e.studentUserId === link.wardUserId);
+        if (!found) return false;
+      }
+      return true;
+    });
+  } else {
+    console.log('  (no cross-org guardian siblings recorded in this run — skipping, not a failure)');
+  }
 
   if (sampleIndie) {
     check('Independent coach has a coach profile', async () => {

@@ -34,6 +34,7 @@
     "seed:medium": "node testing/orchestrate.mjs --dataset=medium",
     "seed:large": "node testing/orchestrate.mjs --dataset=large",
     "seed:validate": "node testing/validate.mjs",
+    "seed:credentials": "node testing/credentials.mjs",
     "supabase:start": "supabase start",
     "supabase:stop": "supabase stop",
     "supabase:status": "supabase status",

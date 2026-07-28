@@ -79,10 +79,18 @@ export function resolveConfig(argv = process.argv.slice(2)) {
   // the app's own Postgres pool (packages/platform/src/db/pool.ts, max: 10)
   // — 16-way org-pipeline concurrency was observed to overwhelm both and
   // surface as HTTP 500s and delayed-past-timeout magic-link emails once
-  // volume ramped up (small-dataset smoke run, 2026-07-27). Raise these for
-  // a production build (next start, clustered) or a beefier Postgres pool.
+  // volume ramped up (small-dataset smoke run, 2026-07-27), which is why
+  // this was already lowered once to 6. Lowered again to 3 (2026-07-28)
+  // after per-academy work grew substantially (real branches, org_admin/
+  // front_desk/accountant/branch_admin identities, 3 staff_documents per
+  // coach instead of 1) — 6-way concurrency started reproducing the exact
+  // same sustained HTTP 500s on `next dev` again even though every route
+  // involved works fine called in isolation (confirmed via a direct
+  // reproduction), i.e. this is a load/pool-exhaustion symptom, not an app
+  // bug. Raise these for a production build (next start, clustered) or a
+  // beefier Postgres pool.
   const authConcurrency = Number(args['auth-concurrency'] ?? process.env.SEED_AUTH_CONCURRENCY ?? 4);
-  const writeConcurrency = Number(args['write-concurrency'] ?? process.env.SEED_WRITE_CONCURRENCY ?? 6);
+  const writeConcurrency = Number(args['write-concurrency'] ?? process.env.SEED_WRITE_CONCURRENCY ?? 3);
 
   // Tags every generated email/slug so re-runs (or concurrent small+medium
   // runs against the same DB) never collide — also the resumability
