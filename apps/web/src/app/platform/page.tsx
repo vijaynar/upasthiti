@@ -339,6 +339,8 @@ const PLATFORM_ROLES = ['super_admin', 'verification_ops', 'support', 'platform_
 interface RoleAssignment {
   userId: string;
   roleKey: string;
+  displayName: string | null;
+  email: string | null;
   grantedBy: string | null;
   grantedAt: string;
   seed: boolean;
@@ -430,7 +432,12 @@ function PlatformRolesPanel() {
                 <p className="text-sm font-medium text-slate-100">
                   {a.roleKey.replace('_', ' ')} {a.seed && <span className="ml-1 rounded bg-white/10 px-1.5 py-0.5 text-[10px] uppercase text-slate-400 border border-white/10">seed</span>}
                 </p>
-                <p className="text-xs text-slate-400">user {a.userId}</p>
+                {(a.displayName || a.email) && (
+                  <p className="text-xs font-medium text-slate-300">
+                    {a.displayName ?? ''}{a.displayName && a.email ? ' · ' : ''}{a.email ?? ''}
+                  </p>
+                )}
+                <p className="text-[10px] text-slate-500 font-mono">uid: {a.userId}</p>
               </div>
               {!a.seed && (
                 <button onClick={() => revoke(a)} className="text-xs font-medium text-red-400 hover:underline">

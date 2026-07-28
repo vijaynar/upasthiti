@@ -175,8 +175,27 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     Promise.all([
       api<{ activeOrgId: string | null }>('/api/v1/me/workspace'),
       api<Membership[]>('/api/v1/orgs'),
-    ]).then(([w, orgs]) => {
-      const org = w?.activeOrgId ? orgs?.find((o) => o.organizationId === w.activeOrgId) ?? null : null;
+    ]).then(async ([w, orgs]) => {
+      // Auto-select the first membership when the user has no active workspace
+      // (e.g. a coach who just signed in for the first time). Mirrors what
+      // orgs.activateWorkspace does in the seeding script — POST with the
+      // first org's id to switch the session, then proceed as if it was
+      // already active.
+      let activeOrgId = w?.activeOrgId ?? null;
+      if (!activeOrgId && orgs && orgs.length > 0) {
+        const firstOrg = orgs[0];
+        try {
+          await fetch('/api/v1/me/workspace', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ orgId: firstOrg.organizationId }),
+          });
+          activeOrgId = firstOrg.organizationId;
+        } catch {
+          // best-effort; if the switch fails, fall through to no-workspace state
+        }
+      }
+      const org = activeOrgId ? orgs?.find((o) => o.organizationId === activeOrgId) ?? null : null;
       setActiveOrg(org);
       if (org) {
         api<{ roleKeys: string[]; activeRoleKey: string | null }>(`/api/v1/orgs/${org.organizationId}/me/roles`)
