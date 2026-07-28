@@ -19,7 +19,17 @@ const TONE_VAR: Record<Tone, { color: string; glow: string }> = {
   accent: { color: 'var(--accent)', glow: 'var(--accent-glow)' },
 };
 
-export function DashboardHeader({ title, subtitle, badge }: { title: string; subtitle: string; badge?: string }) {
+export function DashboardHeader({
+  title,
+  subtitle,
+  badge,
+  action,
+}: {
+  title: string;
+  subtitle: string;
+  badge?: string;
+  action?: React.ReactNode;
+}) {
   return (
     <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
       <div>
@@ -30,14 +40,16 @@ export function DashboardHeader({ title, subtitle, badge }: { title: string; sub
           {subtitle}
         </p>
       </div>
-      {badge && (
+      {action ? (
+        action
+      ) : badge ? (
         <span
           className="inline-flex items-center rounded-full px-3 py-1 text-[11px] font-extrabold uppercase tracking-widest"
           style={{ color: 'var(--primary)', backgroundColor: 'var(--overlay-sm)', border: '1px solid var(--panel-border)' }}
         >
           {badge}
         </span>
-      )}
+      ) : null}
     </div>
   );
 }

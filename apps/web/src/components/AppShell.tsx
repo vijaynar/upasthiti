@@ -331,6 +331,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         {/* Nav */}
         <nav className="no-scrollbar flex-1 space-y-4 overflow-y-auto px-2.5 py-2">
           <div className="space-y-1">
+            {isPlatformStaff && navItem({ label: 'Dashboard', href: '/platform/dashboard', icon: LayoutDashboard })}
             {activeOrg && navItem({ label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard })}
             {navItem({ label: 'Workspace', href: '/workspace', icon: LayoutGrid })}
           </div>
@@ -350,7 +351,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 Administration
               </div>
               <div className="space-y-1">
-                {navItem({ label: 'Dashboard', href: '/platform/dashboard', icon: Gauge })}
                 <button
                   type="button"
                   onClick={() => setPlatformExpanded(!platformExpanded)}
@@ -385,7 +385,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             <div className="mt-2 pt-2 border-t border-white/10 px-2.5 pb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400/80">
               Me
             </div>
-            <div className="space-y-1">{ME_NAV.map(navItem)}</div>
+            <div className="space-y-1">
+              {(isPlatformStaff && !activeOrg
+                ? ME_NAV.filter((item) => item.href === '/me/profile' || item.href === '/me/notifications')
+                : ME_NAV
+              ).map(navItem)}
+            </div>
           </div>
         </nav>
 
