@@ -400,34 +400,8 @@ const MODULE_ROWS = [
   'Audit Logs',
 ];
 
-// Initial matrix definitions per role key matching the UI screenshot design
+// Initial matrix definitions per role key matching the PostgreSQL RBAC seed
 const DEFAULT_MATRIX_BY_ROLE: Record<string, ModulePermissions[]> = {
-  admin: [
-    { module: 'Students', view: 'granted', create: 'granted', edit: 'granted', delete: 'granted', manage: 'na', mark: 'na', viewOwn: 'na' },
-    { module: 'Coaches', view: 'granted', create: 'granted', edit: 'granted', delete: 'granted', manage: 'na', mark: 'na', viewOwn: 'na' },
-    { module: 'Classes', view: 'granted', create: 'granted', edit: 'granted', delete: 'granted', manage: 'na', mark: 'na', viewOwn: 'na' },
-    { module: 'Batches', view: 'granted', create: 'granted', edit: 'granted', delete: 'granted', manage: 'na', mark: 'na', viewOwn: 'na' },
-    { module: 'Attendance', view: 'granted', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'granted', viewOwn: 'denied' },
-    { module: 'Payments', view: 'granted', create: 'na', edit: 'na', delete: 'na', manage: 'granted', mark: 'na', viewOwn: 'na' },
-    { module: 'Reports', view: 'granted', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'na' },
-    { module: 'Users', view: 'granted', create: 'granted', edit: 'granted', delete: 'granted', manage: 'na', mark: 'na', viewOwn: 'na' },
-    { module: 'Settings', view: 'na', create: 'na', edit: 'na', delete: 'na', manage: 'granted', mark: 'na', viewOwn: 'na' },
-    { module: 'Roles', view: 'na', create: 'na', edit: 'na', delete: 'na', manage: 'denied', mark: 'na', viewOwn: 'na' },
-    { module: 'Audit Logs', view: 'granted', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'na' },
-  ],
-  coach: [
-    { module: 'Students', view: 'granted', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'na' },
-    { module: 'Coaches', view: 'granted', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'granted' },
-    { module: 'Classes', view: 'granted', create: 'granted', edit: 'granted', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'na' },
-    { module: 'Batches', view: 'granted', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'granted' },
-    { module: 'Attendance', view: 'granted', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'granted', viewOwn: 'granted' },
-    { module: 'Payments', view: 'na', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'na' },
-    { module: 'Reports', view: 'granted', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'granted' },
-    { module: 'Users', view: 'granted', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'granted' },
-    { module: 'Settings', view: 'na', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'na' },
-    { module: 'Roles', view: 'na', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'na' },
-    { module: 'Audit Logs', view: 'na', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'na' },
-  ],
   super_admin: MODULE_ROWS.map((m) => ({
     module: m,
     view: 'granted',
@@ -438,6 +412,162 @@ const DEFAULT_MATRIX_BY_ROLE: Record<string, ModulePermissions[]> = {
     mark: 'granted',
     viewOwn: 'granted',
   })),
+  admin: [
+    { module: 'Students', view: 'granted', create: 'granted', edit: 'granted', delete: 'granted', manage: 'na', mark: 'na', viewOwn: 'na' },
+    { module: 'Coaches', view: 'granted', create: 'granted', edit: 'granted', delete: 'granted', manage: 'na', mark: 'na', viewOwn: 'na' },
+    { module: 'Classes', view: 'granted', create: 'granted', edit: 'granted', delete: 'granted', manage: 'na', mark: 'na', viewOwn: 'na' },
+    { module: 'Batches', view: 'granted', create: 'granted', edit: 'granted', delete: 'granted', manage: 'na', mark: 'na', viewOwn: 'na' },
+    { module: 'Attendance', view: 'granted', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'granted', viewOwn: 'denied' },
+    { module: 'Payments', view: 'granted', create: 'na', edit: 'na', delete: 'na', manage: 'granted', mark: 'na', viewOwn: 'na' },
+    { module: 'Reports', view: 'granted', create: 'na', edit: 'na', delete: 'na', manage: 'granted', mark: 'na', viewOwn: 'na' },
+    { module: 'Users', view: 'granted', create: 'granted', edit: 'granted', delete: 'granted', manage: 'na', mark: 'na', viewOwn: 'na' },
+    { module: 'Settings', view: 'na', create: 'na', edit: 'na', delete: 'na', manage: 'granted', mark: 'na', viewOwn: 'na' },
+    { module: 'Roles', view: 'na', create: 'na', edit: 'na', delete: 'na', manage: 'denied', mark: 'na', viewOwn: 'na' },
+    { module: 'Audit Logs', view: 'granted', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'na' },
+  ],
+  branch_admin: [
+    { module: 'Students', view: 'granted', create: 'granted', edit: 'granted', delete: 'denied', manage: 'na', mark: 'na', viewOwn: 'na' },
+    { module: 'Coaches', view: 'granted', create: 'denied', edit: 'denied', delete: 'denied', manage: 'na', mark: 'na', viewOwn: 'na' },
+    { module: 'Classes', view: 'granted', create: 'granted', edit: 'granted', delete: 'denied', manage: 'na', mark: 'na', viewOwn: 'na' },
+    { module: 'Batches', view: 'granted', create: 'granted', edit: 'granted', delete: 'denied', manage: 'na', mark: 'na', viewOwn: 'na' },
+    { module: 'Attendance', view: 'granted', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'granted', viewOwn: 'denied' },
+    { module: 'Payments', view: 'granted', create: 'granted', edit: 'denied', delete: 'denied', manage: 'denied', mark: 'na', viewOwn: 'na' },
+    { module: 'Reports', view: 'granted', create: 'na', edit: 'na', delete: 'na', manage: 'denied', mark: 'na', viewOwn: 'na' },
+    { module: 'Users', view: 'granted', create: 'granted', edit: 'denied', delete: 'denied', manage: 'na', mark: 'na', viewOwn: 'na' },
+    { module: 'Settings', view: 'granted', create: 'na', edit: 'denied', delete: 'na', manage: 'denied', mark: 'na', viewOwn: 'na' },
+    { module: 'Roles', view: 'denied', create: 'na', edit: 'na', delete: 'na', manage: 'denied', mark: 'na', viewOwn: 'na' },
+    { module: 'Audit Logs', view: 'denied', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'na' },
+  ],
+  coach: [
+    { module: 'Students', view: 'granted', create: 'denied', edit: 'denied', delete: 'denied', manage: 'na', mark: 'na', viewOwn: 'na' },
+    { module: 'Coaches', view: 'granted', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'granted' },
+    { module: 'Classes', view: 'granted', create: 'granted', edit: 'granted', delete: 'denied', manage: 'na', mark: 'na', viewOwn: 'na' },
+    { module: 'Batches', view: 'granted', create: 'denied', edit: 'denied', delete: 'denied', manage: 'na', mark: 'na', viewOwn: 'granted' },
+    { module: 'Attendance', view: 'granted', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'granted', viewOwn: 'granted' },
+    { module: 'Payments', view: 'denied', create: 'na', edit: 'na', delete: 'na', manage: 'denied', mark: 'na', viewOwn: 'na' },
+    { module: 'Reports', view: 'granted', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'granted' },
+    { module: 'Users', view: 'granted', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'granted' },
+    { module: 'Settings', view: 'denied', create: 'na', edit: 'na', delete: 'na', manage: 'denied', mark: 'na', viewOwn: 'na' },
+    { module: 'Roles', view: 'denied', create: 'na', edit: 'na', delete: 'na', manage: 'denied', mark: 'na', viewOwn: 'na' },
+    { module: 'Audit Logs', view: 'denied', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'na' },
+  ],
+  assistant_coach: [
+    { module: 'Students', view: 'granted', create: 'denied', edit: 'denied', delete: 'denied', manage: 'na', mark: 'na', viewOwn: 'na' },
+    { module: 'Coaches', view: 'denied', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'denied' },
+    { module: 'Classes', view: 'granted', create: 'denied', edit: 'denied', delete: 'denied', manage: 'na', mark: 'na', viewOwn: 'na' },
+    { module: 'Batches', view: 'granted', create: 'denied', edit: 'denied', delete: 'denied', manage: 'na', mark: 'na', viewOwn: 'granted' },
+    { module: 'Attendance', view: 'granted', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'granted', viewOwn: 'denied' },
+    { module: 'Payments', view: 'denied', create: 'na', edit: 'na', delete: 'na', manage: 'denied', mark: 'na', viewOwn: 'na' },
+    { module: 'Reports', view: 'denied', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'denied' },
+    { module: 'Users', view: 'denied', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'denied' },
+    { module: 'Settings', view: 'denied', create: 'na', edit: 'na', delete: 'na', manage: 'denied', mark: 'na', viewOwn: 'na' },
+    { module: 'Roles', view: 'denied', create: 'na', edit: 'na', delete: 'na', manage: 'denied', mark: 'na', viewOwn: 'na' },
+    { module: 'Audit Logs', view: 'denied', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'na' },
+  ],
+  student: [
+    { module: 'Students', view: 'denied', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'granted' },
+    { module: 'Coaches', view: 'denied', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'denied' },
+    { module: 'Classes', view: 'granted', create: 'denied', edit: 'denied', delete: 'denied', manage: 'na', mark: 'na', viewOwn: 'na' },
+    { module: 'Batches', view: 'granted', create: 'denied', edit: 'denied', delete: 'denied', manage: 'na', mark: 'na', viewOwn: 'granted' },
+    { module: 'Attendance', view: 'denied', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'denied', viewOwn: 'granted' },
+    { module: 'Payments', view: 'denied', create: 'na', edit: 'na', delete: 'na', manage: 'denied', mark: 'na', viewOwn: 'granted' },
+    { module: 'Reports', view: 'denied', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'granted' },
+    { module: 'Users', view: 'denied', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'granted' },
+    { module: 'Settings', view: 'denied', create: 'na', edit: 'na', delete: 'na', manage: 'denied', mark: 'na', viewOwn: 'na' },
+    { module: 'Roles', view: 'denied', create: 'na', edit: 'na', delete: 'na', manage: 'denied', mark: 'na', viewOwn: 'na' },
+    { module: 'Audit Logs', view: 'denied', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'na' },
+  ],
+  parent: [
+    { module: 'Students', view: 'denied', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'granted' },
+    { module: 'Coaches', view: 'denied', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'denied' },
+    { module: 'Classes', view: 'granted', create: 'denied', edit: 'denied', delete: 'denied', manage: 'na', mark: 'na', viewOwn: 'na' },
+    { module: 'Batches', view: 'granted', create: 'denied', edit: 'denied', delete: 'denied', manage: 'na', mark: 'na', viewOwn: 'granted' },
+    { module: 'Attendance', view: 'denied', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'denied', viewOwn: 'granted' },
+    { module: 'Payments', view: 'denied', create: 'na', edit: 'na', delete: 'na', manage: 'denied', mark: 'na', viewOwn: 'granted' },
+    { module: 'Reports', view: 'denied', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'granted' },
+    { module: 'Users', view: 'denied', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'granted' },
+    { module: 'Settings', view: 'denied', create: 'na', edit: 'na', delete: 'na', manage: 'denied', mark: 'na', viewOwn: 'na' },
+    { module: 'Roles', view: 'denied', create: 'na', edit: 'na', delete: 'na', manage: 'denied', mark: 'na', viewOwn: 'na' },
+    { module: 'Audit Logs', view: 'denied', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'na' },
+  ],
+  front_desk: [
+    { module: 'Students', view: 'granted', create: 'granted', edit: 'denied', delete: 'denied', manage: 'na', mark: 'na', viewOwn: 'na' },
+    { module: 'Coaches', view: 'granted', create: 'denied', edit: 'denied', delete: 'denied', manage: 'na', mark: 'na', viewOwn: 'na' },
+    { module: 'Classes', view: 'granted', create: 'denied', edit: 'denied', delete: 'denied', manage: 'na', mark: 'na', viewOwn: 'na' },
+    { module: 'Batches', view: 'granted', create: 'denied', edit: 'denied', delete: 'denied', manage: 'na', mark: 'na', viewOwn: 'na' },
+    { module: 'Attendance', view: 'granted', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'granted', viewOwn: 'denied' },
+    { module: 'Payments', view: 'granted', create: 'granted', edit: 'denied', delete: 'denied', manage: 'denied', mark: 'na', viewOwn: 'na' },
+    { module: 'Reports', view: 'denied', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'denied' },
+    { module: 'Users', view: 'granted', create: 'denied', edit: 'denied', delete: 'denied', manage: 'na', mark: 'na', viewOwn: 'na' },
+    { module: 'Settings', view: 'denied', create: 'na', edit: 'na', delete: 'na', manage: 'denied', mark: 'na', viewOwn: 'na' },
+    { module: 'Roles', view: 'denied', create: 'na', edit: 'na', delete: 'na', manage: 'denied', mark: 'na', viewOwn: 'na' },
+    { module: 'Audit Logs', view: 'denied', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'na' },
+  ],
+  accountant: [
+    { module: 'Students', view: 'denied', create: 'denied', edit: 'denied', delete: 'denied', manage: 'na', mark: 'na', viewOwn: 'na' },
+    { module: 'Coaches', view: 'denied', create: 'denied', edit: 'denied', delete: 'denied', manage: 'na', mark: 'na', viewOwn: 'na' },
+    { module: 'Classes', view: 'denied', create: 'denied', edit: 'denied', delete: 'denied', manage: 'na', mark: 'na', viewOwn: 'na' },
+    { module: 'Batches', view: 'denied', create: 'denied', edit: 'denied', delete: 'denied', manage: 'na', mark: 'na', viewOwn: 'na' },
+    { module: 'Attendance', view: 'denied', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'denied', viewOwn: 'denied' },
+    { module: 'Payments', view: 'granted', create: 'granted', edit: 'granted', delete: 'granted', manage: 'granted', mark: 'na', viewOwn: 'na' },
+    { module: 'Reports', view: 'granted', create: 'na', edit: 'na', delete: 'na', manage: 'granted', mark: 'na', viewOwn: 'na' },
+    { module: 'Users', view: 'denied', create: 'denied', edit: 'denied', delete: 'denied', manage: 'na', mark: 'na', viewOwn: 'na' },
+    { module: 'Settings', view: 'granted', create: 'na', edit: 'denied', delete: 'na', manage: 'denied', mark: 'na', viewOwn: 'na' },
+    { module: 'Roles', view: 'denied', create: 'na', edit: 'na', delete: 'na', manage: 'denied', mark: 'na', viewOwn: 'na' },
+    { module: 'Audit Logs', view: 'granted', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'na' },
+  ],
+  verification_ops: [
+    { module: 'Students', view: 'denied', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'na' },
+    { module: 'Coaches', view: 'denied', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'na' },
+    { module: 'Classes', view: 'denied', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'na' },
+    { module: 'Batches', view: 'denied', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'na' },
+    { module: 'Attendance', view: 'denied', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'denied', viewOwn: 'na' },
+    { module: 'Payments', view: 'denied', create: 'na', edit: 'na', delete: 'na', manage: 'denied', mark: 'na', viewOwn: 'na' },
+    { module: 'Reports', view: 'denied', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'na' },
+    { module: 'Users', view: 'granted', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'na' },
+    { module: 'Settings', view: 'granted', create: 'na', edit: 'na', delete: 'na', manage: 'granted', mark: 'na', viewOwn: 'na' },
+    { module: 'Roles', view: 'denied', create: 'na', edit: 'na', delete: 'na', manage: 'denied', mark: 'na', viewOwn: 'na' },
+    { module: 'Audit Logs', view: 'granted', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'na' },
+  ],
+  support: [
+    { module: 'Students', view: 'granted', create: 'denied', edit: 'denied', delete: 'denied', manage: 'na', mark: 'na', viewOwn: 'na' },
+    { module: 'Coaches', view: 'granted', create: 'denied', edit: 'denied', delete: 'denied', manage: 'na', mark: 'na', viewOwn: 'na' },
+    { module: 'Classes', view: 'granted', create: 'denied', edit: 'denied', delete: 'denied', manage: 'na', mark: 'na', viewOwn: 'na' },
+    { module: 'Batches', view: 'granted', create: 'denied', edit: 'denied', delete: 'denied', manage: 'na', mark: 'na', viewOwn: 'na' },
+    { module: 'Attendance', view: 'granted', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'denied', viewOwn: 'na' },
+    { module: 'Payments', view: 'granted', create: 'denied', edit: 'denied', delete: 'denied', manage: 'denied', mark: 'na', viewOwn: 'na' },
+    { module: 'Reports', view: 'granted', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'na' },
+    { module: 'Users', view: 'granted', create: 'denied', edit: 'denied', delete: 'denied', manage: 'na', mark: 'na', viewOwn: 'na' },
+    { module: 'Settings', view: 'granted', create: 'na', edit: 'denied', delete: 'na', manage: 'denied', mark: 'na', viewOwn: 'na' },
+    { module: 'Roles', view: 'denied', create: 'na', edit: 'na', delete: 'na', manage: 'denied', mark: 'na', viewOwn: 'na' },
+    { module: 'Audit Logs', view: 'granted', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'na' },
+  ],
+  platform_finance: [
+    { module: 'Students', view: 'denied', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'na' },
+    { module: 'Coaches', view: 'denied', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'na' },
+    { module: 'Classes', view: 'denied', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'na' },
+    { module: 'Batches', view: 'denied', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'na' },
+    { module: 'Attendance', view: 'denied', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'denied', viewOwn: 'na' },
+    { module: 'Payments', view: 'granted', create: 'granted', edit: 'granted', delete: 'granted', manage: 'granted', mark: 'na', viewOwn: 'na' },
+    { module: 'Reports', view: 'granted', create: 'na', edit: 'na', delete: 'na', manage: 'granted', mark: 'na', viewOwn: 'na' },
+    { module: 'Users', view: 'denied', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'na' },
+    { module: 'Settings', view: 'granted', create: 'na', edit: 'denied', delete: 'na', manage: 'denied', mark: 'na', viewOwn: 'na' },
+    { module: 'Roles', view: 'denied', create: 'na', edit: 'na', delete: 'na', manage: 'denied', mark: 'na', viewOwn: 'na' },
+    { module: 'Audit Logs', view: 'granted', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'na' },
+  ],
+  marketplace_partner: [
+    { module: 'Students', view: 'denied', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'na' },
+    { module: 'Coaches', view: 'denied', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'na' },
+    { module: 'Classes', view: 'granted', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'na' },
+    { module: 'Batches', view: 'granted', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'na' },
+    { module: 'Attendance', view: 'denied', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'denied', viewOwn: 'na' },
+    { module: 'Payments', view: 'denied', create: 'na', edit: 'na', delete: 'na', manage: 'denied', mark: 'na', viewOwn: 'na' },
+    { module: 'Reports', view: 'granted', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'na' },
+    { module: 'Users', view: 'denied', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'na' },
+    { module: 'Settings', view: 'denied', create: 'na', edit: 'na', delete: 'na', manage: 'denied', mark: 'na', viewOwn: 'na' },
+    { module: 'Roles', view: 'denied', create: 'na', edit: 'na', delete: 'na', manage: 'denied', mark: 'na', viewOwn: 'na' },
+    { module: 'Audit Logs', view: 'denied', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'na' },
+  ],
 };
 
 function PlatformRolesPanel() {
@@ -509,7 +639,7 @@ function PlatformRolesPanel() {
   // Toggle cell permission (strictly between granted and denied; NA remains fixed)
   function toggleCell(moduleName: string, actionKey: keyof Omit<ModulePermissions, 'module'>) {
     setMatrices((prev) => {
-      const currentRoleMatrix = prev[selectedRoleKey] || DEFAULT_MATRIX_BY_ROLE['admin'];
+      const currentRoleMatrix = prev[selectedRoleKey] || DEFAULT_MATRIX_BY_ROLE[selectedRoleKey] || DEFAULT_MATRIX_BY_ROLE['admin'];
       const updated = currentRoleMatrix.map((row) => {
         if (row.module !== moduleName) return row;
         const currentVal = row[actionKey];
@@ -568,7 +698,7 @@ function PlatformRolesPanel() {
   }
 
   const selectedRole = roles.find((r) => r.key === selectedRoleKey) || roles[0];
-  const activeMatrix = matrices[selectedRoleKey] || DEFAULT_MATRIX_BY_ROLE['admin'];
+  const activeMatrix = matrices[selectedRoleKey] || DEFAULT_MATRIX_BY_ROLE[selectedRoleKey] || DEFAULT_MATRIX_BY_ROLE['admin'];
 
   return (
     <div className="space-y-8">
