@@ -773,12 +773,16 @@ function AnnouncementsPanel() {
   );
 }
 
-// ── Audit trail (wireframe 4e) ─────────────────────────────────────
+// ── Audit trail (wireframe 4e, Doc 07 §16) ─────────────────────────
 
 interface AuditEntry {
   id: string;
   organizationId: string | null;
   actorUserId: string | null;
+  actorName: string | null;
+  actorEmail: string | null;
+  orgName: string | null;
+  supportGrantId: string | null;
   action: string;
   targetType: string | null;
   targetId: string | null;
@@ -786,9 +790,130 @@ interface AuditEntry {
   occurredAt: string;
 }
 
+const MODULE_OPTIONS = [
+  'All Modules',
+  'Students',
+  'Coaches',
+  'Attendance',
+  'Payments',
+  'Reports',
+  'Users',
+  'Roles',
+  'Settings',
+  'Audit Logs',
+];
+
+const ACTION_OPTIONS = [
+  'All Actions',
+  'ONBOARD',
+  'SWITCH_ROLE',
+  'GRANT',
+  'REVOKE',
+  'SUSPEND',
+  'VERIFY',
+  'CREATE',
+  'UPDATE',
+  'DELETE',
+];
+
+const TIME_OPTIONS = [
+  'All Time',
+  'Today',
+  'Past 7 Days',
+  'Past 30 Days',
+];
+
+function getModuleCategory(entry: AuditEntry): string {
+  const action = (entry.action || '').toLowerCase();
+  const target = (entry.targetType || '').toLowerCase();
+  if (action.includes('coach') || target.includes('coach') || target.includes('staff')) return 'Coaches';
+  if (action.includes('student') || target.includes('student') || target.includes('enroll')) return 'Students';
+  if (action.includes('attend') || target.includes('attend')) return 'Attendance';
+  if (action.includes('pay') || action.includes('charge') || target.includes('finance')) return 'Payments';
+  if (action.includes('report') || target.includes('report')) return 'Reports';
+  if (action.includes('role') || target.includes('role')) return 'Roles';
+  if (action.includes('user') || target.includes('user')) return 'Users';
+  if (action.includes('setting') || action.includes('org') || target.includes('org')) return 'Settings';
+  return 'Audit Logs';
+}
+
+function getActionCategory(entry: AuditEntry): string {
+  const action = (entry.action || '').toUpperCase();
+  if (action.includes('ONBOARD')) return 'ONBOARD';
+  if (action.includes('SWITCH')) return 'SWITCH_ROLE';
+  if (action.includes('GRANT')) return 'GRANT';
+  if (action.includes('REVOKE')) return 'REVOKE';
+  if (action.includes('SUSPEND')) return 'SUSPEND';
+  if (action.includes('VERIFY')) return 'VERIFY';
+  if (action.includes('CREATE')) return 'CREATE';
+  if (action.includes('UPDATE')) return 'UPDATE';
+  if (action.includes('DELETE')) return 'DELETE';
+  return action.split('.')[0] || 'ACTION';
+}
+
+function getAccentColor(actionCategory: string): string {
+  switch (actionCategory) {
+    case 'ONBOARD':
+    case 'CREATE':
+      return '#3b82f6'; // blue
+    case 'SWITCH_ROLE':
+    case 'GRANT':
+      return '#8b5cf6'; // purple
+    case 'VERIFY':
+      return '#10b981'; // emerald
+    case 'SUSPEND':
+    case 'REVOKE':
+    case 'DELETE':
+      return '#ef4444'; // red
+    case 'UPDATE':
+      return '#f59e0b'; // amber
+    default:
+      return '#6366f1'; // indigo
+  }
+}
+
+function formatAuditDescription(entry: AuditEntry): string {
+  const d = entry.detail || {};
+  const actor = entry.actorName || entry.actorEmail || entry.actorUserId || 'User';
+  const action = entry.action;
+
+  if (action === 'platform_role.grant') {
+    return `Granted platform role '${d.roleKey ?? 'role'}' to user ${entry.targetId ?? ''}`;
+  }
+  if (action === 'platform_role.revoke') {
+    return `Revoked platform role '${d.roleKey ?? 'role'}' from user ${entry.targetId ?? ''}`;
+  }
+  if (action === 'platform.org.verify') {
+    return `Verified organization ${entry.orgName ? `'${entry.orgName}'` : entry.targetId ?? ''} (Decision: ${d.decision ?? 'processed'})`;
+  }
+  if (action === 'platform.org.suspend') {
+    return `Suspended organization ${entry.orgName ? `'${entry.orgName}'` : entry.targetId ?? ''} (Reason: ${d.reason ?? 'N/A'})`;
+  }
+  if (action === 'platform.org.reinstate') {
+    return `Reinstated organization ${entry.orgName ? `'${entry.orgName}'` : entry.targetId ?? ''}`;
+  }
+  if (action.includes('switch_role')) {
+    return `User ${entry.actorEmail || actor} switched active role from '${d.fromRole ?? 'previous'}' to '${d.toRole ?? 'new'}'`;
+  }
+  if (action.includes('onboard')) {
+    return `Onboarded coach ${d.name ?? entry.targetId ?? 'profile'} (${d.email ?? entry.actorEmail ?? ''})`;
+  }
+
+  // General fallback text
+  let desc = `${actor} performed '${action}'`;
+  if (entry.targetType) desc += ` on ${entry.targetType} ${entry.targetId ?? ''}`;
+  if (entry.orgName) desc += ` in '${entry.orgName}'`;
+  return desc;
+}
+
 function AuditTrailPanel() {
   const [entries, setEntries] = useState<AuditEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedModule, setSelectedModule] = useState('All Modules');
+  const [selectedAction, setSelectedAction] = useState('All Actions');
+  const [selectedTime, setSelectedTime] = useState('All Time');
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   useEffect(() => {
     api<AuditEntry[]>('/api/v1/platform/audit-log')
@@ -796,26 +921,211 @@ function AuditTrailPanel() {
       .catch((err) => setError(err.message));
   }, []);
 
+  const filteredEntries = (entries || []).filter((e) => {
+    // Module Filter
+    if (selectedModule !== 'All Modules') {
+      const mod = getModuleCategory(e);
+      if (mod.toLowerCase() !== selectedModule.toLowerCase()) return false;
+    }
+
+    // Action Filter
+    if (selectedAction !== 'All Actions') {
+      const act = getActionCategory(e);
+      if (act.toLowerCase() !== selectedAction.toLowerCase()) return false;
+    }
+
+    // Time Filter
+    if (selectedTime !== 'All Time') {
+      const occurred = new Date(e.occurredAt).getTime();
+      const now = Date.now();
+      const oneDay = 24 * 60 * 60 * 1000;
+      if (selectedTime === 'Today' && now - occurred > oneDay) return false;
+      if (selectedTime === 'Past 7 Days' && now - occurred > 7 * oneDay) return false;
+      if (selectedTime === 'Past 30 Days' && now - occurred > 30 * oneDay) return false;
+    }
+
+    // Search Query
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      const desc = formatAuditDescription(e).toLowerCase();
+      const act = e.action.toLowerCase();
+      const actor = (e.actorName || e.actorEmail || e.actorUserId || '').toLowerCase();
+      const org = (e.orgName || '').toLowerCase();
+      const detailStr = JSON.stringify(e.detail || {}).toLowerCase();
+      const match = desc.includes(q) || act.includes(q) || actor.includes(q) || org.includes(q) || detailStr.includes(q);
+      if (!match) return false;
+    }
+
+    return true;
+  });
+
   return (
-    <div>
-      <PanelHeader title="Audit trail" subtitle="Append-only. Role grants, support access, and org lifecycle changes." />
+    <div className="space-y-6">
+      {/* Header */}
+      <div>
+        <div className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-indigo-500/30 bg-indigo-500/10 px-3 py-1 text-[10px] font-extrabold uppercase tracking-widest text-indigo-400">
+          <RotateCcw className="h-3 w-3" /> Audit Trail
+        </div>
+        <h1 className="text-2xl font-black text-white">Audit Logs</h1>
+        <p className="mt-1 text-sm text-slate-400">Complete chronological record of all administrative actions</p>
+      </div>
+
       <ErrorBanner error={error} />
+
+      {/* Toolbar: Search + Module + Action + Time + Count */}
+      <div className="glass-panel flex flex-wrap items-center justify-between gap-3 rounded-2xl p-4 border border-white/10">
+        <div className="flex flex-1 flex-wrap items-center gap-3 min-w-[280px]">
+          {/* Search Bar */}
+          <div className="relative flex-1 min-w-[220px]">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search actions or descriptions..."
+              className="glass-input w-full rounded-xl pl-9 pr-3 py-2 text-xs font-medium text-slate-200 placeholder-slate-500"
+            />
+            <span className="absolute left-3 top-2.5 text-slate-500">🔍</span>
+          </div>
+
+          {/* Module Filter Dropdown */}
+          <select
+            value={selectedModule}
+            onChange={(e) => setSelectedModule(e.target.value)}
+            className="glass-input rounded-xl px-3 py-2 text-xs font-semibold text-slate-300"
+          >
+            {MODULE_OPTIONS.map((m) => (
+              <option key={m} value={m} className="bg-slate-900 text-slate-200">
+                {m === 'All Modules' ? '⚙️ All Modules' : m}
+              </option>
+            ))}
+          </select>
+
+          {/* Action Filter Dropdown */}
+          <select
+            value={selectedAction}
+            onChange={(e) => setSelectedAction(e.target.value)}
+            className="glass-input rounded-xl px-3 py-2 text-xs font-semibold text-slate-300"
+          >
+            {ACTION_OPTIONS.map((a) => (
+              <option key={a} value={a} className="bg-slate-900 text-slate-200">
+                {a === 'All Actions' ? '⚡ All Actions' : a}
+              </option>
+            ))}
+          </select>
+
+          {/* Time Filter Dropdown */}
+          <select
+            value={selectedTime}
+            onChange={(e) => setSelectedTime(e.target.value)}
+            className="glass-input rounded-xl px-3 py-2 text-xs font-semibold text-slate-300"
+          >
+            {TIME_OPTIONS.map((t) => (
+              <option key={t} value={t} className="bg-slate-900 text-slate-200">
+                🕒 {t}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Count Badge */}
+        <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-bold text-slate-300">
+          {filteredEntries.length} event{filteredEntries.length === 1 ? '' : 's'}
+        </div>
+      </div>
+
+      {/* Log Entries List */}
       {entries === null ? (
-        <p className="text-sm text-slate-400">Loading…</p>
-      ) : entries.length === 0 ? (
-        <p className="text-sm text-slate-400">No platform-scope events yet.</p>
+        <div className="py-12 text-center text-sm text-slate-400">Loading audit trail...</div>
+      ) : filteredEntries.length === 0 ? (
+        <div className="glass-panel rounded-2xl p-12 text-center text-sm text-slate-400">
+          No audit log events matched your filter criteria.
+        </div>
       ) : (
-        <ul className="glass-panel divide-y divide-white/10 rounded-xl overflow-hidden">
-          {entries.map((e) => (
-            <li key={e.id} className="p-4">
-              <p className="text-sm font-medium text-slate-100">{e.action}</p>
-              <p className="text-xs text-slate-400">
-                {new Date(e.occurredAt).toLocaleString()} · actor {e.actorUserId ?? '—'}
-                {e.targetType && ` · ${e.targetType} ${e.targetId}`}
-              </p>
-            </li>
-          ))}
-        </ul>
+        <div className="space-y-3">
+          {filteredEntries.map((e) => {
+            const actionCat = getActionCategory(e);
+            const moduleCat = getModuleCategory(e).toLowerCase();
+            const accentColor = getAccentColor(actionCat);
+            const isExpanded = expandedId === e.id;
+
+            return (
+              <div
+                key={e.id}
+                onClick={() => setExpandedId(isExpanded ? null : e.id)}
+                className="glass-panel relative flex flex-col overflow-hidden rounded-2xl border border-white/10 transition-all duration-200 hover:border-indigo-500/30 cursor-pointer"
+              >
+                {/* Accent bar */}
+                <div
+                  className="absolute left-0 top-0 bottom-0 w-1.5"
+                  style={{ backgroundColor: accentColor }}
+                />
+
+                <div className="flex flex-wrap items-center justify-between gap-4 p-4 pl-6">
+                  {/* Left Badges + Description */}
+                  <div className="flex flex-1 flex-col gap-2 min-w-[280px]">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="rounded-md px-2 py-0.5 text-[10px] font-black tracking-wider uppercase text-white shadow-sm"
+                        style={{ backgroundColor: accentColor }}
+                      >
+                        {actionCat}
+                      </span>
+                      <span className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-semibold text-slate-400">
+                        {moduleCat}
+                      </span>
+                      {e.orgName && (
+                        <span className="rounded-md border border-indigo-500/20 bg-indigo-500/10 px-2 py-0.5 text-[10px] font-bold text-indigo-300">
+                          {e.orgName}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm font-semibold text-slate-100 leading-snug">
+                      {formatAuditDescription(e)}
+                    </p>
+                  </div>
+
+                  {/* Right Actor + Timestamp */}
+                  <div className="flex items-center gap-6 text-right">
+                    <div className="flex flex-col text-right">
+                      <span className="flex items-center justify-end gap-1.5 text-xs font-bold text-slate-200">
+                        <span>👤</span> {e.actorName || e.actorEmail || 'System Admin'}
+                      </span>
+                      <span className="flex items-center justify-end gap-1.5 text-[11px] font-medium text-slate-400 mt-0.5">
+                        <span>🕒</span> {new Date(e.occurredAt).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Expandable Debug Drawer */}
+                {isExpanded && (
+                  <div className="border-t border-white/10 bg-black/40 p-4 pl-6 space-y-2 text-xs font-mono text-slate-300">
+                    <div className="flex items-center justify-between text-[11px] text-indigo-300 font-sans font-bold">
+                      <span>DEBUG DETAILS (Event ID: {e.id})</span>
+                      <span>Click row to collapse ▲</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-[11px]">
+                      <div><strong className="text-slate-400">Action:</strong> {e.action}</div>
+                      <div><strong className="text-slate-400">Target Type:</strong> {e.targetType ?? 'N/A'}</div>
+                      <div><strong className="text-slate-400">Target ID:</strong> {e.targetId ?? 'N/A'}</div>
+                      <div><strong className="text-slate-400">Organization ID:</strong> {e.organizationId ?? 'N/A'}</div>
+                      <div><strong className="text-slate-400">Actor User ID:</strong> {e.actorUserId ?? 'N/A'}</div>
+                      <div><strong className="text-slate-400">Support Grant ID:</strong> {e.supportGrantId ?? 'N/A'}</div>
+                    </div>
+                    {e.detail && Object.keys(e.detail).length > 0 && (
+                      <div className="pt-2">
+                        <strong className="block text-slate-400 mb-1">Payload Detail JSON:</strong>
+                        <pre className="rounded-xl border border-white/10 bg-slate-950 p-3 overflow-x-auto text-[11px] text-emerald-400">
+                          {JSON.stringify(e.detail, null, 2)}
+                        </pre>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
       )}
     </div>
   );

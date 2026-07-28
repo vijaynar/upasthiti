@@ -46,6 +46,9 @@ export interface AuditLogEntry {
   id: string;
   organizationId: string | null;
   actorUserId: string | null;
+  actorName: string | null;
+  actorEmail: string | null;
+  orgName: string | null;
   supportGrantId: string | null;
   action: string;
   targetType: string | null;
@@ -65,11 +68,14 @@ export interface ListAuditLogInput {
 // sees everything, filtered here by organizationId when given.
 export async function listAuditLog(session: SessionContext, input: ListAuditLogInput = {}): Promise<AuditLogEntry[]> {
   return db.withRequestContext(session, async (client) => {
-    const limit = Math.min(input.limit ?? 100, 500);
+    const limit = Math.min(input.limit ?? 200, 500);
     const result = await client.query<{
       id: string;
       organization_id: string | null;
       actor_user_id: string | null;
+      actor_name: string | null;
+      actor_email: string | null;
+      org_name: string | null;
       support_grant_id: string | null;
       action: string;
       target_type: string | null;
@@ -78,16 +84,31 @@ export async function listAuditLog(session: SessionContext, input: ListAuditLogI
       occurred_at: string;
     }>(
       input.organizationId
-        ? `select id, organization_id, actor_user_id, support_grant_id, action, target_type, target_id, detail, occurred_at
-           from audit_log where organization_id = $1 order by occurred_at desc limit $2`
-        : `select id, organization_id, actor_user_id, support_grant_id, action, target_type, target_id, detail, occurred_at
-           from audit_log order by occurred_at desc limit $1`,
+        ? `select a.id, a.organization_id, a.actor_user_id, a.support_grant_id, a.action, a.target_type, a.target_id, a.detail, a.occurred_at,
+                  u.display_name as actor_name,
+                  (select am.verified_identifier from auth_methods am where am.user_id = a.actor_user_id and am.provider = 'email_otp' order by am.verified_at desc nulls last limit 1) as actor_email,
+                  o.name as org_name
+           from audit_log a
+           left join users u on u.id = a.actor_user_id
+           left join organizations o on o.id = a.organization_id
+           where a.organization_id = $1 order by a.occurred_at desc limit $2`
+        : `select a.id, a.organization_id, a.actor_user_id, a.support_grant_id, a.action, a.target_type, a.target_id, a.detail, a.occurred_at,
+                  u.display_name as actor_name,
+                  (select am.verified_identifier from auth_methods am where am.user_id = a.actor_user_id and am.provider = 'email_otp' order by am.verified_at desc nulls last limit 1) as actor_email,
+                  o.name as org_name
+           from audit_log a
+           left join users u on u.id = a.actor_user_id
+           left join organizations o on o.id = a.organization_id
+           order by a.occurred_at desc limit $1`,
       input.organizationId ? [input.organizationId, limit] : [limit]
     );
     return result.rows.map((row) => ({
       id: row.id,
       organizationId: row.organization_id,
       actorUserId: row.actor_user_id,
+      actorName: row.actor_name,
+      actorEmail: row.actor_email,
+      orgName: row.org_name,
       supportGrantId: row.support_grant_id,
       action: row.action,
       targetType: row.target_type,
