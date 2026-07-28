@@ -719,7 +719,7 @@ export interface UpsertCoachProfileInput {
   classTypes?: string[];
   serviceAreaKeys?: string[];
   allowStudentOverrides?: boolean;
-  categoryId?: string | null;
+  categoryId: string;  // required — profiles without a category are excluded from public search
   subcategoryIds?: string[];
   primarySubcategoryId?: string | null;
   tagIds?: string[];
@@ -745,6 +745,14 @@ const UPSERT_COACH_PROFILE_SQL = `insert into coach_profiles
 // hr.staff.onboard) — same function, the row-owning staff_profile decides which
 // policy applies, matching uploadStaffDocument's shape above.
 export async function upsertCoachProfile(session: SessionContext, input: UpsertCoachProfileInput): Promise<CoachProfile> {
+  // Category is mandatory — a coach without a category cannot be discovered
+  // via any filter, and the public search excludes uncategorised profiles from
+  // its total count (see GET /api/v1/public/coaches). Fail early with a clear
+  // message rather than silently creating an invisible profile.
+  if (!input.categoryId) {
+    throw new StaffStateError('Category is required to create or update a coach profile.');
+  }
+
   return db.withRequestContext(session, async (client) => {
     const profile = await client.query<{ organization_id: string; branch_id: string | null; user_id: string }>(
       `select organization_id, branch_id, user_id from staff_profiles where id = $1`,
@@ -789,7 +797,7 @@ export interface SelfOnboardAsCoachInput {
   classTypes?: string[];
   serviceAreaKeys?: string[];
   allowStudentOverrides?: boolean;
-  categoryId?: string | null;
+  categoryId: string;  // required — profiles without a category are excluded from public search
   subcategoryIds?: string[];
   primarySubcategoryId?: string | null;
   tagIds?: string[];

@@ -44,16 +44,22 @@ export async function GET(req: Request) {
       }
     }
 
-    // Counts per category under the currently active city/ageGroups/
-    // skillLevels/search filters, but NOT categoryId/subcategoryIds/tagIds —
-    // so the filter rail can show "how many match everything else I've
-    // picked" per category instead of a static global count that goes stale
-    // (and contradicts a "0 found") the moment a city/age/skill filter
-    // narrows the result set.
+    // Counts per category under ALL currently active filters (city/ageGroups/
+    // skillLevels/search/categoryId/subcategoryIds). When a category IS
+    // selected, only that category's bucket will be non-zero — which is fine
+    // because the rail hides the other counts while a category is active.
+    // Previously this excluded categoryId/subcategoryIds so the rail could
+    // show "how many in each other category", but that caused a visible
+    // mismatch: the sidebar showed Sports(2) and Yoga(4) while the header
+    // said "21 coaches found" (uncategorised coaches were in `total` but
+    // in no category bucket). Now both counts exclude coaches with no
+    // category_id so the numbers are consistent.
     let countQuery = db.from('coach_profiles').select('category_id').not('category_id', 'is', null);
-    if (ageGroups.length)   countQuery = countQuery.overlaps('age_groups', ageGroups);
-    if (skillLevels.length) countQuery = countQuery.overlaps('skill_levels', skillLevels);
-    if (cityAreaKeys)       countQuery = countQuery.overlaps('service_area_keys', cityAreaKeys);
+    if (categoryId)          countQuery = countQuery.eq('category_id', categoryId);
+    if (subcategoryIds.length) countQuery = countQuery.overlaps('subcategory_ids', subcategoryIds);
+    if (ageGroups.length)    countQuery = countQuery.overlaps('age_groups', ageGroups);
+    if (skillLevels.length)  countQuery = countQuery.overlaps('skill_levels', skillLevels);
+    if (cityAreaKeys)        countQuery = countQuery.overlaps('service_area_keys', cityAreaKeys);
     if (search)              countQuery = countQuery.ilike('bio', `%${search}%`);
     const { data: countRows, error: countErr } = await countQuery;
     if (countErr) throw countErr;
@@ -71,15 +77,19 @@ export async function GET(req: Request) {
          category_id, subcategory_ids, primary_subcategory_id, tag_ids,
          user:users(display_name, avatar_path)`,
         { count: 'exact' }
-      );
+      )
+      // Exclude coaches with no category so `total` stays consistent with
+      // the sum of categoryCounts shown in the filter rail. A coach without
+      // a category is not discoverable via any category filter anyway.
+      .not('category_id', 'is', null);
 
-    if (categoryId)         query = query.eq('category_id', categoryId);
+    if (categoryId)            query = query.eq('category_id', categoryId);
     if (subcategoryIds.length) query = query.overlaps('subcategory_ids', subcategoryIds);
-    if (tagIds.length)      query = query.overlaps('tag_ids', tagIds);
-    if (ageGroups.length)   query = query.overlaps('age_groups', ageGroups);
-    if (skillLevels.length) query = query.overlaps('skill_levels', skillLevels);
-    if (cityAreaKeys)   query = query.overlaps('service_area_keys', cityAreaKeys);
-    if (search)         query = query.ilike('bio', `%${search}%`);
+    if (tagIds.length)         query = query.overlaps('tag_ids', tagIds);
+    if (ageGroups.length)      query = query.overlaps('age_groups', ageGroups);
+    if (skillLevels.length)    query = query.overlaps('skill_levels', skillLevels);
+    if (cityAreaKeys)          query = query.overlaps('service_area_keys', cityAreaKeys);
+    if (search)                query = query.ilike('bio', `%${search}%`);
 
     query = query.order('created_at', { ascending: false }).range(from, to);
 

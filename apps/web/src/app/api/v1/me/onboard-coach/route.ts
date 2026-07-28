@@ -11,6 +11,11 @@ export async function POST(req: NextRequest) {
   if (!session.orgId) return jsonError('no_workspace', 'Select an active workspace first.', 400);
 
   const body = await req.json().catch(() => ({}));
+
+  // Category is mandatory — a coach without a category is invisible in public search.
+  const categoryId = typeof body?.categoryId === 'string' ? body.categoryId.trim() : '';
+  if (!categoryId) return jsonError('validation_error', 'categoryId is required.', 400);
+
   try {
     const profile = await selfOnboardAsCoach(session, {
       organizationId: session.orgId,
@@ -24,7 +29,7 @@ export async function POST(req: NextRequest) {
       classTypes: Array.isArray(body?.classTypes) ? body.classTypes : undefined,
       serviceAreaKeys: Array.isArray(body?.serviceAreaKeys) ? body.serviceAreaKeys : undefined,
       allowStudentOverrides: typeof body?.allowStudentOverrides === 'boolean' ? body.allowStudentOverrides : undefined,
-      categoryId: typeof body?.categoryId === 'string' ? body.categoryId : undefined,
+      categoryId,
       subcategoryIds: Array.isArray(body?.subcategoryIds) ? body.subcategoryIds : undefined,
       primarySubcategoryId: typeof body?.primarySubcategoryId === 'string' ? body.primarySubcategoryId : undefined,
       tagIds: Array.isArray(body?.tagIds) ? body.tagIds : undefined,
