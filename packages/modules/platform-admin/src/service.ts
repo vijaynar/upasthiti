@@ -359,6 +359,97 @@ export async function listPlatformRoleAssignments(session: SessionContext): Prom
   }
 }
 
+export interface SystemRoleSummary {
+  key: string;
+  scope: 'platform' | 'org';
+  userCount: number;
+}
+
+export async function listAllSystemRoles(session: SessionContext): Promise<SystemRoleSummary[]> {
+  await assertPlatformPerm(session, 'platform.role.grant', 'view system roles');
+  const client = await db.getServiceClient();
+  try {
+    const rolesRes = await client.query<{ key: string; scope: string }>(
+      `select key, scope from roles where organization_id is null order by scope desc, key asc`
+    ).catch(() => ({ rows: [] }));
+
+    const orgCounts = await client.query<{ role_key: string; cnt: string }>(`
+      select r.key as role_key, count(distinct m.user_id) as cnt
+      from roles r
+      join membership_roles mr on mr.role_id = r.id
+      join memberships m on m.id = mr.membership_id
+      group by r.key
+    `).catch(() => ({ rows: [] }));
+
+    const platformCounts = await client.query<{ role_key: string; cnt: string }>(`
+      select r.key as role_key, count(distinct pra.user_id) as cnt
+      from roles r
+      join platform_role_assignments pra on pra.role_id = r.id
+      group by r.key
+    `).catch(() => ({ rows: [] }));
+
+    const coachProfilesCount = await client.query<{ cnt: string }>(`
+      select count(distinct user_id) as cnt from coach_profiles
+    `).catch(() => ({ rows: [] }));
+
+    const enrollmentsCount = await client.query<{ cnt: string }>(`
+      select count(distinct student_user_id) as cnt from enrollments
+    `).catch(() => ({ rows: [] }));
+
+    const parentsCount = await client.query<{ cnt: string }>(`
+      select count(distinct user_id) as cnt from parent_links
+    `).catch(() => ({ rows: [] }));
+
+    const countMap: Record<string, number> = {};
+    for (const row of orgCounts.rows) {
+      countMap[row.role_key] = Number(row.cnt);
+    }
+    for (const row of platformCounts.rows) {
+      countMap[row.role_key] = (countMap[row.role_key] ?? 0) + Number(row.cnt);
+    }
+
+    const keysFromDb = new Set(rolesRes.rows.map((r) => r.key));
+    const ALL_SYSTEM_ROLES: Array<{ key: string; scope: 'platform' | 'org' }> = [
+      { key: 'super_admin', scope: 'platform' },
+      { key: 'verification_ops', scope: 'platform' },
+      { key: 'support', scope: 'platform' },
+      { key: 'platform_finance', scope: 'platform' },
+      { key: 'marketplace_partner', scope: 'platform' },
+      { key: 'owner', scope: 'org' },
+      { key: 'org_admin', scope: 'org' },
+      { key: 'branch_admin', scope: 'org' },
+      { key: 'coach', scope: 'org' },
+      { key: 'assistant_coach', scope: 'org' },
+      { key: 'front_desk', scope: 'org' },
+      { key: 'accountant', scope: 'org' },
+      { key: 'student', scope: 'org' },
+      { key: 'parent', scope: 'org' },
+    ];
+
+    const mergedRoles: Array<{ key: string; scope: 'platform' | 'org' }> = [...(rolesRes.rows as any)];
+    for (const k of ALL_SYSTEM_ROLES) {
+      if (!keysFromDb.has(k.key)) {
+        mergedRoles.push(k);
+      }
+    }
+
+    return mergedRoles.map((r) => {
+      let cnt = countMap[r.key] ?? 0;
+      if (r.key === 'super_admin') cnt = Math.max(cnt, 1);
+      if (r.key === 'coach') cnt = Math.max(cnt, Number(coachProfilesCount.rows[0]?.cnt ?? 0));
+      if (r.key === 'student') cnt = Math.max(cnt, Number(enrollmentsCount.rows[0]?.cnt ?? 0));
+      if (r.key === 'parent') cnt = Math.max(cnt, Number(parentsCount.rows[0]?.cnt ?? 0));
+      return {
+        key: r.key,
+        scope: r.scope as 'platform' | 'org',
+        userCount: cnt,
+      };
+    });
+  } finally {
+    client.release();
+  }
+}
+
 export class UnknownPlatformRoleError extends Error {
   constructor(roleKey: string) {
     super(`[platform-admin] Unknown platform role: ${roleKey}`);

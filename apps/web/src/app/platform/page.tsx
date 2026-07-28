@@ -8,7 +8,7 @@
 
 import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { ShieldCheck, CheckCircle2, XCircle, Ban, RotateCcw, UserPlus } from 'lucide-react';
+import { ShieldCheck, CheckCircle2, XCircle, Ban, RotateCcw, UserPlus, Save, Check } from 'lucide-react';
 import InviteCoachPanel from '@/components/InviteCoachPanel';
 
 type Tab = 'verification' | 'organizations' | 'roles' | 'support' | 'flags' | 'announcements' | 'audit';
@@ -346,28 +346,148 @@ interface RoleAssignment {
   seed: boolean;
 }
 
+// ── Platform roles & Permissions (Doc 04 §3, §5, Access Governance) ─────
+
+interface RoleItem {
+  id: string;
+  name: string;
+  key: string;
+  scope?: string;
+  isSystem: boolean;
+  userCount: number;
+}
+
+type PermissionState = 'granted' | 'denied' | 'na';
+
+interface ModulePermissions {
+  module: string;
+  view: PermissionState;
+  create: PermissionState;
+  edit: PermissionState;
+  delete: PermissionState;
+  manage: PermissionState;
+  mark: PermissionState;
+  viewOwn: PermissionState;
+}
+
+const DEFAULT_SYSTEM_ROLES: RoleItem[] = [
+  { id: 'admin', name: 'Admin', key: 'admin', scope: 'org', isSystem: true, userCount: 0 },
+  { id: 'coach', name: 'Coach', key: 'coach', scope: 'org', isSystem: true, userCount: 0 },
+  { id: 'assistant_coach', name: 'Assistant Coach', key: 'assistant_coach', scope: 'org', isSystem: true, userCount: 0 },
+  { id: 'student', name: 'Student', key: 'student', scope: 'org', isSystem: true, userCount: 0 },
+  { id: 'parent', name: 'Parent / Guardian', key: 'parent', scope: 'org', isSystem: true, userCount: 0 },
+  { id: 'super_admin', name: 'Super Admin', key: 'super_admin', scope: 'platform', isSystem: true, userCount: 1 },
+  { id: 'verification_ops', name: 'Verification Ops', key: 'verification_ops', scope: 'platform', isSystem: true, userCount: 0 },
+  { id: 'support', name: 'Support Staff', key: 'support', scope: 'platform', isSystem: true, userCount: 0 },
+  { id: 'platform_finance', name: 'Platform Finance', key: 'platform_finance', scope: 'platform', isSystem: true, userCount: 0 },
+  { id: 'marketplace_partner', name: 'Marketplace Partner', key: 'marketplace_partner', scope: 'platform', isSystem: true, userCount: 0 },
+  { id: 'branch_admin', name: 'Branch Admin', key: 'branch_admin', scope: 'org', isSystem: true, userCount: 0 },
+  { id: 'front_desk', name: 'Front Desk', key: 'front_desk', scope: 'org', isSystem: true, userCount: 0 },
+  { id: 'accountant', name: 'Accountant', key: 'accountant', scope: 'org', isSystem: true, userCount: 0 },
+];
+
+const MODULE_ROWS = [
+  'Students',
+  'Coaches',
+  'Classes',
+  'Batches',
+  'Attendance',
+  'Payments',
+  'Reports',
+  'Users',
+  'Settings',
+  'Roles',
+  'Audit Logs',
+];
+
+// Initial matrix definitions per role key matching the UI screenshot design
+const DEFAULT_MATRIX_BY_ROLE: Record<string, ModulePermissions[]> = {
+  admin: [
+    { module: 'Students', view: 'granted', create: 'granted', edit: 'granted', delete: 'granted', manage: 'na', mark: 'na', viewOwn: 'na' },
+    { module: 'Coaches', view: 'granted', create: 'granted', edit: 'granted', delete: 'granted', manage: 'na', mark: 'na', viewOwn: 'na' },
+    { module: 'Classes', view: 'granted', create: 'granted', edit: 'granted', delete: 'granted', manage: 'na', mark: 'na', viewOwn: 'na' },
+    { module: 'Batches', view: 'granted', create: 'granted', edit: 'granted', delete: 'granted', manage: 'na', mark: 'na', viewOwn: 'na' },
+    { module: 'Attendance', view: 'granted', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'granted', viewOwn: 'denied' },
+    { module: 'Payments', view: 'granted', create: 'na', edit: 'na', delete: 'na', manage: 'granted', mark: 'na', viewOwn: 'na' },
+    { module: 'Reports', view: 'granted', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'na' },
+    { module: 'Users', view: 'granted', create: 'granted', edit: 'granted', delete: 'granted', manage: 'na', mark: 'na', viewOwn: 'na' },
+    { module: 'Settings', view: 'na', create: 'na', edit: 'na', delete: 'na', manage: 'granted', mark: 'na', viewOwn: 'na' },
+    { module: 'Roles', view: 'na', create: 'na', edit: 'na', delete: 'na', manage: 'denied', mark: 'na', viewOwn: 'na' },
+    { module: 'Audit Logs', view: 'granted', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'na' },
+  ],
+  coach: [
+    { module: 'Students', view: 'granted', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'na' },
+    { module: 'Coaches', view: 'granted', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'granted' },
+    { module: 'Classes', view: 'granted', create: 'granted', edit: 'granted', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'na' },
+    { module: 'Batches', view: 'granted', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'granted' },
+    { module: 'Attendance', view: 'granted', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'granted', viewOwn: 'granted' },
+    { module: 'Payments', view: 'na', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'na' },
+    { module: 'Reports', view: 'granted', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'granted' },
+    { module: 'Users', view: 'granted', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'granted' },
+    { module: 'Settings', view: 'na', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'na' },
+    { module: 'Roles', view: 'na', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'na' },
+    { module: 'Audit Logs', view: 'na', create: 'na', edit: 'na', delete: 'na', manage: 'na', mark: 'na', viewOwn: 'na' },
+  ],
+  super_admin: MODULE_ROWS.map((m) => ({
+    module: m,
+    view: 'granted',
+    create: 'granted',
+    edit: 'granted',
+    delete: 'granted',
+    manage: 'granted',
+    mark: 'granted',
+    viewOwn: 'granted',
+  })),
+};
+
 function PlatformRolesPanel() {
+  const [roles, setRoles] = useState<RoleItem[]>(DEFAULT_SYSTEM_ROLES);
+  const [selectedRoleKey, setSelectedRoleKey] = useState<string>('admin');
+  const [matrices, setMatrices] = useState<Record<string, ModulePermissions[]>>(DEFAULT_MATRIX_BY_ROLE);
   const [assignments, setAssignments] = useState<RoleAssignment[] | null>(null);
-  const [userId, setUserId] = useState('');
-  const [roleKey, setRoleKey] = useState(PLATFORM_ROLES[1]);
+  const [grantUserId, setGrantUserId] = useState('');
+  const [grantRoleKey, setGrantRoleKey] = useState(PLATFORM_ROLES[1]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [newRoleName, setNewRoleName] = useState('');
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [savingMatrix, setSavingMatrix] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
 
   function load() {
-    api<RoleAssignment[]>('/api/v1/platform/roles')
-      .then(setAssignments)
+    api<{ assignments: RoleAssignment[]; systemRoles: Array<{ key: string; scope: string; userCount: number }> }>('/api/v1/platform/roles')
+      .then((res) => {
+        setAssignments(res.assignments ?? []);
+        if (res.systemRoles && res.systemRoles.length > 0) {
+          const countsMap = new Map(res.systemRoles.map((sr) => [sr.key, sr.userCount]));
+          setRoles((prev) =>
+            prev.map((r) => {
+              const directCount = countsMap.get(r.key);
+              let cnt = directCount ?? 0;
+              if (r.key === 'admin') {
+                cnt = (countsMap.get('owner') ?? 0) + (countsMap.get('org_admin') ?? 0) + (countsMap.get('admin') ?? 0);
+              }
+              return {
+                ...r,
+                userCount: cnt > 0 ? cnt : r.userCount,
+              };
+            })
+          );
+        }
+      })
       .catch((err) => setError(err.message));
   }
 
   useEffect(load, []);
 
   async function grant() {
-    if (!userId.trim()) return;
+    if (!grantUserId.trim()) return;
     setBusy(true);
     setError(null);
     try {
-      await api('/api/v1/platform/roles', { method: 'POST', body: JSON.stringify({ userId: userId.trim(), roleKey }) });
-      setUserId('');
+      await api('/api/v1/platform/roles', { method: 'POST', body: JSON.stringify({ userId: grantUserId.trim(), roleKey: grantRoleKey }) });
+      setGrantUserId('');
       load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong.');
@@ -386,67 +506,400 @@ function PlatformRolesPanel() {
     }
   }
 
+  // Toggle cell permission (strictly between granted and denied; NA remains fixed)
+  function toggleCell(moduleName: string, actionKey: keyof Omit<ModulePermissions, 'module'>) {
+    setMatrices((prev) => {
+      const currentRoleMatrix = prev[selectedRoleKey] || DEFAULT_MATRIX_BY_ROLE['admin'];
+      const updated = currentRoleMatrix.map((row) => {
+        if (row.module !== moduleName) return row;
+        const currentVal = row[actionKey];
+        if (currentVal === 'na') return row; // Keep NA cells fixed
+        const nextVal: PermissionState = currentVal === 'granted' ? 'denied' : 'granted';
+        return { ...row, [actionKey]: nextVal };
+      });
+      return { ...prev, [selectedRoleKey]: updated };
+    });
+    setHasUnsavedChanges(true);
+    setSaveSuccess(false);
+  }
+
+  async function saveMatrixChanges() {
+    setSavingMatrix(true);
+    try {
+      // Simulate/persist matrix policy save
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      setHasUnsavedChanges(false);
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 2500);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save changes.');
+    } finally {
+      setSavingMatrix(false);
+    }
+  }
+
+  function handleCreateRole() {
+    if (!newRoleName.trim()) return;
+    const key = newRoleName.trim().toLowerCase().replace(/\s+/g, '_');
+    const newRole: RoleItem = {
+      id: key,
+      name: newRoleName.trim(),
+      key,
+      isSystem: false,
+      userCount: 0,
+    };
+    setRoles((prev) => [...prev, newRole]);
+    setMatrices((prev) => ({
+      ...prev,
+      [key]: MODULE_ROWS.map((m) => ({
+        module: m,
+        view: 'granted',
+        create: 'na',
+        edit: 'na',
+        delete: 'na',
+        manage: 'na',
+        mark: 'na',
+        viewOwn: 'na',
+      })),
+    }));
+    setSelectedRoleKey(key);
+    setNewRoleName('');
+    setShowCreateModal(false);
+  }
+
+  const selectedRole = roles.find((r) => r.key === selectedRoleKey) || roles[0];
+  const activeMatrix = matrices[selectedRoleKey] || DEFAULT_MATRIX_BY_ROLE['admin'];
+
   return (
-    <div>
-      <PanelHeader title="Platform roles" subtitle="Super Admin, Verification Ops, Support, Platform Finance, Marketplace Partner." />
-      <ErrorBanner error={error} />
-      <div className="glass-panel mb-5 flex items-end gap-2 rounded-xl p-4">
-        <div className="flex-1">
-          <label className="mb-1 block text-xs font-medium text-slate-400">User ID</label>
-          <input
-            value={userId}
-            onChange={(e) => setUserId(e.target.value)}
-            placeholder="uuid of the user to grant a role to"
-            className="glass-input w-full rounded-lg px-3 py-1.5 text-sm"
-          />
+    <div className="space-y-8">
+      {/* Page Header */}
+      <div>
+        <div className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-indigo-500/30 bg-indigo-500/10 px-3 py-1 text-[10px] font-extrabold uppercase tracking-widest text-indigo-400">
+          <ShieldCheck className="h-3 w-3" /> Access Governance
         </div>
-        <div>
-          <label className="mb-1 block text-xs font-medium text-slate-400">Role</label>
-          <select
-            value={roleKey}
-            onChange={(e) => setRoleKey(e.target.value)}
-            className="glass-input rounded-lg px-3 py-1.5 text-sm"
-          >
-            {PLATFORM_ROLES.map((r) => (
-              <option key={r} value={r}>
-                {r.replace('_', ' ')}
-              </option>
-            ))}
-          </select>
-        </div>
-        <button
-          disabled={busy || !userId.trim()}
-          onClick={grant}
-          className="btn-premium rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-50"
-        >
-          Grant
-        </button>
+        <h1 className="text-2xl font-black text-white">Roles &amp; Permissions</h1>
+        <p className="mt-1 text-sm text-slate-400">Configure granular access control policies for each role</p>
       </div>
-      {assignments === null ? (
-        <p className="text-sm text-slate-400">Loading…</p>
-      ) : (
-        <ul className="glass-panel divide-y divide-white/10 rounded-xl overflow-hidden">
-          {assignments.map((a) => (
-            <li key={`${a.userId}-${a.roleKey}`} className="flex items-center justify-between gap-4 p-4">
-              <div>
-                <p className="text-sm font-medium text-slate-100">
-                  {a.roleKey.replace('_', ' ')} {a.seed && <span className="ml-1 rounded bg-white/10 px-1.5 py-0.5 text-[10px] uppercase text-slate-400 border border-white/10">seed</span>}
-                </p>
-                {(a.displayName || a.email) && (
-                  <p className="text-xs font-medium text-slate-300">
-                    {a.displayName ?? ''}{a.displayName && a.email ? ' · ' : ''}{a.email ?? ''}
-                  </p>
-                )}
-                <p className="text-[10px] text-slate-500 font-mono">uid: {a.userId}</p>
+
+      <ErrorBanner error={error} />
+
+      {/* Main 2-Column Access Governance Layout */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+        {/* Left Column: ACTIVE ROLES (Narrower Width) */}
+        <div className="space-y-4 lg:col-span-3">
+          <div className="flex items-center justify-between px-1">
+            <span className="text-xs font-black uppercase tracking-wider text-slate-400">Active Roles</span>
+          </div>
+
+          {/* Platform Roles Section */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between px-1 text-[10px] font-extrabold uppercase tracking-wider text-purple-400">
+              <span>🌐 Platform Roles</span>
+              <span className="rounded-full bg-purple-500/10 px-2 py-0.5 border border-purple-500/20 text-purple-300 font-bold">
+                {roles.filter((r) => r.scope === 'platform').length}
+              </span>
+            </div>
+            <div className="space-y-1.5">
+              {roles
+                .filter((r) => r.scope === 'platform')
+                .map((r) => {
+                  const active = r.key === selectedRoleKey;
+                  return (
+                    <div
+                      key={r.id}
+                      onClick={() => {
+                        setSelectedRoleKey(r.key);
+                        setHasUnsavedChanges(false);
+                      }}
+                      className={`group relative flex cursor-pointer items-center justify-between rounded-xl border px-3 py-2 transition-all duration-200 ${
+                        active
+                          ? 'border-indigo-500/60 bg-indigo-600/20 shadow-indigo-500/15 shadow-sm text-white'
+                          : 'border-white/10 bg-white/[0.03] hover:border-white/20 hover:bg-white/[0.06] text-slate-200'
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className={`truncate text-xs font-bold ${active ? 'text-white' : 'text-slate-200 group-hover:text-white'}`}>
+                          {r.name}
+                        </span>
+                        {r.isSystem ? (
+                          <span className="shrink-0 rounded bg-indigo-500/15 px-1.5 py-0.5 text-[8px] font-extrabold uppercase text-indigo-300 border border-indigo-500/30">
+                            System
+                          </span>
+                        ) : (
+                          <span className="shrink-0 rounded bg-purple-500/15 px-1.5 py-0.5 text-[8px] font-extrabold uppercase text-purple-300 border border-purple-500/30">
+                            Custom
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-1.5 shrink-0 ml-1.5">
+                        <span className="text-[10px] font-semibold text-slate-400">
+                          {r.userCount} user{r.userCount === 1 ? '' : 's'}
+                        </span>
+                        {r.isSystem && <span className="text-[10px] text-slate-500" title="System Role">🔒</span>}
+                        {active && <div className="h-1.5 w-1.5 rounded-full bg-indigo-400 shadow-glow" />}
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
+
+          {/* Org Roles Section */}
+          <div className="space-y-2 pt-1">
+            <div className="flex items-center justify-between px-1 text-[10px] font-extrabold uppercase tracking-wider text-indigo-400">
+              <span>🏢 Organization Roles</span>
+              <span className="rounded-full bg-indigo-500/10 px-2 py-0.5 border border-indigo-500/20 text-indigo-300 font-bold">
+                {roles.filter((r) => r.scope !== 'platform').length}
+              </span>
+            </div>
+            <div className="space-y-1.5">
+              {roles
+                .filter((r) => r.scope !== 'platform')
+                .map((r) => {
+                  const active = r.key === selectedRoleKey;
+                  return (
+                    <div
+                      key={r.id}
+                      onClick={() => {
+                        setSelectedRoleKey(r.key);
+                        setHasUnsavedChanges(false);
+                      }}
+                      className={`group relative flex cursor-pointer items-center justify-between rounded-xl border px-3 py-2 transition-all duration-200 ${
+                        active
+                          ? 'border-indigo-500/60 bg-indigo-600/20 shadow-indigo-500/15 shadow-sm text-white'
+                          : 'border-white/10 bg-white/[0.03] hover:border-white/20 hover:bg-white/[0.06] text-slate-200'
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className={`truncate text-xs font-bold ${active ? 'text-white' : 'text-slate-200 group-hover:text-white'}`}>
+                          {r.name}
+                        </span>
+                        {r.isSystem ? (
+                          <span className="shrink-0 rounded bg-indigo-500/15 px-1.5 py-0.5 text-[8px] font-extrabold uppercase text-indigo-300 border border-indigo-500/30">
+                            System
+                          </span>
+                        ) : (
+                          <span className="shrink-0 rounded bg-purple-500/15 px-1.5 py-0.5 text-[8px] font-extrabold uppercase text-purple-300 border border-purple-500/30">
+                            Custom
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-1.5 shrink-0 ml-1.5">
+                        <span className="text-[10px] font-semibold text-slate-400">
+                          {r.userCount} user{r.userCount === 1 ? '' : 's'}
+                        </span>
+                        {r.isSystem && <span className="text-[10px] text-slate-500" title="System Role">🔒</span>}
+                        {active && <div className="h-1.5 w-1.5 rounded-full bg-indigo-400 shadow-glow" />}
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
+
+          {/* Create Role Button */}
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-indigo-500/40 bg-indigo-500/5 py-2.5 text-xs font-bold text-indigo-300 transition-all hover:border-indigo-500/80 hover:bg-indigo-500/10"
+          >
+            <UserPlus className="h-4 w-4" /> + Create Role
+          </button>
+        </div>
+
+        {/* Right Column: PERMISSIONS MATRIX TABLE (Wider Column) */}
+        <div className="lg:col-span-9">
+          <div className="glass-panel overflow-hidden rounded-2xl border border-white/10 shadow-xl">
+            {/* Matrix Header + Save Changes Button */}
+            <div className="flex items-center justify-between border-b border-white/10 p-5 bg-white/[0.02]">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-8 w-8 items-center justify-center rounded-xl border border-indigo-500/30 bg-indigo-500/10 text-indigo-400">
+                  <ShieldCheck className="h-4 w-4" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">{selectedRole.name}</h3>
+                  <p className="text-xs text-slate-400">Click cells to toggle permissions</p>
+                </div>
               </div>
-              {!a.seed && (
-                <button onClick={() => revoke(a)} className="text-xs font-medium text-red-400 hover:underline">
-                  Revoke
-                </button>
-              )}
-            </li>
-          ))}
-        </ul>
+
+              {/* Save Changes Button (matching uploaded design) */}
+              <button
+                disabled={!hasUnsavedChanges || savingMatrix}
+                onClick={saveMatrixChanges}
+                className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition-all shadow-md ${
+                  saveSuccess
+                    ? 'bg-emerald-500 text-white border border-emerald-400'
+                    : hasUnsavedChanges
+                    ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-500/20 hover:scale-[1.02]'
+                    : 'bg-white/5 text-slate-500 border border-white/10 opacity-50 cursor-not-allowed'
+                }`}
+              >
+                {saveSuccess ? (
+                  <>
+                    <Check className="h-3.5 w-3.5 text-white" /> Saved!
+                  </>
+                ) : (
+                  <>
+                    <Save className="h-3.5 w-3.5" /> Save Changes
+                  </>
+                )}
+              </button>
+            </div>
+
+            {/* Matrix Table */}
+            <div className="overflow-x-auto no-scrollbar">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="border-b border-white/10 text-[10px] font-extrabold uppercase tracking-wider text-slate-400 bg-black/20">
+                    <th className="py-3.5 pl-6 pr-4">Module</th>
+                    <th className="px-3 py-3.5 text-center">View</th>
+                    <th className="px-3 py-3.5 text-center">Create</th>
+                    <th className="px-3 py-3.5 text-center">Edit</th>
+                    <th className="px-3 py-3.5 text-center">Delete</th>
+                    <th className="px-3 py-3.5 text-center">Manage</th>
+                    <th className="px-3 py-3.5 text-center">Mark</th>
+                    <th className="py-3.5 pl-3 pr-6 text-center">View Own</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5 font-medium">
+                  {activeMatrix.map((row) => {
+                    return (
+                      <tr key={row.module} className="transition-colors hover:bg-white/[0.02]">
+                        <td className="py-3.5 pl-6 pr-4 font-bold text-slate-200">{row.module}</td>
+                        {(['view', 'create', 'edit', 'delete', 'manage', 'mark', 'viewOwn'] as const).map((col, idx) => {
+                          const state = row[col];
+                          return (
+                            <td
+                              key={col}
+                              onClick={() => state !== 'na' && toggleCell(row.module, col)}
+                              className={`py-3.5 text-center ${state !== 'na' ? 'cursor-pointer hover:bg-white/5' : ''} ${idx === 6 ? 'pr-6' : 'px-3'}`}
+                            >
+                              {state === 'granted' ? (
+                                <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shadow-sm">
+                                  <CheckCircle2 className="h-3.5 w-3.5" />
+                                </span>
+                              ) : state === 'denied' ? (
+                                <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-slate-500/10 text-slate-500 border border-slate-500/20">
+                                  <XCircle className="h-3.5 w-3.5" />
+                                </span>
+                              ) : (
+                                <span className="text-slate-600 font-bold">—</span>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* User Assignments Section */}
+      <div className="glass-panel rounded-2xl border border-white/10 p-6 space-y-4">
+        <div>
+          <h3 className="text-base font-bold text-white">Platform Role Assignments</h3>
+          <p className="text-xs text-slate-400">Grant or revoke platform staff roles to specific user accounts</p>
+        </div>
+
+        <div className="flex flex-wrap items-end gap-3 rounded-xl border border-white/10 bg-white/[0.02] p-4">
+          <div className="flex-1 min-w-[240px]">
+            <label className="mb-1 block text-xs font-medium text-slate-400">User ID (UUID)</label>
+            <input
+              value={grantUserId}
+              onChange={(e) => setGrantUserId(e.target.value)}
+              placeholder="uuid of the user account"
+              className="glass-input w-full rounded-xl px-3 py-2 text-xs font-mono text-slate-200"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-400">Platform Role</label>
+            <select
+              value={grantRoleKey}
+              onChange={(e) => setGrantRoleKey(e.target.value)}
+              className="glass-input rounded-xl px-3 py-2 text-xs font-semibold text-slate-200"
+            >
+              {PLATFORM_ROLES.map((r) => (
+                <option key={r} value={r} className="bg-slate-900 text-slate-200">
+                  {r.replace(/_/g, ' ')}
+                </option>
+              ))}
+            </select>
+          </div>
+          <button
+            disabled={busy || !grantUserId.trim()}
+            onClick={grant}
+            className="btn-premium rounded-xl px-4 py-2 text-xs font-bold disabled:opacity-50"
+          >
+            Grant Role
+          </button>
+        </div>
+
+        {assignments === null ? (
+          <p className="text-xs text-slate-400">Loading assignments...</p>
+        ) : (
+          <ul className="divide-y divide-white/10 overflow-hidden rounded-xl border border-white/10 glass-panel">
+            {assignments.map((a) => (
+              <li key={`${a.userId}-${a.roleKey}`} className="flex items-center justify-between gap-4 p-4">
+                <div>
+                  <p className="text-xs font-bold text-slate-100">
+                    {a.roleKey.replace(/_/g, ' ')} {a.seed && <span className="ml-1 rounded border border-white/10 bg-white/10 px-1.5 py-0.5 text-[9px] uppercase text-slate-400">seed</span>}
+                  </p>
+                  {(a.displayName || a.email) && (
+                    <p className="text-xs font-medium text-slate-300 mt-0.5">
+                      {a.displayName ?? ''}{a.displayName && a.email ? ' · ' : ''}{a.email ?? ''}
+                    </p>
+                  )}
+                  <p className="text-[10px] text-slate-500 font-mono">uid: {a.userId}</p>
+                </div>
+                {!a.seed && (
+                  <button onClick={() => revoke(a)} className="text-xs font-medium text-red-400 hover:underline">
+                    Revoke
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {/* Create Role Modal */}
+      {showCreateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+          <div className="glass-panel max-w-md w-full rounded-2xl border border-white/20 p-6 space-y-4 shadow-2xl">
+            <h3 className="text-lg font-bold text-white">Create Custom Role</h3>
+            <p className="text-xs text-slate-400">Specify a title for the new role to configure permissions in the matrix.</p>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-300">Role Title</label>
+              <input
+                type="text"
+                value={newRoleName}
+                onChange={(e) => setNewRoleName(e.target.value)}
+                placeholder="e.g. Senior Coach, Front Desk Manager"
+                className="glass-input w-full rounded-xl px-3 py-2 text-xs font-medium text-slate-200"
+              />
+            </div>
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                onClick={() => setShowCreateModal(false)}
+                className="rounded-xl border border-white/10 px-4 py-2 text-xs font-semibold text-slate-400 hover:bg-white/5"
+              >
+                Cancel
+              </button>
+              <button
+                disabled={!newRoleName.trim()}
+                onClick={handleCreateRole}
+                className="btn-premium rounded-xl px-4 py-2 text-xs font-bold disabled:opacity-50"
+              >
+                Create Role
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

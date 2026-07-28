@@ -1,6 +1,6 @@
 // GET/POST /api/v1/platform/roles (Doc 04 §3 platform role catalogue)
 import type { NextRequest } from 'next/server';
-import { listPlatformRoleAssignments, grantPlatformRole, PlatformPermissionError, UnknownPlatformRoleError } from '@abhyas/module-platform-admin';
+import { listPlatformRoleAssignments, listAllSystemRoles, grantPlatformRole, PlatformPermissionError, UnknownPlatformRoleError } from '@abhyas/module-platform-admin';
 import { getSessionFromRequest, jsonData, jsonError } from '@/lib/v2-session';
 
 export async function GET(req: NextRequest) {
@@ -8,7 +8,9 @@ export async function GET(req: NextRequest) {
   if (!session) return jsonError('no_session', 'Not signed in.', 401);
 
   try {
-    return jsonData(await listPlatformRoleAssignments(session));
+    const assignments = await listPlatformRoleAssignments(session);
+    const systemRoles = await listAllSystemRoles(session);
+    return jsonData({ assignments, systemRoles });
   } catch (err) {
     if (err instanceof PlatformPermissionError) return jsonError('forbidden', err.message, 403);
     throw err;
