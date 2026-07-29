@@ -741,33 +741,39 @@ function PlatformRolesPanel() {
                         setSelectedRoleKey(r.key);
                         setHasUnsavedChanges(false);
                       }}
-                      className={`group relative flex cursor-pointer items-center justify-between rounded-xl border px-3 py-2 transition-all duration-200 ${
+                      className={`group relative grid grid-cols-[120px_56px_1fr] items-center gap-1.5 cursor-pointer rounded-xl border px-3 py-2 transition-all duration-200 ${
                         active
                           ? 'border-indigo-500/60 bg-indigo-600/20 shadow-indigo-500/15 shadow-sm text-white'
                           : 'border-white/10 bg-white/[0.03] hover:border-white/20 hover:bg-white/[0.06] text-slate-200'
                       }`}
                     >
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        <span className={`truncate text-xs font-bold ${active ? 'text-white' : 'text-slate-200 group-hover:text-white'}`}>
+                      {/* Left Column: Role Name (Fixed 120px Width) */}
+                      <div className="truncate text-xs font-bold min-w-0 pr-1" title={r.name}>
+                        <span className={`${active ? 'text-white' : 'text-slate-200 group-hover:text-white'}`}>
                           {r.name}
                         </span>
+                      </div>
+
+                      {/* Middle Column (Strict Vertical Line): System/Custom Badge */}
+                      <div className="w-14 flex justify-start">
                         {r.isSystem ? (
-                          <span className="shrink-0 rounded bg-indigo-500/15 px-1.5 py-0.5 text-[8px] font-extrabold uppercase text-indigo-300 border border-indigo-500/30">
+                          <span className="rounded bg-indigo-500/15 px-1.5 py-0.5 text-[8px] font-extrabold uppercase tracking-wider text-indigo-300 border border-indigo-500/30 text-center w-full block">
                             System
                           </span>
                         ) : (
-                          <span className="shrink-0 rounded bg-purple-500/15 px-1.5 py-0.5 text-[8px] font-extrabold uppercase text-purple-300 border border-purple-500/30">
+                          <span className="rounded bg-purple-500/15 px-1.5 py-0.5 text-[8px] font-extrabold uppercase tracking-wider text-purple-300 border border-purple-500/30 text-center w-full block">
                             Custom
                           </span>
                         )}
                       </div>
 
-                      <div className="flex items-center gap-1.5 shrink-0 ml-1.5">
-                        <span className="text-[10px] font-semibold text-slate-400">
+                      {/* Right Column: User Count & Lock */}
+                      <div className="flex items-center justify-end gap-1.5 min-w-0">
+                        <span className="text-[10px] font-semibold text-slate-400 truncate">
                           {r.userCount} user{r.userCount === 1 ? '' : 's'}
                         </span>
-                        {r.isSystem && <span className="text-[10px] text-slate-500" title="System Role">🔒</span>}
-                        {active && <div className="h-1.5 w-1.5 rounded-full bg-indigo-400 shadow-glow" />}
+                        {r.isSystem && <span className="text-[10px] text-slate-500 shrink-0" title="System Role">🔒</span>}
+                        {active && <div className="h-1.5 w-1.5 rounded-full bg-indigo-400 shadow-glow shrink-0 ml-0.5" />}
                       </div>
                     </div>
                   );
@@ -795,33 +801,39 @@ function PlatformRolesPanel() {
                         setSelectedRoleKey(r.key);
                         setHasUnsavedChanges(false);
                       }}
-                      className={`group relative flex cursor-pointer items-center justify-between rounded-xl border px-3 py-2 transition-all duration-200 ${
+                      className={`group relative grid grid-cols-[120px_56px_1fr] items-center gap-1.5 cursor-pointer rounded-xl border px-3 py-2 transition-all duration-200 ${
                         active
                           ? 'border-indigo-500/60 bg-indigo-600/20 shadow-indigo-500/15 shadow-sm text-white'
                           : 'border-white/10 bg-white/[0.03] hover:border-white/20 hover:bg-white/[0.06] text-slate-200'
                       }`}
                     >
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        <span className={`truncate text-xs font-bold ${active ? 'text-white' : 'text-slate-200 group-hover:text-white'}`}>
+                      {/* Left Column: Role Name (Fixed 120px Width) */}
+                      <div className="truncate text-xs font-bold min-w-0 pr-1" title={r.name}>
+                        <span className={`${active ? 'text-white' : 'text-slate-200 group-hover:text-white'}`}>
                           {r.name}
                         </span>
+                      </div>
+
+                      {/* Middle Column (Strict Vertical Line): System/Custom Badge */}
+                      <div className="w-14 flex justify-start">
                         {r.isSystem ? (
-                          <span className="shrink-0 rounded bg-indigo-500/15 px-1.5 py-0.5 text-[8px] font-extrabold uppercase text-indigo-300 border border-indigo-500/30">
+                          <span className="rounded bg-indigo-500/15 px-1.5 py-0.5 text-[8px] font-extrabold uppercase tracking-wider text-indigo-300 border border-indigo-500/30 text-center w-full block">
                             System
                           </span>
                         ) : (
-                          <span className="shrink-0 rounded bg-purple-500/15 px-1.5 py-0.5 text-[8px] font-extrabold uppercase text-purple-300 border border-purple-500/30">
+                          <span className="rounded bg-purple-500/15 px-1.5 py-0.5 text-[8px] font-extrabold uppercase tracking-wider text-purple-300 border border-purple-500/30 text-center w-full block">
                             Custom
                           </span>
                         )}
                       </div>
 
-                      <div className="flex items-center gap-1.5 shrink-0 ml-1.5">
-                        <span className="text-[10px] font-semibold text-slate-400">
+                      {/* Right Column: User Count & Lock */}
+                      <div className="flex items-center justify-end gap-1.5 min-w-0">
+                        <span className="text-[10px] font-semibold text-slate-400 truncate">
                           {r.userCount} user{r.userCount === 1 ? '' : 's'}
                         </span>
-                        {r.isSystem && <span className="text-[10px] text-slate-500" title="System Role">🔒</span>}
-                        {active && <div className="h-1.5 w-1.5 rounded-full bg-indigo-400 shadow-glow" />}
+                        {r.isSystem && <span className="text-[10px] text-slate-500 shrink-0" title="System Role">🔒</span>}
+                        {active && <div className="h-1.5 w-1.5 rounded-full bg-indigo-400 shadow-glow shrink-0 ml-0.5" />}
                       </div>
                     </div>
                   );
