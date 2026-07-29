@@ -49,6 +49,8 @@ import {
   Megaphone,
   History,
   Settings,
+  Check,
+  Plus,
 } from 'lucide-react';
 import ThemeSelector from '@/components/ThemeSelector';
 import { useTheme } from '@/lib/theme';
@@ -154,6 +156,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showTheme, setShowTheme] = useState(false);
   const [platformExpanded, setPlatformExpanded] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [workspaceExpanded, setWorkspaceExpanded] = useState(false);
+  const [memberships, setMemberships] = useState<Membership[]>([]);
+  const [switchingWorkspace, setSwitchingWorkspace] = useState<string | null>(null);
   const { mode, toggleMode } = useTheme();
   const router = useRouter();
   const pathname = usePathname();
@@ -205,6 +211,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       }
       const org = activeOrgId ? orgs?.find((o) => o.organizationId === activeOrgId) ?? null : null;
       setActiveOrg(org);
+      setMemberships(orgs ?? []);
       if (org) {
         api<{ roleKeys: string[]; activeRoleKey: string | null }>(`/api/v1/orgs/${org.organizationId}/me/roles`)
           .then((r) => {
@@ -248,6 +255,28 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     } catch {
       setSwitchingRole(false);
       setRoleMenuOpen(false);
+    }
+  }
+
+  async function switchWorkspace(organizationId: string) {
+    if (organizationId === activeOrg?.organizationId) {
+      setShowSettings(false);
+      setWorkspaceExpanded(false);
+      return;
+    }
+    setSwitchingWorkspace(organizationId);
+    try {
+      const res = await fetch('/api/v1/me/workspace', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orgId: organizationId }),
+      });
+      if (!res.ok) throw new Error('switch failed');
+      // Same reasoning as switchRole: nav, permissions and every page's own
+      // data depend on the active org, so a full reload is simplest.
+      window.location.reload();
+    } catch {
+      setSwitchingWorkspace(null);
     }
   }
 
@@ -341,7 +370,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <div className="space-y-1">
             {isPlatformStaff && navItem({ label: 'Dashboard', href: '/platform/dashboard', icon: LayoutDashboard })}
             {activeOrg && navItem({ label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard })}
-            {navItem({ label: 'Workspace', href: '/workspace', icon: LayoutGrid })}
           </div>
 
           {activeOrg && (
@@ -434,7 +462,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 <UserRound className="h-3.5 w-3.5" />
               )}
             </div>
-            <div className="relative min-w-0">
+            <div className="relative min-w-0 flex-1">
               <h5 className="truncate text-xs font-bold text-slate-200">{displayName ?? '…'}</h5>
               {isPlatformStaff ? (
                 <span className="inline-flex items-center rounded-full border border-indigo-500/30 bg-indigo-500/10 px-1.5 text-[8px] font-extrabold uppercase tracking-wide text-indigo-300">
@@ -487,14 +515,101 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 </span>
               )}
             </div>
-          </div>
 
-          <button
-            onClick={endSession}
-            className="flex h-7 w-full items-center justify-center gap-1.5 rounded-md border border-red-500/10 bg-red-500/5 text-xs font-semibold text-red-400 hover:border-red-500/30 hover:bg-red-500/10 hover:text-red-300 transition"
-          >
-            <LogOut className="h-3.5 w-3.5" /> End Session
-          </button>
+            <div className="relative shrink-0">
+              <button
+                type="button"
+                onClick={() => setShowSettings((v) => !v)}
+                title="Settings"
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 text-slate-400 hover:bg-white/10 hover:text-slate-200 transition"
+              >
+                <Settings className="h-3.5 w-3.5" />
+              </button>
+              {showSettings && (
+                <>
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => {
+                      setShowSettings(false);
+                      setWorkspaceExpanded(false);
+                    }}
+                  />
+                  <div className="absolute bottom-full right-0 z-50 mb-1.5 w-56 overflow-visible rounded-lg border border-white/10 bg-slate-900 py-1 shadow-xl">
+                    <div className="px-2.5 pb-1 pt-1 text-[9px] font-bold uppercase tracking-wider text-slate-500">
+                      Settings
+                    </div>
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setWorkspaceExpanded((v) => !v)}
+                        className={`flex w-full items-center justify-between px-2.5 py-1.5 text-left text-xs font-medium transition ${
+                          workspaceExpanded ? 'bg-white/5 text-slate-200' : 'text-slate-300 hover:bg-white/5'
+                        }`}
+                      >
+                        <span className="flex items-center gap-2">
+                          <LayoutGrid className="h-3.5 w-3.5 text-slate-400" />
+                          Workspace
+                        </span>
+                        <ChevronRight className="h-3 w-3 shrink-0 text-slate-500" />
+                      </button>
+                      {workspaceExpanded && (
+                        <div className="absolute bottom-0 left-full z-50 ml-1 w-56 overflow-hidden rounded-lg border border-white/10 bg-slate-900 py-1 shadow-xl">
+                          {memberships.length === 0 ? (
+                            <div className="px-2.5 py-1.5 text-[11px] text-slate-500">No workspaces yet</div>
+                          ) : (
+                            memberships.map((m) => (
+                              <button
+                                key={m.organizationId}
+                                type="button"
+                                onClick={() => switchWorkspace(m.organizationId)}
+                                disabled={switchingWorkspace !== null}
+                                className="flex w-full items-center justify-between gap-2 px-2.5 py-1.5 text-left text-xs font-medium text-slate-300 hover:bg-white/5 transition disabled:opacity-60"
+                              >
+                                <span className="flex items-center gap-2 overflow-hidden">
+                                  <Building2 className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                                  <span className="truncate">
+                                    {switchingWorkspace === m.organizationId ? 'Switching…' : m.organizationName}
+                                  </span>
+                                </span>
+                                {m.organizationId === activeOrg?.organizationId && (
+                                  <Check className="h-3 w-3 shrink-0 text-indigo-400" />
+                                )}
+                              </button>
+                            ))
+                          )}
+                          <Link
+                            href="/onboarding"
+                            onClick={() => {
+                              setShowSettings(false);
+                              setWorkspaceExpanded(false);
+                            }}
+                            className="flex items-center gap-2 border-t border-white/10 px-2.5 py-1.5 text-xs font-medium text-indigo-400 hover:bg-white/5 transition"
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                            Add workspace
+                          </Link>
+                        </div>
+                      )}
+                    </div>
+                    <div className="mt-1 border-t border-white/10 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowSettings(false);
+                          setWorkspaceExpanded(false);
+                          endSession();
+                        }}
+                        className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs font-semibold text-red-400 hover:bg-red-500/10 hover:text-red-300 transition"
+                      >
+                        <LogOut className="h-3.5 w-3.5" />
+                        End Session
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
         </div>
       </aside>
 
