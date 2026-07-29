@@ -332,13 +332,16 @@ export async function listPlatformRoleAssignments(session: SessionContext): Prom
       granted_at: string;
       seed: boolean;
     }>(
-      // users has no email column — email lives in auth_methods.verified_identifier
-      // (same subquery pattern identity-auth/service.ts getMe() uses).
       `select pra.user_id, r.key as role_key,
               u.display_name,
-              (select am.verified_identifier from auth_methods am
-                 where am.user_id = pra.user_id and am.provider = 'email_otp'
-                 order by am.verified_at desc nulls last limit 1) as email,
+              coalesce(
+                (select am.verified_identifier from auth_methods am
+                 where am.user_id = pra.user_id and am.verified_identifier like '%@%'
+                 order by am.verified_at desc nulls last limit 1),
+                (select am.verified_identifier from auth_methods am
+                 where am.user_id = pra.user_id
+                 order by am.verified_at desc nulls last limit 1)
+              ) as email,
               pra.granted_by, pra.granted_at, pra.seed
        from platform_role_assignments pra
        join roles r on r.id = pra.role_id

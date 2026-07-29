@@ -42,6 +42,13 @@ import {
   X,
   ChevronDown,
   ChevronRight,
+  CheckCircle2,
+  Building2,
+  Shield,
+  Headphones,
+  Megaphone,
+  History,
+  Settings,
 } from 'lucide-react';
 import ThemeSelector from '@/components/ThemeSelector';
 import { useTheme } from '@/lib/theme';
@@ -150,6 +157,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const { mode, toggleMode } = useTheme();
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
 
   useEffect(() => {
     if (pathname.startsWith('/platform')) setPlatformExpanded(true);
@@ -351,32 +359,35 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 Administration
               </div>
               <div className="space-y-1">
-                <button
-                  type="button"
-                  onClick={() => setPlatformExpanded(!platformExpanded)}
-                  className={`group flex h-9 w-full items-center justify-between rounded-md px-2.5 text-[13px] font-medium transition-all duration-150 ${
-                    pathname === '/platform'
-                      ? 'border border-indigo-500/20 bg-indigo-600/15 text-indigo-300 font-semibold'
-                      : 'text-slate-400 hover:bg-white/5 hover:text-slate-200'
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5">
-                    <ShieldCheck
-                      className={`h-4 w-4 shrink-0 ${pathname === '/platform' ? 'text-indigo-400' : 'text-slate-400 group-hover:text-indigo-400'}`}
-                    />
-                    <span>Platform console</span>
-                  </div>
-                  {platformExpanded ? (
-                    <ChevronDown className="h-3.5 w-3.5 text-slate-500 group-hover:text-slate-300" />
-                  ) : (
-                    <ChevronRight className="h-3.5 w-3.5 text-slate-500 group-hover:text-slate-300" />
-                  )}
-                </button>
-                {platformExpanded && (
-                  <Suspense fallback={<div className="py-1 pl-4 text-xs text-slate-500">Loading…</div>}>
-                    <PlatformSubmenuList pathname={pathname} setSidebarOpen={setSidebarOpen} />
-                  </Suspense>
-                )}
+                {[
+                  { key: 'verification', label: 'Verification queue', href: '/platform?tab=verification', icon: CheckCircle2 },
+                  { key: 'organizations', label: 'Organizations', href: '/platform?tab=organizations', icon: Building2 },
+                  { key: 'roles', label: 'Roles & Permissions', href: '/platform?tab=roles', icon: Shield },
+                  { key: 'users', label: 'User Directory', href: '/platform?tab=users', icon: Users },
+                  { key: 'support', label: 'Support access', href: '/platform?tab=support', icon: Headphones },
+                  { key: 'announcements', label: 'Announcements', href: '/platform?tab=announcements', icon: Megaphone },
+                  { key: 'audit', label: 'Audit Logs', href: '/platform?tab=audit', icon: History },
+                  { key: 'flags', label: 'Global Settings', href: '/platform?tab=flags', icon: Settings },
+                ].map((item) => {
+                  const Icon = item.icon;
+                  const activeTab = searchParams.get('tab') || 'verification';
+                  const active = pathname === '/platform' && activeTab === item.key;
+                  return (
+                    <Link
+                      key={item.key}
+                      href={item.href}
+                      onClick={() => setSidebarOpen(false)}
+                      className={`flex items-center gap-2.5 rounded-md px-2.5 h-9 text-[13px] font-medium transition-all duration-150 group ${
+                        active
+                          ? 'bg-indigo-600 text-white font-semibold shadow-sm'
+                          : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
+                      }`}
+                    >
+                      <Icon className={`h-4 w-4 shrink-0 ${active ? 'text-white' : 'text-slate-400 group-hover:text-indigo-400'}`} />
+                      <span className="truncate">{item.label}</span>
+                    </Link>
+                  );
+                })}
               </div>
             </div>
           )}

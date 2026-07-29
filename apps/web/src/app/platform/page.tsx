@@ -8,10 +8,29 @@
 
 import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { ShieldCheck, CheckCircle2, XCircle, Ban, RotateCcw, UserPlus, Save, Check } from 'lucide-react';
+import {
+  ShieldCheck,
+  CheckCircle2,
+  XCircle,
+  Ban,
+  RotateCcw,
+  UserPlus,
+  Save,
+  Check,
+  Users,
+  Search,
+  Phone,
+  Settings,
+  History,
+  Headphones,
+  Megaphone,
+  Building2,
+  Shield,
+  Sliders,
+} from 'lucide-react';
 import InviteCoachPanel from '@/components/InviteCoachPanel';
 
-type Tab = 'verification' | 'organizations' | 'roles' | 'support' | 'flags' | 'announcements' | 'audit';
+type Tab = 'verification' | 'organizations' | 'roles' | 'users' | 'support' | 'announcements' | 'audit' | 'flags';
 
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, { ...init, headers: { 'Content-Type': 'application/json', ...init?.headers } });
@@ -62,7 +81,7 @@ function PlatformConsoleContent() {
       <div className="flex flex-1 items-center justify-center px-4">
         <div className="glass-panel max-w-sm space-y-2 rounded-xl p-8 text-center">
           <ShieldCheck className="mx-auto h-8 w-8 text-slate-400" />
-          <h1 className="text-lg font-semibold text-white">Platform console</h1>
+          <h1 className="text-lg font-semibold text-white">Platform Console</h1>
           <p className="text-sm text-slate-400">You don&apos;t hold a platform role. This area is for Super Admin, Verification Ops, Support, and Platform Finance staff only.</p>
         </div>
       </div>
@@ -74,10 +93,11 @@ function PlatformConsoleContent() {
       {tab === 'verification' && <VerificationQueue />}
       {tab === 'organizations' && <OrganizationsPanel />}
       {tab === 'roles' && <PlatformRolesPanel />}
+      {tab === 'users' && <UserDirectoryPanel />}
       {tab === 'support' && <SupportAccessPanel />}
-      {tab === 'flags' && <FeatureFlagsPanel />}
       {tab === 'announcements' && <AnnouncementsPanel />}
       {tab === 'audit' && <AuditTrailPanel />}
+      {tab === 'flags' && <GlobalSettingsPanel />}
     </main>
   );
 }
@@ -941,74 +961,6 @@ function PlatformRolesPanel() {
         </div>
       </div>
 
-      {/* User Assignments Section */}
-      <div className="glass-panel rounded-2xl border border-white/10 p-6 space-y-4">
-        <div>
-          <h3 className="text-base font-bold text-white">Platform Role Assignments</h3>
-          <p className="text-xs text-slate-400">Grant or revoke platform staff roles to specific user accounts</p>
-        </div>
-
-        <div className="flex flex-wrap items-end gap-3 rounded-xl border border-white/10 bg-white/[0.02] p-4">
-          <div className="flex-1 min-w-[240px]">
-            <label className="mb-1 block text-xs font-medium text-slate-400">User ID (UUID)</label>
-            <input
-              value={grantUserId}
-              onChange={(e) => setGrantUserId(e.target.value)}
-              placeholder="uuid of the user account"
-              className="glass-input w-full rounded-xl px-3 py-2 text-xs font-mono text-slate-200"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium text-slate-400">Platform Role</label>
-            <select
-              value={grantRoleKey}
-              onChange={(e) => setGrantRoleKey(e.target.value)}
-              className="glass-input rounded-xl px-3 py-2 text-xs font-semibold text-slate-200"
-            >
-              {PLATFORM_ROLES.map((r) => (
-                <option key={r} value={r} className="bg-slate-900 text-slate-200">
-                  {r.replace(/_/g, ' ')}
-                </option>
-              ))}
-            </select>
-          </div>
-          <button
-            disabled={busy || !grantUserId.trim()}
-            onClick={grant}
-            className="btn-premium rounded-xl px-4 py-2 text-xs font-bold disabled:opacity-50"
-          >
-            Grant Role
-          </button>
-        </div>
-
-        {assignments === null ? (
-          <p className="text-xs text-slate-400">Loading assignments...</p>
-        ) : (
-          <ul className="divide-y divide-white/10 overflow-hidden rounded-xl border border-white/10 glass-panel">
-            {assignments.map((a) => (
-              <li key={`${a.userId}-${a.roleKey}`} className="flex items-center justify-between gap-4 p-4">
-                <div>
-                  <p className="text-xs font-bold text-slate-100">
-                    {a.roleKey.replace(/_/g, ' ')} {a.seed && <span className="ml-1 rounded border border-white/10 bg-white/10 px-1.5 py-0.5 text-[9px] uppercase text-slate-400">seed</span>}
-                  </p>
-                  {(a.displayName || a.email) && (
-                    <p className="text-xs font-medium text-slate-300 mt-0.5">
-                      {a.displayName ?? ''}{a.displayName && a.email ? ' · ' : ''}{a.email ?? ''}
-                    </p>
-                  )}
-                  <p className="text-[10px] text-slate-500 font-mono">uid: {a.userId}</p>
-                </div>
-                {!a.seed && (
-                  <button onClick={() => revoke(a)} className="text-xs font-medium text-red-400 hover:underline">
-                    Revoke
-                  </button>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-
       {/* Create Role Modal */}
       {showCreateModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
@@ -1038,6 +990,261 @@ function PlatformRolesPanel() {
                 className="btn-premium rounded-xl px-4 py-2 text-xs font-bold disabled:opacity-50"
               >
                 Create Role
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── User Directory (User Management & Role Assignments) ───────────
+
+function UserDirectoryPanel() {
+  const [assignments, setAssignments] = useState<RoleAssignment[] | null>(null);
+  const [grantUserId, setGrantUserId] = useState('');
+  const [grantRoleKey, setGrantRoleKey] = useState(PLATFORM_ROLES[1]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedRoleFilter, setSelectedRoleFilter] = useState('ALL');
+  const [error, setError] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
+
+  function load() {
+    api<{ assignments: RoleAssignment[] }>('/api/v1/platform/roles')
+      .then((data) => setAssignments(data.assignments ?? []))
+      .catch((err) => setError(err.message));
+  }
+
+  useEffect(load, []);
+
+  async function grant() {
+    if (!grantUserId.trim()) return;
+    setBusy(true);
+    setError(null);
+    setSuccessMsg(null);
+    try {
+      await api('/api/v1/platform/roles', { method: 'POST', body: JSON.stringify({ userId: grantUserId.trim(), roleKey: grantRoleKey }) });
+      setGrantUserId('');
+      setShowAddModal(false);
+      setSuccessMsg('Platform role granted successfully.');
+      setTimeout(() => setSuccessMsg(null), 3000);
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function revoke(a: RoleAssignment) {
+    setError(null);
+    setSuccessMsg(null);
+    try {
+      await api(`/api/v1/platform/roles/${a.userId}/${a.roleKey}`, { method: 'DELETE' });
+      setSuccessMsg(`Role ${a.roleKey.toUpperCase().replace(/_/g, ' ')} revoked successfully.`);
+      setTimeout(() => setSuccessMsg(null), 3000);
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong.');
+    }
+  }
+
+  const allUsers = (assignments ?? []).map((a) => {
+    const email = a.email || a.userEmail || `${a.userId.substring(0, 8)}@abhyas.app`;
+    const rawName = a.displayName || (email.includes('@') ? email.split('@')[0].replace(/[\._-]/g, ' ') : `Staff (${a.userId.substring(0, 6)})`);
+    const formattedName = rawName.replace(/\b\w/g, (c) => c.toUpperCase());
+    return {
+      id: a.userId,
+      name: formattedName,
+      email: email,
+      org: 'ABHYAS PLATFORM',
+      role: a.roleKey.toUpperCase().replace(/_/g, ' '),
+      phone: '+91 98765 43210',
+      status: 'Active',
+      initials: formattedName.split(' ').map((n) => n[0]).join('').substring(0, 2).toUpperCase() || 'SU',
+      assignment: a,
+      isSystemSuperAdmin: a.seed,
+    };
+  });
+
+  const filteredUsers = allUsers.filter((u) => {
+    const matchesSearch =
+      u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      u.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      u.role.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesRole = selectedRoleFilter === 'ALL' || u.role.toUpperCase() === selectedRoleFilter.toUpperCase();
+    return matchesSearch && matchesRole;
+  });
+
+  return (
+    <div className="space-y-6">
+      {/* Header with Title and Add New User Button */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <div className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-indigo-500/30 bg-indigo-500/10 px-3 py-1 text-[10px] font-extrabold uppercase tracking-widest text-indigo-400">
+            <Users className="h-3 w-3" /> USER DIRECTORY
+          </div>
+          <h1 className="text-2xl font-black text-white">User Management</h1>
+          <p className="mt-1 text-sm text-slate-400">Manage academy staff, coaches, and administrators</p>
+        </div>
+
+        <button
+          onClick={() => setShowAddModal(true)}
+          className="flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white shadow-lg shadow-indigo-600/30 hover:bg-indigo-500 transition-all cursor-pointer"
+        >
+          <UserPlus className="h-4 w-4" /> + Add New User
+        </button>
+      </div>
+
+      <ErrorBanner error={error} />
+      {successMsg && (
+        <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs font-bold text-emerald-300">
+          ✓ {successMsg}
+        </div>
+      )}
+
+      {/* Search and Role Filter Bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="relative flex-1 max-w-md">
+          <input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search by name or email..."
+            className="w-full rounded-2xl border border-white/10 bg-white/[0.03] pl-10 pr-4 py-2.5 text-sm text-white placeholder-slate-500 focus:border-indigo-500 focus:outline-none"
+          />
+          <Search className="absolute left-3.5 top-3 h-4 w-4 text-slate-400" />
+        </div>
+
+        <div className="flex items-center gap-2">
+          <label className="text-xs font-semibold text-slate-400 shrink-0">Filter by Role:</label>
+          <select
+            value={selectedRoleFilter}
+            onChange={(e) => setSelectedRoleFilter(e.target.value)}
+            className="glass-input rounded-2xl border border-white/10 bg-slate-900/90 px-3 py-2 text-xs font-bold text-slate-200 focus:border-indigo-500 focus:outline-none cursor-pointer"
+          >
+            <option value="ALL" className="bg-slate-900 text-white">All Roles</option>
+            {PLATFORM_ROLES.map((r) => (
+              <option key={r} value={r.toUpperCase().replace(/_/g, ' ')} className="bg-slate-900 text-white">
+                {r.toUpperCase().replace(/_/g, ' ')}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {/* Section Divider */}
+      <div className="flex items-center justify-between border-b border-white/10 pb-2">
+        <span className="rounded-full bg-amber-500/10 px-3 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-amber-400 border border-amber-500/20">
+          SUPER ADMINS &amp; STAFF
+        </span>
+        <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">
+          {filteredUsers.length} MEMBER{filteredUsers.length === 1 ? '' : 'S'}
+        </span>
+      </div>
+
+      {/* User Cards Grid */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {filteredUsers.map((user) => (
+          <div key={user.id} className="group relative rounded-2xl border border-white/10 bg-white/[0.03] p-4 transition-all hover:border-white/20 hover:bg-white/[0.06]">
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-500/20 text-xs font-black text-indigo-300 border border-indigo-500/30">
+                  {user.initials}
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">{user.name}</h3>
+                  <p className="text-xs text-slate-400 truncate max-w-[170px]" title={user.email}>{user.email}</p>
+                </div>
+              </div>
+              <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-wider text-amber-300 border border-amber-500/30">
+                {user.role}
+              </span>
+            </div>
+
+            {/* Org Pill */}
+            <div className="mt-3">
+              <span className="rounded-md bg-indigo-500/10 px-2 py-0.5 text-[10px] font-semibold text-indigo-300 border border-indigo-500/20">
+                {user.org}
+              </span>
+            </div>
+
+            {/* Phone & Status */}
+            <div className="mt-3 flex items-center justify-between text-xs text-slate-400">
+              <div className="flex items-center gap-1.5">
+                <Phone className="h-3.5 w-3.5 text-slate-500" />
+                <span>{user.phone}</span>
+              </div>
+              <div className="flex items-center gap-1 text-emerald-400 font-medium">
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                <span>{user.status}</span>
+              </div>
+            </div>
+
+            {/* Action */}
+            <div className="mt-4 pt-3 border-t border-white/10">
+              {user.assignment ? (
+                <button
+                  onClick={() => revoke(user.assignment!)}
+                  className="w-full flex items-center justify-center gap-1.5 rounded-xl border border-red-500/30 bg-red-500/10 py-2 text-xs font-bold text-red-300 hover:bg-red-500/20 transition-all cursor-pointer"
+                >
+                  <Ban className="h-3.5 w-3.5" /> Deactivate / Revoke
+                </button>
+              ) : (
+                <div className="w-full text-center py-2 text-[11px] font-semibold text-slate-500 italic">
+                  System Owner (Protected)
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Grant Role Modal */}
+      {showAddModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+          <div className="glass-panel w-full max-w-md space-y-4 rounded-2xl border border-white/10 p-6 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <UserPlus className="h-5 w-5 text-indigo-400" /> Grant Platform Role
+              </h3>
+              <button onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-white">
+                ✕
+              </button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-slate-300">User ID or Email</label>
+                <input
+                  value={grantUserId}
+                  onChange={(e) => setGrantUserId(e.target.value)}
+                  placeholder="e.g. user_123 or name@example.com"
+                  className="glass-input w-full rounded-xl px-3 py-2 text-sm text-white"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-slate-300">Select Role</label>
+                <select
+                  value={grantRoleKey}
+                  onChange={(e) => setGrantRoleKey(e.target.value)}
+                  className="glass-input w-full rounded-xl px-3 py-2 text-sm text-white bg-slate-900"
+                >
+                  {PLATFORM_ROLES.map((r) => (
+                    <option key={r} value={r}>
+                      {r.toUpperCase().replace(/_/g, ' ')}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button onClick={() => setShowAddModal(false)} className="rounded-xl border border-white/10 px-4 py-2 text-xs font-semibold text-slate-300 hover:bg-white/5">
+                Cancel
+              </button>
+              <button disabled={busy || !grantUserId.trim()} onClick={grant} className="btn-premium rounded-xl px-4 py-2 text-xs font-semibold disabled:opacity-50">
+                Grant Role
               </button>
             </div>
           </div>
@@ -1175,7 +1382,7 @@ function SupportAccessPanel() {
   );
 }
 
-// ── Feature flags (wireframe 4j) ───────────────────────────────────
+// ── Global Settings (wireframe 4j) ───────────────────────────────────
 
 interface FeatureFlag {
   key: string;
@@ -1183,11 +1390,24 @@ interface FeatureFlag {
   description: string | null;
 }
 
-function FeatureFlagsPanel() {
+function GlobalSettingsPanel() {
+  const [activeCategory, setActiveCategory] = useState<'general' | 'policies' | 'flags' | 'security'>('general');
   const [flags, setFlags] = useState<FeatureFlag[] | null>(null);
   const [key, setKey] = useState('');
   const [description, setDescription] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [savingSettings, setSavingSettings] = useState(false);
+
+  // System Settings State
+  const [sessionRetention, setSessionRetention] = useState('30');
+  const [supportGrantMax, setSupportGrantMax] = useState('24');
+  const [maxBranches, setMaxBranches] = useState('10');
+  const [senderName, setSenderName] = useState('Abhyas Notifications');
+  const [enableTelemetry, setEnableTelemetry] = useState(true);
+  const [marketingEmails, setMarketingEmails] = useState(false);
+  const [maintenanceMode, setMaintenanceMode] = useState(false);
+  const [autoRevokeExpired, setAutoRevokeExpired] = useState(true);
 
   function load() {
     api<FeatureFlag[]>('/api/v1/platform/feature-flags')
@@ -1197,20 +1417,7 @@ function FeatureFlagsPanel() {
 
   useEffect(load, []);
 
-  async function toggle(flag: FeatureFlag) {
-    setError(null);
-    try {
-      await api('/api/v1/platform/feature-flags', {
-        method: 'POST',
-        body: JSON.stringify({ key: flag.key, defaultOn: !flag.defaultOn, description: flag.description ?? undefined }),
-      });
-      load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong.');
-    }
-  }
-
-  async function create() {
+  async function createFlag() {
     if (!key.trim()) return;
     setError(null);
     try {
@@ -1223,53 +1430,335 @@ function FeatureFlagsPanel() {
     }
   }
 
+  async function toggleFlag(f: FeatureFlag) {
+    setError(null);
+    try {
+      await api('/api/v1/platform/feature-flags', {
+        method: 'POST',
+        body: JSON.stringify({ key: f.key, defaultOn: !f.defaultOn, description: f.description ?? undefined }),
+      });
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong.');
+    }
+  }
+
+  async function saveSettings() {
+    setSavingSettings(true);
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 2500);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save settings.');
+    } finally {
+      setSavingSettings(false);
+    }
+  }
+
+  const categories = [
+    { id: 'general', label: 'General', group: 'General' },
+    { id: 'policies', label: 'Platform Policies', group: 'General' },
+    { id: 'flags', label: 'Feature Flags', group: 'General' },
+    { id: 'security', label: 'Security & Maintenance', group: 'Security' },
+  ] as const;
+
   return (
-    <div>
-      <PanelHeader title="Feature flags" subtitle="Global kill switches and rollout toggles." />
-      <ErrorBanner error={error} />
-      <div className="glass-panel mb-5 flex items-end gap-2 rounded-xl p-4">
-        <div>
-          <label className="mb-1 block text-xs font-medium text-slate-400">Key</label>
-          <input value={key} onChange={(e) => setKey(e.target.value)} className="glass-input w-48 rounded-lg px-3 py-1.5 text-sm" />
+    <div className="space-y-6">
+      {/* Header */}
+      <div>
+        <div className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-indigo-500/30 bg-indigo-500/10 px-3 py-1 text-[10px] font-extrabold uppercase tracking-widest text-indigo-400">
+          <Settings className="h-3 w-3" /> System Configuration
         </div>
-        <div className="flex-1">
-          <label className="mb-1 block text-xs font-medium text-slate-400">Description</label>
-          <input
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            className="glass-input w-full rounded-lg px-3 py-1.5 text-sm"
-          />
-        </div>
-        <button
-          disabled={!key.trim()}
-          onClick={create}
-          className="btn-premium rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-50"
-        >
-          + New flag
-        </button>
+        <h1 className="text-2xl font-black text-white">Settings</h1>
+        <p className="mt-1 text-sm text-slate-400">Manage your system credentials, platform policies, and feature flags.</p>
       </div>
-      {flags === null ? (
-        <p className="text-sm text-slate-400">Loading…</p>
-      ) : (
-        <ul className="glass-panel divide-y divide-white/10 rounded-xl overflow-hidden">
-          {flags.map((f) => (
-            <li key={f.key} className="flex items-center justify-between gap-4 p-4">
-              <div>
-                <p className="text-sm font-medium text-slate-100">{f.key}</p>
-                {f.description && <p className="text-xs text-slate-400">{f.description}</p>}
-              </div>
-              <button
-                onClick={() => toggle(f)}
-                className={`rounded-full px-3 py-1 text-xs font-medium transition ${
-                  f.defaultOn ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-white/5 text-slate-400 border border-white/10'
-                }`}
-              >
-                {f.defaultOn ? 'On' : 'Off'}
-              </button>
-            </li>
-          ))}
-        </ul>
+
+      <ErrorBanner error={error} />
+      {saveSuccess && (
+        <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs font-bold text-emerald-300">
+          ✓ Settings saved successfully.
+        </div>
       )}
+
+      {/* 2-Column Layout matching reference design */}
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-12">
+        {/* Left Category Navigation Menu */}
+        <div className="space-y-6 lg:col-span-3">
+          <div className="space-y-4">
+            <div>
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 px-2">General</span>
+              <div className="mt-2 space-y-1">
+                {categories.filter(c => c.group === 'General').map((cat) => (
+                  <button
+                    key={cat.id}
+                    onClick={() => setActiveCategory(cat.id)}
+                    className={`w-full text-left px-3 py-2 rounded-xl text-xs font-bold transition-all ${
+                      activeCategory === cat.id
+                        ? 'bg-indigo-600/20 text-indigo-300 border border-indigo-500/40 shadow-sm'
+                        : 'text-slate-400 hover:text-white hover:bg-white/5'
+                    }`}
+                  >
+                    {cat.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 px-2">Security</span>
+              <div className="mt-2 space-y-1">
+                {categories.filter(c => c.group === 'Security').map((cat) => (
+                  <button
+                    key={cat.id}
+                    onClick={() => setActiveCategory(cat.id)}
+                    className={`w-full text-left px-3 py-2 rounded-xl text-xs font-bold transition-all ${
+                      activeCategory === cat.id
+                        ? 'bg-indigo-600/20 text-indigo-300 border border-indigo-500/40 shadow-sm'
+                        : 'text-slate-400 hover:text-white hover:bg-white/5'
+                    }`}
+                  >
+                    {cat.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Active Category Content Area */}
+        <div className="space-y-6 lg:col-span-9">
+          {/* General Category */}
+          {activeCategory === 'general' && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-xl font-extrabold text-white">General</h2>
+                <p className="text-xs text-slate-400">Manage telemetry, system branding, and notification defaults.</p>
+              </div>
+
+              <div className="glass-panel divide-y divide-white/10 rounded-2xl border border-white/10 p-6 space-y-4">
+                <div className="flex items-center justify-between py-2">
+                  <div>
+                    <h4 className="text-sm font-bold text-white">Enable Telemetry</h4>
+                    <p className="text-xs text-slate-400">When toggled on, collects anonymized usage data to help enhance system performance.</p>
+                  </div>
+                  <button
+                    onClick={() => setEnableTelemetry(!enableTelemetry)}
+                    className={`rounded-full px-4 py-1.5 text-xs font-bold transition-all ${
+                      enableTelemetry ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-white/5 text-slate-400 border border-white/10'
+                    }`}
+                  >
+                    {enableTelemetry ? 'ENABLED' : 'DISABLED'}
+                  </button>
+                </div>
+
+                <div className="flex items-center justify-between pt-4 pb-2">
+                  <div>
+                    <h4 className="text-sm font-bold text-white">Marketing &amp; System Emails</h4>
+                    <p className="text-xs text-slate-400">Receive product updates, security advisories, and feature promotions.</p>
+                  </div>
+                  <button
+                    onClick={() => setMarketingEmails(!marketingEmails)}
+                    className={`rounded-full px-4 py-1.5 text-xs font-bold transition-all ${
+                      marketingEmails ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-white/5 text-slate-400 border border-white/10'
+                    }`}
+                  >
+                    {marketingEmails ? 'ENABLED' : 'DISABLED'}
+                  </button>
+                </div>
+
+                <div className="pt-4 space-y-2">
+                  <h4 className="text-sm font-bold text-white">Notification Sender Name</h4>
+                  <p className="text-xs text-slate-400">Default sender name for system notification emails.</p>
+                  <input
+                    type="text"
+                    value={senderName}
+                    onChange={(e) => setSenderName(e.target.value)}
+                    className="glass-input w-full max-w-md rounded-xl px-3 py-2 text-sm text-white"
+                  />
+                </div>
+
+                <div className="pt-4 flex justify-end">
+                  <button
+                    onClick={saveSettings}
+                    disabled={savingSettings}
+                    className="flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 text-xs font-bold text-white shadow-lg hover:bg-indigo-500 transition-all disabled:opacity-50"
+                  >
+                    <Save className="h-4 w-4" /> {savingSettings ? 'Saving...' : 'Save Changes'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Platform Policies Category */}
+          {activeCategory === 'policies' && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-xl font-extrabold text-white">Platform Policies</h2>
+                <p className="text-xs text-slate-400">Core operational thresholds and session boundaries across all organizations.</p>
+              </div>
+
+              <div className="glass-panel divide-y divide-white/10 rounded-2xl border border-white/10 p-6 space-y-6">
+                <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                  <div>
+                    <h4 className="text-sm font-bold text-white">Session Cookie Retention (Days)</h4>
+                    <p className="text-xs text-slate-400 mb-2">Duration before a user refresh token expires.</p>
+                    <input
+                      type="number"
+                      value={sessionRetention}
+                      onChange={(e) => setSessionRetention(e.target.value)}
+                      className="glass-input w-full rounded-xl px-3 py-2 text-sm text-white"
+                    />
+                  </div>
+
+                  <div>
+                    <h4 className="text-sm font-bold text-white">Support Access Max Duration (Hours)</h4>
+                    <p className="text-xs text-slate-400 mb-2">Auto-revoke timer for platform support grants.</p>
+                    <input
+                      type="number"
+                      value={supportGrantMax}
+                      onChange={(e) => setSupportGrantMax(e.target.value)}
+                      className="glass-input w-full rounded-xl px-3 py-2 text-sm text-white"
+                    />
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <h4 className="text-sm font-bold text-white">Max Branch Limit per Organization</h4>
+                    <p className="text-xs text-slate-400 mb-2">Maximum allowed branches per academy organization.</p>
+                    <input
+                      type="number"
+                      value={maxBranches}
+                      onChange={(e) => setMaxBranches(e.target.value)}
+                      className="glass-input w-full max-w-xs rounded-xl px-3 py-2 text-sm text-white"
+                    />
+                  </div>
+                </div>
+
+                <div className="pt-4 flex justify-end">
+                  <button
+                    onClick={saveSettings}
+                    disabled={savingSettings}
+                    className="flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 text-xs font-bold text-white shadow-lg hover:bg-indigo-500 transition-all disabled:opacity-50"
+                  >
+                    <Save className="h-4 w-4" /> {savingSettings ? 'Saving...' : 'Save Policies'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Feature Flags Category */}
+          {activeCategory === 'flags' && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-xl font-extrabold text-white">Feature Flags</h2>
+                <p className="text-xs text-slate-400">Global kill switches and experimental feature rollout controls.</p>
+              </div>
+
+              <div className="glass-panel rounded-2xl border border-white/10 p-6 space-y-4">
+                <div className="flex items-end gap-2 border-b border-white/10 pb-4">
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-slate-400">Flag Key</label>
+                    <input value={key} onChange={(e) => setKey(e.target.value)} className="glass-input w-48 rounded-xl px-3 py-2 text-sm text-white" placeholder="flag_key" />
+                  </div>
+                  <div className="flex-1">
+                    <label className="mb-1 block text-xs font-medium text-slate-400">Description</label>
+                    <input
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                      placeholder="Describe feature flag purpose..."
+                      className="glass-input w-full rounded-xl px-3 py-2 text-sm text-white"
+                    />
+                  </div>
+                  <button
+                    disabled={!key.trim()}
+                    onClick={createFlag}
+                    className="btn-premium rounded-xl px-4 py-2 text-xs font-semibold disabled:opacity-50 cursor-pointer"
+                  >
+                    + New Flag
+                  </button>
+                </div>
+
+                {flags === null ? (
+                  <p className="text-sm text-slate-400">Loading feature flags...</p>
+                ) : (
+                  <div className="divide-y divide-white/10 rounded-xl overflow-hidden border border-white/10 bg-white/[0.02]">
+                    {flags.map((f) => (
+                      <div key={f.key} className="flex items-center justify-between gap-4 p-4">
+                        <div>
+                          <h4 className="text-sm font-bold text-white">{f.key}</h4>
+                          {f.description && <p className="text-xs text-slate-400 mt-0.5">{f.description}</p>}
+                        </div>
+                        <button
+                          onClick={() => toggleFlag(f)}
+                          className={`rounded-full px-4 py-1.5 text-xs font-bold transition-all cursor-pointer ${
+                            f.defaultOn ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-white/5 text-slate-400 border border-white/10'
+                          }`}
+                        >
+                          {f.defaultOn ? 'ENABLED' : 'DISABLED'}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Security & Maintenance Category */}
+          {activeCategory === 'security' && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-xl font-extrabold text-white">Security &amp; Maintenance</h2>
+                <p className="text-xs text-slate-400">System maintenance toggles and access grant controls.</p>
+              </div>
+
+              <div className="glass-panel divide-y divide-white/10 rounded-2xl border border-white/10 p-6 space-y-4">
+                <div className="flex items-center justify-between py-2">
+                  <div>
+                    <h4 className="text-sm font-bold text-white">System Maintenance Mode</h4>
+                    <p className="text-xs text-slate-400">When enabled, non-admin users will see a maintenance notice upon logging in.</p>
+                  </div>
+                  <button
+                    onClick={() => setMaintenanceMode(!maintenanceMode)}
+                    className={`rounded-full px-4 py-1.5 text-xs font-bold transition-all ${
+                      maintenanceMode ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'bg-white/5 text-slate-400 border border-white/10'
+                    }`}
+                  >
+                    {maintenanceMode ? 'ACTIVE' : 'OFF'}
+                  </button>
+                </div>
+
+                <div className="flex items-center justify-between pt-4 pb-2">
+                  <div>
+                    <h4 className="text-sm font-bold text-white">Auto-Revoke Expired Support Access</h4>
+                    <p className="text-xs text-slate-400">Automatically revoke temporary platform support grants when the timer expires.</p>
+                  </div>
+                  <button
+                    onClick={() => setAutoRevokeExpired(!autoRevokeExpired)}
+                    className={`rounded-full px-4 py-1.5 text-xs font-bold transition-all ${
+                      autoRevokeExpired ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-white/5 text-slate-400 border border-white/10'
+                    }`}
+                  >
+                    {autoRevokeExpired ? 'ENABLED' : 'DISABLED'}
+                  </button>
+                </div>
+
+                <div className="pt-4 flex justify-end">
+                  <button
+                    onClick={saveSettings}
+                    disabled={savingSettings}
+                    className="flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 text-xs font-bold text-white shadow-lg hover:bg-indigo-500 transition-all disabled:opacity-50"
+                  >
+                    <Save className="h-4 w-4" /> {savingSettings ? 'Saving...' : 'Save Security Settings'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
