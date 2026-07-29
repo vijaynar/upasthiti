@@ -15,6 +15,7 @@
 import { useEffect, useState } from 'react';
 import { CalendarCheck, Camera, Check, ScanFace, UserPlus, X } from 'lucide-react';
 import { FaceScanner } from './face-scanner';
+import { PageHeader } from '@/components/PageHeader';
 
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, { ...init, headers: { 'Content-Type': 'application/json', ...init?.headers } });
@@ -277,15 +278,17 @@ export default function AttendancePage() {
   return (
     <div className="p-8">
       <div className="mx-auto max-w-4xl space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="mb-1 text-lg font-semibold text-white">Attendance</h1>
-            <p className="text-sm text-slate-400">Mark, scan, and review attendance for the active workspace.</p>
-          </div>
-          <button onClick={selfCheckIn} className="btn-secondary flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-xs font-medium text-slate-300 hover:bg-white/10">
-            <Check className="h-3.5 w-3.5" /> Self check-in
-          </button>
-        </div>
+        <PageHeader
+          badge="Attendance"
+          badgeIcon={CalendarCheck}
+          title="Attendance"
+          description="Mark, scan, and review attendance for the active workspace."
+          action={
+            <button onClick={selfCheckIn} className="btn-secondary flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-xs font-medium text-slate-300 hover:bg-white/10">
+              <Check className="h-3.5 w-3.5" /> Self check-in
+            </button>
+          }
+        />
 
         {error && <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-400">{error}</div>}
         {notice && <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm text-emerald-400">{notice}</div>}

@@ -6,6 +6,7 @@
 
 import { useEffect, useState } from 'react';
 import { Briefcase, CalendarPlus, FileUp, IndianRupee, Trash2 } from 'lucide-react';
+import { PageHeader } from '@/components/PageHeader';
 
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, { ...init, headers: { 'Content-Type': 'application/json', ...init?.headers } });
@@ -87,16 +88,17 @@ export default function MyStaffPage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-8">
-      <div className="mb-6 flex items-center gap-2">
-        <Briefcase className="h-5 w-5 text-indigo-400" />
-        <div>
-          <h1 className="text-lg font-semibold text-white">My HR</h1>
-          <p className="text-xs text-slate-500">
+    <div className="mx-auto max-w-3xl p-8">
+      <PageHeader
+        badge="My HR"
+        badgeIcon={Briefcase}
+        title="My HR"
+        description={
+          <>
             {profile.designation || profile.employmentType.replace('_', ' ')} · <span className="uppercase">{profile.status}</span>
-          </p>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       <div className="space-y-6">
         <AvailabilityCard />

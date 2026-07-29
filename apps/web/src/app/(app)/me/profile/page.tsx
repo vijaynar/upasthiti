@@ -10,6 +10,7 @@
 import { useEffect, useState } from 'react';
 import { UserRound, Mail, ShieldCheck, Briefcase } from 'lucide-react';
 import CoachProfileWizard from '@/components/CoachProfileWizard';
+import { PageHeader } from '@/components/PageHeader';
 
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, { ...init, headers: { 'Content-Type': 'application/json', ...init?.headers } });
@@ -208,10 +209,12 @@ export default function MyProfilePage() {
 
   return (
     <div className="mx-auto max-w-2xl space-y-6 p-8">
-      <div>
-        <h1 className="text-lg font-semibold text-white">My Profile</h1>
-        <p className="mt-1 text-sm text-slate-400">Your identity and account settings, shared across every organization.</p>
-      </div>
+      <PageHeader
+        badge="My Account"
+        badgeIcon={UserRound}
+        title="My Profile"
+        description="Your identity and account settings, shared across every organization."
+      />
       <IdentityCard />
       <AuthMethodsCard />
       {isCoach && <CoachProfileCard />}

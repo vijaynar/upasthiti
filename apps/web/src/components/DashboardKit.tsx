@@ -23,16 +23,27 @@ export function DashboardHeader({
   title,
   subtitle,
   badge,
+  icon: Icon,
   action,
 }: {
   title: string;
   subtitle: string;
   badge?: string;
+  icon?: LucideIcon;
   action?: React.ReactNode;
 }) {
   return (
-    <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
+    <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
       <div>
+        {badge && (
+          <div
+            className="mb-2 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[10px] font-extrabold uppercase tracking-widest"
+            style={{ color: 'var(--primary)', backgroundColor: 'var(--overlay-sm)', border: '1px solid var(--panel-border)' }}
+          >
+            {Icon && <Icon className="h-3 w-3" />}
+            {badge}
+          </div>
+        )}
         <h1 className="text-2xl font-black tracking-tight" style={{ color: 'var(--foreground)' }}>
           {title}
         </h1>
@@ -40,16 +51,7 @@ export function DashboardHeader({
           {subtitle}
         </p>
       </div>
-      {action ? (
-        action
-      ) : badge ? (
-        <span
-          className="inline-flex items-center rounded-full px-3 py-1 text-[11px] font-extrabold uppercase tracking-widest"
-          style={{ color: 'var(--primary)', backgroundColor: 'var(--overlay-sm)', border: '1px solid var(--panel-border)' }}
-        >
-          {badge}
-        </span>
-      ) : null}
+      {action}
     </div>
   );
 }

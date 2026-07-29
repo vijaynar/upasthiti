@@ -10,6 +10,7 @@ import { useEffect, useState } from 'react';
 import { Briefcase, Calendar, CheckCircle2, ChevronDown, ChevronRight, FileText, IndianRupee, UserPlus, XCircle } from 'lucide-react';
 import CoachProfileWizard from '@/components/CoachProfileWizard';
 import InviteCoachPanel from '@/components/InviteCoachPanel';
+import { PageHeader } from '@/components/PageHeader';
 
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, { ...init, headers: { 'Content-Type': 'application/json', ...init?.headers } });
@@ -109,10 +110,12 @@ export default function StaffHrPage() {
 
   return (
     <div className="p-8">
-      <div className="mb-6 flex items-center gap-2">
-        <Briefcase className="h-5 w-5 text-indigo-400" />
-        <h1 className="text-lg font-semibold text-white">Staff HR</h1>
-      </div>
+      <PageHeader
+        badge="Human Resources"
+        badgeIcon={Briefcase}
+        title="Staff HR"
+        description="Directory, document review, availability, leave decisions, and pay configuration."
+      />
 
       <div className="mb-6 flex gap-2 border-b border-white/10">
         {(['directory', 'invite', 'leaves'] as Tab[]).map((t) => (

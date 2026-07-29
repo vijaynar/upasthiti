@@ -8,6 +8,7 @@
 
 import { useEffect, useState } from 'react';
 import { Store, Users2, MessageSquareText, ExternalLink } from 'lucide-react';
+import { PageHeader } from '@/components/PageHeader';
 
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, { ...init, headers: { 'Content-Type': 'application/json', ...init?.headers } });
@@ -132,12 +133,7 @@ export default function MarketplacePage() {
   return (
     <div className="p-8">
       <div className="mx-auto max-w-4xl space-y-6">
-        <div>
-          <h1 className="mb-1 flex items-center gap-2 text-lg font-semibold text-white">
-            <Store className="h-5 w-5 text-indigo-400" /> Marketplace
-          </h1>
-          <p className="text-sm text-slate-400">Your public listing, incoming leads, and reviews.</p>
-        </div>
+        <PageHeader badge="Marketplace" badgeIcon={Store} title="Marketplace" description="Your public listing, incoming leads, and reviews." />
 
         {error && <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-400">{error}</div>}
         {notice && <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm text-emerald-400">{notice}</div>}

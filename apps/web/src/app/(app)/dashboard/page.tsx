@@ -289,7 +289,7 @@ export default function DashboardPage() {
   if (!orgId) {
     return (
       <div className="p-8">
-        <DashboardHeader title="Dashboard" subtitle="Select a workspace to see its dashboard." />
+        <DashboardHeader badge="Overview" icon={LayoutGrid} title="Dashboard" subtitle="Select a workspace to see its dashboard." />
         <Link href="/workspace" className="btn-premium inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold text-white">
           <LayoutGrid className="h-4 w-4" /> Choose a workspace
         </Link>
@@ -302,7 +302,7 @@ export default function DashboardPage() {
       // A member with no management/coaching role — point them at their own surfaces.
       return (
         <div className="p-8">
-          <DashboardHeader title="Welcome" subtitle="Here's where to find what matters to you." />
+          <DashboardHeader badge="Overview" icon={LayoutGrid} title="Welcome" subtitle="Here's where to find what matters to you." />
           <div className="grid gap-4 sm:grid-cols-3">
             <StatCard label="My schedule" value="View" icon={CalendarClock} tone="primary" href="/me/progress" />
             <StatCard label="My progress" value="View" icon={TrendingUp} tone="accent" href="/me/progress" />
@@ -319,34 +319,32 @@ export default function DashboardPage() {
 
   return (
     <div className="p-6 md:p-8">
-      <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-black tracking-tight" style={{ color: 'var(--foreground)' }}>
-            Dashboard
-          </h1>
-          <p className="mt-1 text-sm" style={{ color: 'var(--foreground-muted)' }}>
-            {subtitle}
-          </p>
-        </div>
-        {isMgmt && isCoach && (
-          <div className="flex gap-1 rounded-xl p-1" style={{ backgroundColor: 'var(--overlay-sm)' }}>
-            {(['owner', 'coach'] as const).map((v) => (
-              <button
-                key={v}
-                onClick={() => setView(v)}
-                className="rounded-lg px-3 py-1.5 text-xs font-bold capitalize transition-all"
-                style={
-                  view === v
-                    ? { backgroundColor: 'var(--primary)', color: '#fff' }
-                    : { color: 'var(--foreground-muted)' }
-                }
-              >
-                {v === 'owner' ? 'Management' : 'Coaching'}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
+      <DashboardHeader
+        badge="Overview"
+        icon={LayoutGrid}
+        title="Dashboard"
+        subtitle={subtitle}
+        action={
+          isMgmt && isCoach ? (
+            <div className="flex gap-1 rounded-xl p-1" style={{ backgroundColor: 'var(--overlay-sm)' }}>
+              {(['owner', 'coach'] as const).map((v) => (
+                <button
+                  key={v}
+                  onClick={() => setView(v)}
+                  className="rounded-lg px-3 py-1.5 text-xs font-bold capitalize transition-all"
+                  style={
+                    view === v
+                      ? { backgroundColor: 'var(--primary)', color: '#fff' }
+                      : { color: 'var(--foreground-muted)' }
+                  }
+                >
+                  {v === 'owner' ? 'Management' : 'Coaching'}
+                </button>
+              ))}
+            </div>
+          ) : undefined
+        }
+      />
 
       {view === 'owner' ? <OwnerView orgId={orgId} /> : <CoachView orgId={orgId} />}
     </div>

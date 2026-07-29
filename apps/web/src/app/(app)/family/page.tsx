@@ -9,6 +9,7 @@
 import { useEffect, useState } from 'react';
 import { Users, UserPlus, Search, CheckCircle2, AlertCircle, Fingerprint, Copy, Wallet, TrendingUp } from 'lucide-react';
 import { ProgressTrendCards, type MetricDefinition, type ProgressEntry } from '@/components/ProgressTrends';
+import { PageHeader } from '@/components/PageHeader';
 
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, { ...init, headers: { 'Content-Type': 'application/json', ...init?.headers } });
@@ -458,10 +459,7 @@ export default function FamilyPage() {
   return (
     <div className="p-8">
       <div className="mx-auto max-w-2xl">
-        <h1 className="mb-1 flex items-center gap-2 text-lg font-semibold text-white">
-          <Users className="h-5 w-5 text-indigo-400" /> Family
-        </h1>
-        <p className="mb-5 text-sm text-slate-400">Manage your children and request their enrollment at an organization.</p>
+        <PageHeader badge="Family" badgeIcon={Users} title="Family" description="Manage your children and request their enrollment at an organization." />
 
         {error && <div className="mb-4 rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-400">{error}</div>}
 

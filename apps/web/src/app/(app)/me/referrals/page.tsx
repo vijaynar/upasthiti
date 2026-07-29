@@ -9,6 +9,7 @@
 
 import { useEffect, useState } from 'react';
 import { Gift, Copy, Check } from 'lucide-react';
+import { PageHeader } from '@/components/PageHeader';
 
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, { ...init, headers: { 'Content-Type': 'application/json', ...init?.headers } });
@@ -68,12 +69,7 @@ export default function MyReferralsPage() {
   return (
     <div className="p-8">
       <div className="mx-auto max-w-xl space-y-6">
-        <div>
-          <h1 className="mb-1 flex items-center gap-2 text-lg font-semibold text-white">
-            <Gift className="h-5 w-5 text-indigo-400" /> Referrals
-          </h1>
-          <p className="text-sm text-slate-400">Refer a coach or academy — earn a reward when they sign up.</p>
-        </div>
+        <PageHeader badge="Referrals" badgeIcon={Gift} title="Referrals" description="Refer a coach or academy — earn a reward when they sign up." />
 
         {error && <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-400">{error}</div>}
 

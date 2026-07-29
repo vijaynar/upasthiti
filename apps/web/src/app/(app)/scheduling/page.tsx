@@ -10,6 +10,7 @@
 
 import { useEffect, useState } from 'react';
 import { CalendarDays, Plus, Trash2, Users, X } from 'lucide-react';
+import { PageHeader } from '@/components/PageHeader';
 
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, { ...init, headers: { 'Content-Type': 'application/json', ...init?.headers } });
@@ -327,10 +328,12 @@ export default function SchedulingPage() {
   return (
     <div className="p-8">
       <div className="mx-auto max-w-4xl space-y-6">
-        <div>
-          <h1 className="mb-1 text-lg font-semibold text-white">Scheduling</h1>
-          <p className="text-sm text-slate-400">Programs, batches, coaches, roster, and holidays for the active workspace.</p>
-        </div>
+        <PageHeader
+          badge="Scheduling"
+          badgeIcon={CalendarDays}
+          title="Scheduling"
+          description="Programs, batches, coaches, roster, and holidays for the active workspace."
+        />
 
         {error && <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-400">{error}</div>}
 

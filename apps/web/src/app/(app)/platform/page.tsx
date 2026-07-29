@@ -29,6 +29,7 @@ import {
   Sliders,
 } from 'lucide-react';
 import InviteCoachPanel from '@/components/InviteCoachPanel';
+import { PageHeader } from '@/components/PageHeader';
 
 type Tab = 'verification' | 'organizations' | 'roles' | 'users' | 'support' | 'announcements' | 'audit' | 'flags';
 
@@ -107,15 +108,6 @@ function ErrorBanner({ error }: { error: string | null }) {
   return <div className="mb-4 rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-400">{error}</div>;
 }
 
-function PanelHeader({ title, subtitle }: { title: string; subtitle?: string }) {
-  return (
-    <div className="mb-5">
-      <h2 className="text-lg font-semibold text-white">{title}</h2>
-      {subtitle && <p className="mt-0.5 text-sm text-slate-400">{subtitle}</p>}
-    </div>
-  );
-}
-
 // ── Verification queue (wireframe 4a, Doc 04 US-1 AC5) ────────────
 
 interface OrgSummary {
@@ -156,7 +148,7 @@ function VerificationQueue() {
 
   return (
     <div>
-      <PanelHeader title="Verification queue" subtitle="Organizations waiting for approval before they go live." />
+      <PageHeader badge="Verification" badgeIcon={CheckCircle2} title="Verification queue" description="Organizations waiting for approval before they go live." />
       <ErrorBanner error={error} />
       {orgs === null ? (
         <p className="text-sm text-slate-400">Loading…</p>
@@ -230,7 +222,7 @@ function OrganizationsPanel() {
 
   return (
     <div>
-      <PanelHeader title="Organizations" subtitle="Every organization on the platform, with lifecycle controls." />
+      <PageHeader badge="Organizations" badgeIcon={Building2} title="Organizations" description="Every organization on the platform, with lifecycle controls." />
       <ErrorBanner error={error} />
       <input
         value={search}
@@ -722,14 +714,12 @@ function PlatformRolesPanel() {
 
   return (
     <div className="space-y-8">
-      {/* Page Header */}
-      <div>
-        <div className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-indigo-500/30 bg-indigo-500/10 px-3 py-1 text-[10px] font-extrabold uppercase tracking-widest text-indigo-400">
-          <ShieldCheck className="h-3 w-3" /> Access Governance
-        </div>
-        <h1 className="text-2xl font-black text-white">Roles &amp; Permissions</h1>
-        <p className="mt-1 text-sm text-slate-400">Configure granular access control policies for each role</p>
-      </div>
+      <PageHeader
+        badge="Access Governance"
+        badgeIcon={ShieldCheck}
+        title="Roles & Permissions"
+        description="Configure granular access control policies for each role"
+      />
 
       <ErrorBanner error={error} />
 
@@ -1081,23 +1071,20 @@ function UserDirectoryPanel() {
 
   return (
     <div className="space-y-6">
-      {/* Header with Title and Add New User Button */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <div className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-indigo-500/30 bg-indigo-500/10 px-3 py-1 text-[10px] font-extrabold uppercase tracking-widest text-indigo-400">
-            <Users className="h-3 w-3" /> USER DIRECTORY
-          </div>
-          <h1 className="text-2xl font-black text-white">User Management</h1>
-          <p className="mt-1 text-sm text-slate-400">Manage academy staff, coaches, and administrators</p>
-        </div>
-
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white shadow-lg shadow-indigo-600/30 hover:bg-indigo-500 transition-all cursor-pointer"
-        >
-          <UserPlus className="h-4 w-4" /> + Add New User
-        </button>
-      </div>
+      <PageHeader
+        badge="User Directory"
+        badgeIcon={Users}
+        title="User Management"
+        description="Manage academy staff, coaches, and administrators"
+        action={
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white shadow-lg shadow-indigo-600/30 hover:bg-indigo-500 transition-all cursor-pointer"
+          >
+            <UserPlus className="h-4 w-4" /> + Add New User
+          </button>
+        }
+      />
 
       <ErrorBanner error={error} />
       {successMsg && (
@@ -1313,7 +1300,7 @@ function SupportAccessPanel() {
 
   return (
     <div>
-      <PanelHeader title="Support access" subtitle="Time-boxed, audited org entry — never standing access (Doc 04 §9)." />
+      <PageHeader badge="Support Access" badgeIcon={Headphones} title="Support access" description="Time-boxed, audited org entry — never standing access (Doc 04 §9)." />
       <ErrorBanner error={error} />
       <div className="glass-panel mb-5 flex flex-wrap items-end gap-2 rounded-xl p-4">
         <div>
@@ -1465,14 +1452,12 @@ function GlobalSettingsPanel() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <div className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-indigo-500/30 bg-indigo-500/10 px-3 py-1 text-[10px] font-extrabold uppercase tracking-widest text-indigo-400">
-          <Settings className="h-3 w-3" /> System Configuration
-        </div>
-        <h1 className="text-2xl font-black text-white">Settings</h1>
-        <p className="mt-1 text-sm text-slate-400">Manage your system credentials, platform policies, and feature flags.</p>
-      </div>
+      <PageHeader
+        badge="System Configuration"
+        badgeIcon={Settings}
+        title="Settings"
+        description="Manage your system credentials, platform policies, and feature flags."
+      />
 
       <ErrorBanner error={error} />
       {saveSuccess && (
@@ -1808,7 +1793,7 @@ function AnnouncementsPanel() {
 
   return (
     <div>
-      <PanelHeader title="Announcements" subtitle="Platform-wide messages surfaced in-app." />
+      <PageHeader badge="Announcements" badgeIcon={Megaphone} title="Announcements" description="Platform-wide messages surfaced in-app." />
       <ErrorBanner error={error} />
       <div className="glass-panel mb-5 space-y-2 rounded-xl p-4">
         <div className="flex gap-2">
@@ -2045,14 +2030,12 @@ function AuditTrailPanel() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <div className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-indigo-500/30 bg-indigo-500/10 px-3 py-1 text-[10px] font-extrabold uppercase tracking-widest text-indigo-400">
-          <RotateCcw className="h-3 w-3" /> Audit Trail
-        </div>
-        <h1 className="text-2xl font-black text-white">Audit Logs</h1>
-        <p className="mt-1 text-sm text-slate-400">Complete chronological record of all administrative actions</p>
-      </div>
+      <PageHeader
+        badge="Audit Trail"
+        badgeIcon={RotateCcw}
+        title="Audit Logs"
+        description="Complete chronological record of all administrative actions"
+      />
 
       <ErrorBanner error={error} />
 

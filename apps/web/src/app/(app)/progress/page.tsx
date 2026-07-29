@@ -10,6 +10,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { TrendingUp, Plus, Trash2, Search } from 'lucide-react';
 import { Sparkline, type MetricDefinition, type ProgressEntry } from '@/components/ProgressTrends';
+import { PageHeader } from '@/components/PageHeader';
 
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, { ...init, headers: { 'Content-Type': 'application/json', ...init?.headers } });
@@ -86,10 +87,12 @@ export default function ProgressPage() {
 
   return (
     <div className="p-8">
-      <div className="mb-6 flex items-center gap-2">
-        <TrendingUp className="h-5 w-5 text-indigo-400" />
-        <h1 className="text-lg font-semibold text-white">Progress &amp; Performance</h1>
-      </div>
+      <PageHeader
+        badge="Performance"
+        badgeIcon={TrendingUp}
+        title="Progress & Performance"
+        description="Track trends and log new metrics for enrolled students."
+      />
 
       <ErrorBanner error={error} />
 

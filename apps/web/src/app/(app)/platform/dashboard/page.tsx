@@ -198,6 +198,8 @@ export default function PlatformDashboardPage() {
   return (
     <div className="p-6 md:p-8 space-y-8">
       <DashboardHeader
+        badge="Overview"
+        icon={Building2}
         title="Platform overview"
         subtitle="Every organization, growth trajectory, and metrics on Abhyas."
         action={

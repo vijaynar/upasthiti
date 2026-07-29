@@ -8,6 +8,7 @@
 
 import { useEffect, useState } from 'react';
 import { GraduationCap, UserPlus } from 'lucide-react';
+import { PageHeader } from '@/components/PageHeader';
 
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, { ...init, headers: { 'Content-Type': 'application/json', ...init?.headers } });
@@ -125,8 +126,7 @@ export default function PeoplePage() {
   return (
     <div className="p-8">
       <div className="mx-auto max-w-3xl">
-        <h1 className="mb-1 text-lg font-semibold text-white">People</h1>
-        <p className="mb-5 text-sm text-slate-400">Enrollments for the active workspace.</p>
+        <PageHeader badge="Team & Members" badgeIcon={GraduationCap} title="People" description="Enrollments for the active workspace." />
 
         {error && <div className="mb-4 rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-400">{error}</div>}
 

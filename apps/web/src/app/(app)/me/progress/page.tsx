@@ -9,6 +9,7 @@
 import { useEffect, useState } from 'react';
 import { TrendingUp } from 'lucide-react';
 import { ProgressTrendCards, type MetricDefinition, type ProgressEntry } from '@/components/ProgressTrends';
+import { PageHeader } from '@/components/PageHeader';
 
 async function api<T>(url: string): Promise<T> {
   const res = await fetch(url);
@@ -27,11 +28,8 @@ export default function MyProgressPage() {
   }, []);
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-8">
-      <div className="mb-6 flex items-center gap-2">
-        <TrendingUp className="h-5 w-5 text-indigo-400" />
-        <h1 className="text-lg font-semibold text-white">My progress</h1>
-      </div>
+    <div className="mx-auto max-w-3xl p-8">
+      <PageHeader badge="My Progress" badgeIcon={TrendingUp} title="My progress" description="Your recorded metrics, tracked over time." />
       {entries === null ? (
         <p className="text-sm text-slate-400">Loading…</p>
       ) : entries.length === 0 ? (

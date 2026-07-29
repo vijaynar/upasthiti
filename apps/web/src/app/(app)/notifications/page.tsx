@@ -7,6 +7,7 @@
 
 import { useEffect, useState } from 'react';
 import { Bell, Send, ScrollText, FileText } from 'lucide-react';
+import { PageHeader } from '@/components/PageHeader';
 
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, { ...init, headers: { 'Content-Type': 'application/json', ...init?.headers } });
@@ -99,12 +100,12 @@ export default function NotificationsPage() {
   return (
     <div className="p-8">
       <div className="mx-auto max-w-4xl space-y-6">
-        <div>
-          <h1 className="mb-1 flex items-center gap-2 text-lg font-semibold text-white">
-            <Bell className="h-5 w-5 text-indigo-400" /> Notifications
-          </h1>
-          <p className="text-sm text-slate-400">Templates, manual sends, and the delivery log for the active workspace.</p>
-        </div>
+        <PageHeader
+          badge="Notifications"
+          badgeIcon={Bell}
+          title="Notifications"
+          description="Templates, manual sends, and the delivery log for the active workspace."
+        />
 
         {error && <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-400">{error}</div>}
         {notice && <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm text-emerald-400">{notice}</div>}
