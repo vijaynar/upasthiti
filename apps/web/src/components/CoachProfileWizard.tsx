@@ -64,9 +64,17 @@ import {
   createDefaultPaymentPricingSelection,
   isPaymentPricingValid,
   type PaymentPricingSelection,
-  type PricingPolicy as UiPricingPolicy,
-  type PricingRule as UiPricingRule,
 } from '@/components/PaymentPricingStep';
+import { applyExistingPricing, toApiPolicies, type ApiPricingPolicy } from '@/lib/pricingApi';
+import {
+  LANGUAGE_SUGGESTIONS,
+  QUALIFICATION_PLACEHOLDER_BY_CATEGORY,
+  DEFAULT_QUALIFICATION_PLACEHOLDER,
+  SERVICE_TYPE_OPTIONS,
+  CLASS_TYPE_OPTIONS,
+  GENDER_OPTIONS,
+  DOC_TYPE_OPTIONS,
+} from '@/lib/coachProfileConstants';
 
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, { ...init, headers: { 'Content-Type': 'application/json', ...init?.headers } });
@@ -128,119 +136,6 @@ interface StaffDocument {
   storagePath: string;
   reviewStatus: string;
 }
-
-// Shape the backend's /coach-profile/pricing routes speak — camelCase rule
-// fields, distinct from PaymentPricingStep's own snake_case-ish PricingRule
-// (kept that way there to match V1's file verbatim).
-interface ApiPricingRule {
-  amount: number;
-  currency?: string;
-  billingCycle?: string;
-  autoRenew?: boolean;
-  lateFeeAmount?: number;
-  lateFeeGraceDays?: number;
-  cancellationWindowHours?: number;
-  minBookingCount?: number;
-  classCount?: number;
-  trialType?: string;
-  lateArrivalFeeAmount?: number;
-  lateArrivalThresholdMinutes?: number;
-  absenceFeeAmount?: number;
-}
-interface ApiPricingPolicy {
-  policyType: string;
-  enabled: boolean;
-  isDefault: boolean;
-  rules: ApiPricingRule[];
-}
-
-function toApiRule(r: UiPricingRule): ApiPricingRule {
-  return {
-    amount: r.amount,
-    currency: r.currency,
-    billingCycle: r.billing_cycle,
-    autoRenew: r.auto_renew,
-    lateFeeAmount: r.late_fee_amount,
-    lateFeeGraceDays: r.late_fee_grace_days,
-    cancellationWindowHours: r.cancellation_window_hours,
-    minBookingCount: r.min_booking_count,
-    classCount: r.class_count,
-    trialType: r.trial_type,
-    lateArrivalFeeAmount: r.late_arrival_fee_amount,
-    lateArrivalThresholdMinutes: r.late_arrival_threshold_minutes,
-    absenceFeeAmount: r.absence_fee_amount,
-  };
-}
-
-function fromApiRule(r: ApiPricingRule): UiPricingRule {
-  return {
-    amount: r.amount,
-    currency: r.currency,
-    billing_cycle: r.billingCycle as UiPricingRule['billing_cycle'],
-    auto_renew: r.autoRenew,
-    late_fee_amount: r.lateFeeAmount,
-    late_fee_grace_days: r.lateFeeGraceDays,
-    cancellation_window_hours: r.cancellationWindowHours,
-    min_booking_count: r.minBookingCount,
-    class_count: r.classCount,
-    trial_type: r.trialType as UiPricingRule['trial_type'],
-    late_arrival_fee_amount: r.lateArrivalFeeAmount,
-    late_arrival_threshold_minutes: r.lateArrivalThresholdMinutes,
-    absence_fee_amount: r.absenceFeeAmount,
-  };
-}
-
-function applyExistingPricing(base: PaymentPricingSelection, existing: ApiPricingPolicy[]): PaymentPricingSelection {
-  if (existing.length === 0) return base;
-  return {
-    ...base,
-    policies: base.policies.map((p) => {
-      const match = existing.find((e) => e.policyType === p.policyType);
-      if (!match) return { ...p, enabled: false };
-      return { policyType: p.policyType, enabled: true, isDefault: match.isDefault, rules: match.rules.map(fromApiRule) };
-    }),
-  };
-}
-
-const LANGUAGE_SUGGESTIONS = ['English', 'Hindi', 'Kannada', 'Telugu', 'Tamil', 'Malayalam', 'Marathi', 'Gujarati'];
-// Qualification is free text, but the *kind* of credential expected varies
-// a lot by category — ported verbatim from V1 (CoachOnboardingWizard.tsx),
-// keyed by categories.slug (migration 0019).
-const QUALIFICATION_PLACEHOLDER_BY_CATEGORY: Record<string, string> = {
-  sports: 'B.P.Ed, NIS Certified',
-  fitness: 'Certified Personal Trainer (ACE/ACSM)',
-  'martial-arts-self-defense': 'Black Belt (3rd Dan), Certified Instructor',
-  'yoga-wellness': 'RYT 200, Yoga Alliance Certified',
-  dance: 'Diploma in Dance, Certified Choreographer',
-  music: 'B.A. Music, Trinity/ABRSM Grade 8',
-  'visual-arts': 'B.F.A., Diploma in Fine Arts',
-  'performing-arts': 'Diploma in Theatre Arts',
-  'adventure-outdoor': 'Wilderness First Aid, NOLS Certified',
-  'coding-technology': 'B.Tech/B.E., Certified Software Trainer',
-  'academic-tuition': 'M.Sc Mathematics, B.Ed',
-};
-const DEFAULT_QUALIFICATION_PLACEHOLDER = 'B.P.Ed, NIS Certified';
-const SERVICE_TYPE_OPTIONS = [
-  { value: 'offline', label: 'Offline' },
-  { value: 'online', label: 'Online' },
-];
-const CLASS_TYPE_OPTIONS = [
-  { value: 'group', label: 'Group classes' },
-  { value: 'one_to_one', label: 'One-to-one' },
-];
-const GENDER_OPTIONS = [
-  { value: 'male', label: 'Male' },
-  { value: 'female', label: 'Female' },
-  { value: 'other', label: 'Other' },
-  { value: 'prefer_not_to_say', label: 'Prefer not to say' },
-];
-const DOC_TYPE_OPTIONS = [
-  { value: 'id_proof', label: 'ID proof (Aadhaar / PAN)', hint: 'Upload a clear photo or scan' },
-  { value: 'address_proof', label: 'Address proof', hint: 'Utility bill, rental agreement, etc.' },
-  { value: 'certification', label: 'Qualification certificate', hint: 'Degree, diploma, or NIS certification' },
-  { value: 'background_check', label: 'Background / police verification', hint: 'Optional, boosts your trust badge' },
-  { value: 'other', label: 'Other', hint: 'Experience letters, first-aid, etc.' },
-];
 
 function toggle<T>(list: T[], value: T): T[] {
   return list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
@@ -683,11 +578,7 @@ export default function CoachProfileWizard({ mode, organizationId, staffProfileI
       try {
         await api(pricingUrl, {
           method: 'PUT',
-          body: JSON.stringify({
-            policies: paymentPricing.policies
-              .filter((p) => p.enabled)
-              .map((p): ApiPricingPolicy => ({ policyType: p.policyType, enabled: true, isDefault: p.isDefault, rules: p.rules.map(toApiRule) })),
-          }),
+          body: JSON.stringify({ policies: toApiPolicies(paymentPricing) }),
         });
       } catch (err) {
         setPricingNotice(err instanceof Error ? err.message : "Pricing couldn't be saved — you can set it later from your coach profile.");
