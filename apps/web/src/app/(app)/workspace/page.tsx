@@ -2,57 +2,24 @@
 
 // Workspace switcher (Doc 05 §7) — lists every org the signed-in identity
 // has a membership in and lets them pick the active one for this session.
+// Reads/writes the shared WorkspaceProvider state (see @/lib/workspace) so
+// switching here updates the sidebar immediately, with no full reload.
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { Building2, Check, Plus } from 'lucide-react';
-
-interface MembershipRow {
-  organizationId: string;
-  organizationName: string;
-  organizationSlug: string;
-  orgType: string;
-  orgStatus: string;
-  branchId: string | null;
-  status: string;
-}
+import { useWorkspace } from '@/lib/workspace';
 
 export default function WorkspacePage() {
-  const [memberships, setMemberships] = useState<MembershipRow[] | null>(null);
-  const [activeOrgId, setActiveOrgId] = useState<string | null>(null);
+  const { loading, memberships, activeOrg, switchWorkspace } = useWorkspace();
   const [switching, setSwitching] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    void load();
-  }, []);
-
-  async function load() {
-    setError(null);
-    try {
-      const [orgsRes, activeRes] = await Promise.all([fetch('/api/v1/orgs'), fetch('/api/v1/me/workspace')]);
-      const orgsBody = await orgsRes.json();
-      const activeBody = await activeRes.json();
-      if (!orgsRes.ok) throw new Error(orgsBody.error?.message ?? 'Could not load your organizations.');
-      setMemberships(orgsBody.data);
-      setActiveOrgId(activeBody.data?.activeOrgId ?? null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong.');
-    }
-  }
 
   async function handleSwitch(organizationId: string) {
     setSwitching(organizationId);
     setError(null);
     try {
-      const res = await fetch('/api/v1/me/workspace', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orgId: organizationId }),
-      });
-      const body = await res.json();
-      if (!res.ok) throw new Error(body.error?.message ?? 'Could not switch workspace.');
-      setActiveOrgId(organizationId);
+      await switchWorkspace(organizationId);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong.');
     } finally {
@@ -70,14 +37,14 @@ export default function WorkspacePage() {
 
         {error && <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-400">{error}</div>}
 
-        {memberships === null ? (
+        {loading ? (
           <p className="text-sm text-slate-400">Loading…</p>
         ) : memberships.length === 0 ? (
           <p className="text-sm text-slate-400">You&apos;re not part of any organization yet.</p>
         ) : (
           <ul className="space-y-2">
             {memberships.map((m) => {
-              const isActive = m.organizationId === activeOrgId;
+              const isActive = m.organizationId === activeOrg?.organizationId;
               const pending = m.status !== 'active';
               return (
                 <li key={m.organizationId}>
@@ -90,7 +57,9 @@ export default function WorkspacePage() {
                   >
                     <Building2 className="h-5 w-5 shrink-0 text-indigo-400" />
                     <span className="flex-1">
-                      <span className="block text-sm font-medium text-slate-100">{m.organizationName}</span>
+                      <span className="block text-sm font-medium text-slate-100">
+                        {switching === m.organizationId ? 'Switching…' : m.organizationName}
+                      </span>
                       <span className="block text-xs text-slate-400">
                         {m.orgType.replace('_', ' ')}
                         {m.branchId ? '' : ' · org-wide'}

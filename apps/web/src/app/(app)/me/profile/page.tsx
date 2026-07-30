@@ -10,9 +10,11 @@
 // it) while this file owns which fields go in which card and how they're
 // loaded/saved, since that part genuinely is coach-shaped today.
 //
-// Deep taxonomy edits (category, service areas, documents, pricing) still
-// go through CoachProfileWizard — same component onboarding uses — mounted
-// on demand under "Advanced setup" rather than re-implemented here.
+// Category & specialty are edited inline via the same CategoryPicker the
+// onboarding wizard uses, so this page and onboarding never drift apart on
+// that step. Everything else deep in the taxonomy (service areas, documents,
+// pricing) still goes through CoachProfileWizard, mounted on demand under
+// "Advanced setup" rather than re-implemented here.
 
 import { useEffect, useState } from 'react';
 import {
@@ -34,6 +36,8 @@ import {
   X,
   ChevronDown,
   ChevronUp,
+  ExternalLink,
+  Star,
 } from 'lucide-react';
 import { PageHeader } from '@/components/PageHeader';
 import CoachProfileWizard from '@/components/CoachProfileWizard';
@@ -42,11 +46,13 @@ import { RestrictedAutocompleteInput } from '@/components/RestrictedAutocomplete
 import { LocalityAutocompleteInput } from '@/components/LocalityAutocompleteInput';
 import { INDIAN_STATES, CITIES_BY_STATE } from '@/lib/indianStatesCities';
 import { useCategoryTaxonomy } from '@/lib/useCategoryTaxonomy';
+import { useTheme } from '@/lib/theme';
+import { CategoryPicker, type CategorySelection } from '@/components/CategoryPicker';
 import { createBrowserClient } from '@/lib/supabase';
 import { PaymentPricingStep, createDefaultPaymentPricingSelection, type PaymentPricingSelection } from '@/components/PaymentPricingStep';
 import { applyExistingPricing, toApiPolicies, type ApiPricingPolicy } from '@/lib/pricingApi';
 import { SERVICE_TYPE_OPTIONS, CLASS_TYPE_OPTIONS, GENDER_OPTIONS, DOC_TYPE_OPTIONS, LANGUAGE_SUGGESTIONS } from '@/lib/coachProfileConstants';
-import { InfoCard, FieldRow, ProfileHeaderCard, ToggleSwitch, Label, fieldClass, type StatItem } from '@/components/profile/ProfileSections';
+import { InfoCard, FieldRow, ProfileHeaderCard, ToggleSwitch, Label, ReadOnlyTag, fieldClass, type StatItem } from '@/components/profile/ProfileSections';
 
 // createDefaultPaymentPricingSelection() pre-enables a sensible starting set
 // of plans — the right call inside the onboarding wizard, where a coach
@@ -75,6 +81,17 @@ function formatDate(iso: string | null | undefined): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '—';
   return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function formatAge(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const dob = new Date(iso);
+  if (Number.isNaN(dob.getTime())) return null;
+  const today = new Date();
+  let age = today.getFullYear() - dob.getFullYear();
+  const monthDiff = today.getMonth() - dob.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dob.getDate())) age--;
+  return `${age} Years`;
 }
 
 interface Profile {
@@ -159,8 +176,18 @@ function ErrorBanner({ error }: { error: string | null }) {
   return <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-400">{error}</div>;
 }
 
+const EMPTY_CATEGORY_SELECTION: CategorySelection = {
+  categoryId: null,
+  subcategoryIds: [],
+  primarySubcategoryId: null,
+  tagIds: [],
+  ageGroups: [],
+  skillLevels: [],
+};
+
 export default function MyProfilePage() {
   const { categories } = useCategoryTaxonomy();
+  const { mode: themeMode } = useTheme();
 
   const [isCoach, setIsCoach] = useState(false);
   // Three independent async facts have to land before we know which UI to
@@ -208,6 +235,7 @@ export default function MyProfilePage() {
   const [serviceTypes, setServiceTypes] = useState<string[]>([]);
   const [classTypes, setClassTypes] = useState<string[]>([]);
   const [languagesKnown, setLanguagesKnown] = useState<string[]>([]);
+  const [categorySelection, setCategorySelection] = useState<CategorySelection>(EMPTY_CATEGORY_SELECTION);
   const [langInput, setLangInput] = useState('');
   const [docUploading, setDocUploading] = useState<Record<string, boolean>>({});
 
@@ -267,6 +295,14 @@ export default function MyProfilePage() {
       setServiceTypes(coachProfile.serviceTypes);
       setClassTypes(coachProfile.classTypes);
       setLanguagesKnown(coachProfile.languagesKnown);
+      setCategorySelection({
+        categoryId: coachProfile.categoryId,
+        subcategoryIds: coachProfile.subcategoryIds,
+        primarySubcategoryId: coachProfile.primarySubcategoryId,
+        tagIds: coachProfile.tagIds,
+        ageGroups: coachProfile.ageGroups,
+        skillLevels: coachProfile.skillLevels,
+      });
     }
     setError(null);
     setEditing(true);
@@ -375,10 +411,10 @@ export default function MyProfilePage() {
 
       if (isCoach && coachProfile) {
         // categoryId is mandatory server-side (a coach without one is invisible
-        // in search) but this quick-edit page has no category picker — a coach
-        // who somehow has none yet needs the full wizard for that one field.
-        if (!coachProfile.categoryId) {
-          throw new Error('Your identity details were saved. Professional details and pricing need a coaching category first — set one from "Advanced setup" below, then this section unlocks.');
+        // in search) — categorySelection is edited inline via CategoryPicker now,
+        // so this just guards against saving before a category is actually picked.
+        if (!categorySelection.categoryId || categorySelection.subcategoryIds.length === 0) {
+          throw new Error('Your identity details were saved. Pick a coaching category and at least one specialty above, then save again.');
         }
         await api('/api/v1/me/onboard-coach', {
           method: 'POST',
@@ -387,16 +423,16 @@ export default function MyProfilePage() {
             experienceYears: experienceYears.trim() ? Number(experienceYears) : 0,
             qualification: qualification.trim(),
             languagesKnown,
-            ageGroups: coachProfile.ageGroups,
-            skillLevels: coachProfile.skillLevels,
+            ageGroups: categorySelection.ageGroups,
+            skillLevels: categorySelection.skillLevels,
             serviceTypes,
             classTypes,
             serviceAreaKeys: coachProfile.serviceAreaKeys,
             allowStudentOverrides: paymentPricing.allowStudentOverrides,
-            categoryId: coachProfile.categoryId,
-            subcategoryIds: coachProfile.subcategoryIds,
-            primarySubcategoryId: coachProfile.primarySubcategoryId,
-            tagIds: coachProfile.tagIds,
+            categoryId: categorySelection.categoryId,
+            subcategoryIds: categorySelection.subcategoryIds,
+            primarySubcategoryId: categorySelection.primarySubcategoryId,
+            tagIds: categorySelection.tagIds,
           }),
         });
         await api('/api/v1/me/coach-profile/pricing', { method: 'PUT', body: JSON.stringify({ policies: toApiPolicies(paymentPricing) }) });
@@ -440,29 +476,26 @@ export default function MyProfilePage() {
     );
   }
 
-  const primarySkill = coachProfile
-    ? [
-        categories.find((c) => c.id === coachProfile.categoryId)?.name,
-        (categories.find((c) => c.id === coachProfile.categoryId)?.subcategories ?? []).find((s) => s.id === coachProfile.primarySubcategoryId)?.name,
-      ]
-        .filter(Boolean)
-        .join(' — ')
-    : null;
+  const viewCategory = coachProfile ? categories.find((c) => c.id === coachProfile.categoryId) : null;
+  const viewSpecialties = (viewCategory?.subcategories ?? []).filter((s) => coachProfile?.subcategoryIds.includes(s.id));
 
   const statusLabel = staffProfile ? { active: 'Active', on_leave: 'On leave', offboarded: 'Offboarded' }[staffProfile.status] : null;
 
-  const stats: StatItem[] = [
-    staffProfile && { icon: Calendar, label: 'Joined on', value: formatDate(staffProfile.createdAt) },
-    coachProfile?.experienceYears != null && { icon: Briefcase, label: 'Experience', value: `${coachProfile.experienceYears} Years` },
-    coachProfile?.qualification && { icon: GraduationCap, label: 'Qualification', value: coachProfile.qualification },
-    profile.dob && { icon: Cake, label: 'Date of birth', value: formatDate(profile.dob) },
-  ].filter((s): s is StatItem => Boolean(s));
+  const age = formatAge(profile.dob);
+  const stats = (
+    [
+      staffProfile && { icon: Calendar, label: 'Joined on', value: formatDate(staffProfile.createdAt), color: 'indigo' as const },
+      coachProfile?.experienceYears != null && { icon: Briefcase, label: 'Experience', value: `${coachProfile.experienceYears} Years`, color: 'violet' as const },
+      coachProfile?.qualification && { icon: GraduationCap, label: 'Qualification', value: coachProfile.qualification, color: 'indigo' as const },
+      age && { icon: Cake, label: 'Age', value: age, color: 'rose' as const },
+    ] as (StatItem | false | null | undefined | '')[]
+  ).filter((s): s is StatItem => Boolean(s));
 
   const mostRecentSession = sessions.slice().sort((a, b) => (b.lastSeenAt ?? '').localeCompare(a.lastSeenAt ?? ''))[0];
   const enabledPolicies = paymentPricing.policies.filter((p) => p.enabled);
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6 p-8 pb-28">
+    <div className="mx-auto max-w-6xl space-y-2 p-8 pb-28">
       <PageHeader
         badge="My Account"
         badgeIcon={UserRound}
@@ -516,7 +549,7 @@ export default function MyProfilePage() {
         onQuoteChange={isCoach ? setBio : undefined}
       />
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-x-4 gap-y-2 lg:grid-cols-3">
         <InfoCard icon={UserRound} title="Personal Information">
           {editing ? (
             <div className="space-y-3">
@@ -576,7 +609,7 @@ export default function MyProfilePage() {
               <FieldRow label="Email Address" value={profile.email} />
               <FieldRow label="Phone Number" value={profile.phone} />
               <FieldRow label="Gender" value={GENDER_OPTIONS.find((g) => g.value === profile.gender)?.label} />
-              <FieldRow label="Date of Birth" value={formatDate(profile.dob)} />
+              <FieldRow label="Age" value={formatAge(profile.dob)} />
               <FieldRow label="State" value={profile.state} />
               <FieldRow label="City" value={profile.city} />
               <FieldRow label="Area / Locality" value={profile.area} />
@@ -589,7 +622,7 @@ export default function MyProfilePage() {
           <InfoCard icon={Briefcase} title="Professional Information">
             {editing ? (
               <div className="space-y-3">
-                <FieldRow label="Primary Skill" value={primarySkill} />
+                <CategoryPicker categories={categories} value={categorySelection} onChange={setCategorySelection} theme={themeMode} />
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <Label>Experience (years)</Label>
@@ -600,41 +633,57 @@ export default function MyProfilePage() {
                     <input value={qualification} onChange={(e) => setQualification(e.target.value)} className={fieldClass()} />
                   </div>
                 </div>
-                <div>
-                  <Label>Service Types</Label>
-                  <div className="flex flex-wrap gap-1.5">
-                    {SERVICE_TYPE_OPTIONS.map((s) => (
-                      <Chip key={s.value} theme="dark" clickable selected={serviceTypes.includes(s.value)} onClick={() => toggleInList(serviceTypes, s.value, setServiceTypes)}>
-                        {s.label}
-                      </Chip>
-                    ))}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label>Service Types</Label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {SERVICE_TYPE_OPTIONS.map((s) => (
+                        <Chip key={s.value} theme="dark" clickable selected={serviceTypes.includes(s.value)} onClick={() => toggleInList(serviceTypes, s.value, setServiceTypes)}>
+                          {s.label}
+                        </Chip>
+                      ))}
+                    </div>
                   </div>
-                </div>
-                <div>
-                  <Label>Class Types</Label>
-                  <div className="flex flex-wrap gap-1.5">
-                    {CLASS_TYPE_OPTIONS.map((c) => (
-                      <Chip key={c.value} theme="dark" clickable selected={classTypes.includes(c.value)} onClick={() => toggleInList(classTypes, c.value, setClassTypes)}>
-                        {c.label}
-                      </Chip>
-                    ))}
+                  <div>
+                    <Label>Class Types</Label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {CLASS_TYPE_OPTIONS.map((c) => (
+                        <Chip key={c.value} theme="dark" clickable selected={classTypes.includes(c.value)} onClick={() => toggleInList(classTypes, c.value, setClassTypes)}>
+                          {c.label}
+                        </Chip>
+                      ))}
+                    </div>
                   </div>
                 </div>
                 <div>
                   <Label>Languages Known</Label>
-                  <div className="flex min-h-[44px] flex-wrap items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 p-2">
+                  <div className="mb-1.5 flex flex-wrap gap-1.5">
                     {languagesKnown.map((lang) => (
                       <Chip key={lang} theme="dark" selected removable onRemove={() => setLanguagesKnown((prev) => prev.filter((l) => l !== lang))}>
                         {lang}
                       </Chip>
                     ))}
+                  </div>
+                  <div className="flex gap-2">
                     <input
                       value={langInput}
                       onChange={(e) => setLangInput(e.target.value)}
                       onKeyDown={addLanguage}
-                      placeholder="Type + Enter to add"
-                      className="min-w-[100px] flex-1 border-none bg-transparent px-1 text-xs text-slate-300 outline-none"
+                      placeholder="Type language and press Enter"
+                      className={fieldClass('flex-1')}
                     />
+                    <button
+                      type="button"
+                      style={{ minHeight: 0 }}
+                      onClick={() => {
+                        const val = langInput.trim();
+                        if (val && !languagesKnown.includes(val)) setLanguagesKnown((prev) => [...prev, val]);
+                        setLangInput('');
+                      }}
+                      className="rounded-lg border border-indigo-500/50 bg-indigo-500/10 px-3 py-2 text-xs font-semibold text-indigo-400 hover:bg-indigo-500/20"
+                    >
+                      Add
+                    </button>
                   </div>
                   <div className="mt-1.5 flex flex-wrap gap-1.5">
                     {LANGUAGE_SUGGESTIONS.filter((l) => !languagesKnown.includes(l)).map((l) => (
@@ -647,18 +696,31 @@ export default function MyProfilePage() {
               </div>
             ) : (
               <div>
-                <FieldRow label="Primary Skill" value={primarySkill} />
+                <FieldRow label="Category" value={viewCategory?.name} />
+                <FieldRow
+                  label="Specialty"
+                  value={
+                    viewSpecialties.length > 0 && (
+                      <div className="mt-0.5 flex flex-wrap gap-1">
+                        {viewSpecialties.map((s) => (
+                          <ReadOnlyTag key={s.id}>
+                            {s.name}
+                            {s.id === coachProfile.primarySubcategoryId && <Star className="h-2.5 w-2.5 fill-amber-400 text-amber-400" />}
+                          </ReadOnlyTag>
+                        ))}
+                      </div>
+                    )
+                  }
+                />
                 <FieldRow label="Experience" value={coachProfile.experienceYears != null ? `${coachProfile.experienceYears} Years` : null} />
                 <FieldRow label="Qualification" value={coachProfile.qualification} />
                 <FieldRow
                   label="Service Types"
                   value={
                     coachProfile.serviceTypes.length > 0 && (
-                      <div className="flex flex-wrap justify-end gap-1">
+                      <div className="mt-0.5 flex flex-wrap gap-1">
                         {coachProfile.serviceTypes.map((v) => (
-                          <Chip key={v} theme="dark" selected size="xs">
-                            {SERVICE_TYPE_OPTIONS.find((o) => o.value === v)?.label ?? v}
-                          </Chip>
+                          <ReadOnlyTag key={v}>{SERVICE_TYPE_OPTIONS.find((o) => o.value === v)?.label ?? v}</ReadOnlyTag>
                         ))}
                       </div>
                     )
@@ -668,11 +730,33 @@ export default function MyProfilePage() {
                   label="Class Types"
                   value={
                     coachProfile.classTypes.length > 0 && (
-                      <div className="flex flex-wrap justify-end gap-1">
+                      <div className="mt-0.5 flex flex-wrap gap-1">
                         {coachProfile.classTypes.map((v) => (
-                          <Chip key={v} theme="dark" selected size="xs">
-                            {CLASS_TYPE_OPTIONS.find((o) => o.value === v)?.label ?? v}
-                          </Chip>
+                          <ReadOnlyTag key={v}>{CLASS_TYPE_OPTIONS.find((o) => o.value === v)?.label ?? v}</ReadOnlyTag>
+                        ))}
+                      </div>
+                    )
+                  }
+                />
+                <FieldRow
+                  label="Age Groups"
+                  value={
+                    coachProfile.ageGroups.length > 0 && (
+                      <div className="mt-0.5 flex flex-wrap gap-1">
+                        {coachProfile.ageGroups.map((v) => (
+                          <ReadOnlyTag key={v}>{v}</ReadOnlyTag>
+                        ))}
+                      </div>
+                    )
+                  }
+                />
+                <FieldRow
+                  label="Skill Levels"
+                  value={
+                    coachProfile.skillLevels.length > 0 && (
+                      <div className="mt-0.5 flex flex-wrap gap-1">
+                        {coachProfile.skillLevels.map((v) => (
+                          <ReadOnlyTag key={v}>{v}</ReadOnlyTag>
                         ))}
                       </div>
                     )
@@ -682,11 +766,9 @@ export default function MyProfilePage() {
                   label="Languages Known"
                   value={
                     coachProfile.languagesKnown.length > 0 && (
-                      <div className="flex flex-wrap justify-end gap-1">
+                      <div className="mt-0.5 flex flex-wrap gap-1">
                         {coachProfile.languagesKnown.map((v) => (
-                          <Chip key={v} theme="dark" size="xs">
-                            {v}
-                          </Chip>
+                          <ReadOnlyTag key={v}>{v}</ReadOnlyTag>
                         ))}
                       </div>
                     )
@@ -722,35 +804,47 @@ export default function MyProfilePage() {
 
         {isCoach && (
           <InfoCard icon={FileText} title="Documents">
-            <ul className="space-y-2">
+            <ul className="space-y-1.5">
               {DOC_TYPE_OPTIONS.map((doc) => {
                 const existing = documents.find((d) => d.docType === doc.value);
                 const uploading = docUploading[doc.value] ?? false;
                 return (
-                  <li key={doc.value} className="flex items-center justify-between gap-3 border-b border-white/5 py-2 last:border-b-0">
+                  <li key={doc.value} className="flex items-center justify-between gap-3 border-b border-white/5 py-1.5 last:border-b-0">
                     <div className="min-w-0">
-                      <p className="truncate text-sm text-slate-200">{doc.label}</p>
-                      {existing && <p className="text-[11px] text-emerald-400">Uploaded · {existing.reviewStatus}</p>}
+                      <p className="truncate text-xs text-slate-200">{doc.label}</p>
+                      {existing && <p className="text-[10px] text-emerald-400">Uploaded · {existing.reviewStatus}</p>}
                     </div>
-                    {editing ? (
-                      <label className="inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-2.5 py-1 text-[11px] font-semibold text-indigo-400 hover:bg-indigo-500/20">
-                        {uploading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
-                        {uploading ? 'Uploading…' : existing ? 'Replace' : 'Upload'}
-                        <input
-                          type="file"
-                          accept="image/*,application/pdf"
-                          disabled={uploading}
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            e.target.value = '';
-                            if (file) handleDocumentFile(doc.value, file);
-                          }}
-                          className="hidden"
-                        />
-                      </label>
-                    ) : (
-                      <span className="shrink-0 text-[11px] text-slate-600">{existing ? 'Uploaded' : 'Not uploaded'}</span>
-                    )}
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      {existing && !editing && (
+                        <a
+                          href={`/api/v1/me/staff/documents/${existing.id}/view`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-2 py-1 text-[10px] font-semibold text-indigo-400 hover:bg-indigo-500/20"
+                        >
+                          <ExternalLink className="h-2.5 w-2.5" /> View
+                        </a>
+                      )}
+                      {editing ? (
+                        <label className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-2.5 py-1 text-[11px] font-semibold text-indigo-400 hover:bg-indigo-500/20">
+                          {uploading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
+                          {uploading ? 'Uploading…' : existing ? 'Replace' : 'Upload'}
+                          <input
+                            type="file"
+                            accept="image/*,application/pdf"
+                            disabled={uploading}
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              e.target.value = '';
+                              if (file) handleDocumentFile(doc.value, file);
+                            }}
+                            className="hidden"
+                          />
+                        </label>
+                      ) : (
+                        !existing && <span className="text-[10px] text-slate-600">Not uploaded</span>
+                      )}
+                    </div>
                   </li>
                 );
               })}
@@ -794,7 +888,7 @@ export default function MyProfilePage() {
           {editing ? (
             <PaymentPricingStep value={paymentPricing} onChange={setPaymentPricing} theme="dark" />
           ) : !hasSavedPricing || enabledPolicies.length === 0 ? (
-            <p className="text-sm text-slate-500">No pricing plans set up yet.</p>
+            <p className="text-xs text-slate-500">No pricing plans set up yet.</p>
           ) : (
             <div className="flex flex-wrap gap-2">
               {enabledPolicies.map((p) => (

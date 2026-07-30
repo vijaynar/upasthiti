@@ -54,13 +54,8 @@ import {
 } from 'lucide-react';
 import ThemeSelector from '@/components/ThemeSelector';
 import { useTheme } from '@/lib/theme';
+import { useWorkspace } from '@/lib/workspace';
 import { TAGLINE } from '@/lib/brand';
-
-interface Membership {
-  organizationId: string;
-  organizationName: string;
-  organizationSlug: string;
-}
 
 async function api<T>(url: string): Promise<T | null> {
   try {
@@ -152,15 +147,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [switchingRole, setSwitchingRole] = useState(false);
   const [roleMenuOpen, setRoleMenuOpen] = useState(false);
   const [platformRoles, setPlatformRoles] = useState<string[]>([]);
-  const [activeOrg, setActiveOrg] = useState<Membership | null | undefined>(undefined);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showTheme, setShowTheme] = useState(false);
   const [platformExpanded, setPlatformExpanded] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [workspaceExpanded, setWorkspaceExpanded] = useState(false);
-  const [memberships, setMemberships] = useState<Membership[]>([]);
   const [switchingWorkspace, setSwitchingWorkspace] = useState<string | null>(null);
   const { mode, toggleMode } = useTheme();
+  const { activeOrg, memberships, switchWorkspace: switchActiveWorkspace } = useWorkspace();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -186,48 +180,31 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       })
       .catch(() => {});
     api<{ roles: string[] }>('/api/v1/me/platform-roles').then((r) => setPlatformRoles(r?.roles ?? []));
-    Promise.all([
-      api<{ activeOrgId: string | null }>('/api/v1/me/workspace'),
-      api<Membership[]>('/api/v1/orgs'),
-    ]).then(async ([w, orgs]) => {
-      // Auto-select the first membership when the user has no active workspace
-      // (e.g. a coach who just signed in for the first time). Mirrors what
-      // orgs.activateWorkspace does in the seeding script — POST with the
-      // first org's id to switch the session, then proceed as if it was
-      // already active.
-      let activeOrgId = w?.activeOrgId ?? null;
-      if (!activeOrgId && orgs && orgs.length > 0) {
-        const firstOrg = orgs[0];
-        try {
-          await fetch('/api/v1/me/workspace', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ orgId: firstOrg.organizationId }),
-          });
-          activeOrgId = firstOrg.organizationId;
-        } catch {
-          // best-effort; if the switch fails, fall through to no-workspace state
-        }
-      }
-      const org = activeOrgId ? orgs?.find((o) => o.organizationId === activeOrgId) ?? null : null;
-      setActiveOrg(org);
-      setMemberships(orgs ?? []);
-      if (org) {
-        api<{ roleKeys: string[]; activeRoleKey: string | null }>(`/api/v1/orgs/${org.organizationId}/me/roles`)
-          .then((r) => {
-            setHeldRoleKeys(r?.roleKeys ?? []);
-            setActiveRoleKey(r?.activeRoleKey ?? null);
-          })
-          .catch(() => {
-            setHeldRoleKeys([]);
-            setActiveRoleKey(null);
-          });
-        api<{ permissionKeys: string[] }>(`/api/v1/orgs/${org.organizationId}/me/permissions`)
-          .then((r) => setActivePermissions(new Set(r?.permissionKeys ?? [])))
-          .catch(() => setActivePermissions(new Set()));
-      }
-    });
   }, []);
+
+  // Roles and permissions are scoped to whichever org is active — refetch
+  // whenever it changes, whether the switch happened here or on the
+  // /workspace page (both write to the same WorkspaceProvider state).
+  useEffect(() => {
+    if (!activeOrg) {
+      setHeldRoleKeys([]);
+      setActiveRoleKey(null);
+      setActivePermissions(null);
+      return;
+    }
+    api<{ roleKeys: string[]; activeRoleKey: string | null }>(`/api/v1/orgs/${activeOrg.organizationId}/me/roles`)
+      .then((r) => {
+        setHeldRoleKeys(r?.roleKeys ?? []);
+        setActiveRoleKey(r?.activeRoleKey ?? null);
+      })
+      .catch(() => {
+        setHeldRoleKeys([]);
+        setActiveRoleKey(null);
+      });
+    api<{ permissionKeys: string[] }>(`/api/v1/orgs/${activeOrg.organizationId}/me/permissions`)
+      .then((r) => setActivePermissions(new Set(r?.permissionKeys ?? [])))
+      .catch(() => setActivePermissions(new Set()));
+  }, [activeOrg]);
 
   async function endSession() {
     await fetch('/api/v1/auth/logout', { method: 'POST' });
@@ -266,16 +243,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     }
     setSwitchingWorkspace(organizationId);
     try {
-      const res = await fetch('/api/v1/me/workspace', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orgId: organizationId }),
-      });
-      if (!res.ok) throw new Error('switch failed');
-      // Same reasoning as switchRole: nav, permissions and every page's own
-      // data depend on the active org, so a full reload is simplest.
-      window.location.reload();
+      await switchActiveWorkspace(organizationId);
+      setShowSettings(false);
+      setWorkspaceExpanded(false);
     } catch {
+      // best-effort; leave the flyout open so the user can retry
+    } finally {
       setSwitchingWorkspace(null);
     }
   }
@@ -464,8 +437,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             </div>
             <div className="relative min-w-0 flex-1">
               <h5 className="truncate text-xs font-bold text-slate-200">{displayName ?? '…'}</h5>
+              <div className="mt-0.5">
               {isPlatformStaff ? (
-                <span className="inline-flex items-center rounded-full border border-indigo-500/30 bg-indigo-500/10 px-1.5 text-[8px] font-extrabold uppercase tracking-wide text-indigo-300">
+                <span className="flex w-full items-center rounded-md border border-white/10 bg-white/5 px-1.5 text-[8px] font-extrabold uppercase tracking-wide text-slate-400">
                   {platformRoles.join(', ').replace(/_/g, ' ')}
                 </span>
               ) : activeOrg ? (
@@ -475,7 +449,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                       type="button"
                       onClick={() => setRoleMenuOpen((v) => !v)}
                       disabled={switchingRole}
-                      className="inline-flex items-center gap-0.5 rounded-full border border-indigo-500/30 bg-indigo-500/10 px-1.5 text-[8px] font-extrabold uppercase tracking-wide text-indigo-300 hover:bg-indigo-500/20 disabled:opacity-60"
+                      className="flex w-full items-center justify-between rounded-md border border-white/10 bg-white/5 px-1.5 text-[8px] font-extrabold uppercase tracking-wide text-slate-400 hover:bg-white/10 hover:text-slate-200 disabled:opacity-60"
                     >
                       {switchingRole ? 'Switching…' : ORG_ROLE_LABELS[activeRoleKey ?? ''] ?? activeRoleKey ?? '…'}
                       <ChevronDown className="h-2.5 w-2.5" />
@@ -505,15 +479,16 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                     )}
                   </>
                 ) : (
-                  <span className="inline-flex items-center rounded-full border border-indigo-500/30 bg-indigo-500/10 px-1.5 text-[8px] font-extrabold uppercase tracking-wide text-indigo-300">
+                  <span className="flex w-full items-center rounded-md border border-white/10 bg-white/5 px-1.5 text-[8px] font-extrabold uppercase tracking-wide text-slate-400">
                     {ORG_ROLE_LABELS[activeRoleKey ?? ''] ?? activeRoleKey ?? '…'}
                   </span>
                 )
               ) : (
-                <span className="inline-flex items-center rounded-full border border-indigo-500/30 bg-indigo-500/10 px-1.5 text-[8px] font-extrabold uppercase tracking-wide text-indigo-300">
+                <span className="flex w-full items-center rounded-md border border-white/10 bg-white/5 px-1.5 text-[8px] font-extrabold uppercase tracking-wide text-slate-400">
                   No workspace
                 </span>
               )}
+              </div>
             </div>
 
             <div className="relative shrink-0">
