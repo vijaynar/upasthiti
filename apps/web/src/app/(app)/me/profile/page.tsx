@@ -51,7 +51,18 @@ import { CategoryPicker, type CategorySelection } from '@/components/CategoryPic
 import { createBrowserClient } from '@/lib/supabase';
 import { PaymentPricingStep, createDefaultPaymentPricingSelection, type PaymentPricingSelection } from '@/components/PaymentPricingStep';
 import { applyExistingPricing, toApiPolicies, type ApiPricingPolicy } from '@/lib/pricingApi';
-import { SERVICE_TYPE_OPTIONS, CLASS_TYPE_OPTIONS, GENDER_OPTIONS, DOC_TYPE_OPTIONS, LANGUAGE_SUGGESTIONS } from '@/lib/coachProfileConstants';
+import {
+  SERVICE_TYPE_OPTIONS,
+  CLASS_TYPE_OPTIONS,
+  GENDER_OPTIONS,
+  DOC_TYPE_OPTIONS,
+  LANGUAGE_SUGGESTIONS,
+  DOC_CHIP_BASE,
+  DOC_CHIP_TEXT,
+  DOC_CHIP_ICON_ONLY,
+  DOC_CHIP_INDIGO,
+  DOC_CHIP_EMERALD,
+} from '@/lib/coachProfileConstants';
 import { InfoCard, FieldRow, ProfileHeaderCard, ToggleSwitch, Label, ReadOnlyTag, fieldClass, type StatItem } from '@/components/profile/ProfileSections';
 
 // createDefaultPaymentPricingSelection() pre-enables a sensible starting set
@@ -815,20 +826,26 @@ export default function MyProfilePage() {
                       {existing && <p className="text-[10px] text-emerald-400">Uploaded · {existing.reviewStatus}</p>}
                     </div>
                     <div className="flex shrink-0 items-center gap-1.5">
-                      {existing && !editing && (
+                      {existing && (
+                        // The global `a, button { min-height: 36px }` touch-target rule (globals.css) doesn't
+                        // cover <label>, so without this override View (an <a>) renders taller than Upload.
                         <a
                           href={`/api/v1/me/staff/documents/${existing.id}/view`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-2 py-1 text-[10px] font-semibold text-indigo-400 hover:bg-indigo-500/20"
+                          style={{ minHeight: 0 }}
+                          className={`${DOC_CHIP_BASE} ${DOC_CHIP_TEXT} ${DOC_CHIP_INDIGO}`}
                         >
-                          <ExternalLink className="h-2.5 w-2.5" /> View
+                          <ExternalLink className="h-3 w-3 shrink-0" /> View
                         </a>
                       )}
                       {editing ? (
-                        <label className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-2.5 py-1 text-[11px] font-semibold text-indigo-400 hover:bg-indigo-500/20">
-                          {uploading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
-                          {uploading ? 'Uploading…' : existing ? 'Replace' : 'Upload'}
+                        <label
+                          title={existing ? 'Replace document' : 'Upload document'}
+                          className={`${DOC_CHIP_BASE} ${existing ? `${DOC_CHIP_ICON_ONLY} ${DOC_CHIP_EMERALD}` : `${DOC_CHIP_TEXT} ${DOC_CHIP_INDIGO}`}`}
+                        >
+                          {uploading ? <Loader2 className="h-3 w-3 shrink-0 animate-spin" /> : <Upload className="h-3 w-3 shrink-0" />}
+                          {!existing && (uploading ? 'Uploading…' : 'Upload')}
                           <input
                             type="file"
                             accept="image/*,application/pdf"

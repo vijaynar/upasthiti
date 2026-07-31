@@ -44,3 +44,16 @@ export const DOC_TYPE_OPTIONS = [
   { value: 'background_check', label: 'Background / police verification', hint: 'Optional, boosts your trust badge' },
   { value: 'other', label: 'Other', hint: 'Experience letters, first-aid, etc.' },
 ];
+
+// Shared Tailwind classes for the small "View / Upload / Replace" action
+// chips on a document row — used by both the profile page's Documents card
+// and the coach onboarding wizard's Documents step, so height and color
+// never drift apart between the two surfaces. Plain Tailwind utilities
+// (not a custom CSS class) so there's no risk of a stale global-CSS cache
+// leaving the chip unstyled.
+export const DOC_CHIP_BASE =
+  'inline-flex h-7 shrink-0 items-center justify-center gap-1.5 rounded-lg border text-[11px] font-semibold whitespace-nowrap transition-colors';
+export const DOC_CHIP_TEXT = 'px-3';
+export const DOC_CHIP_ICON_ONLY = 'w-7 px-0';
+export const DOC_CHIP_INDIGO = 'border-indigo-500/30 bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20';
+export const DOC_CHIP_EMERALD = 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20';

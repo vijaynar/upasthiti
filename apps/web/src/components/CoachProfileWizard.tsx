@@ -50,7 +50,7 @@
 // type is separate scope from the one V1 called out (the avatar).
 
 import { useEffect, useState } from 'react';
-import { ArrowLeft, ArrowRight, Camera, Check, AlertCircle, AlertTriangle, Loader2, User, Trash2, Upload } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Camera, Check, AlertCircle, AlertTriangle, Loader2, User, Trash2, Upload, ExternalLink } from 'lucide-react';
 import { Chip } from '@/components/Chip';
 import { RestrictedAutocompleteInput } from '@/components/RestrictedAutocompleteInput';
 import { LocalityAutocompleteInput } from '@/components/LocalityAutocompleteInput';
@@ -74,6 +74,11 @@ import {
   CLASS_TYPE_OPTIONS,
   GENDER_OPTIONS,
   DOC_TYPE_OPTIONS,
+  DOC_CHIP_BASE,
+  DOC_CHIP_TEXT,
+  DOC_CHIP_ICON_ONLY,
+  DOC_CHIP_INDIGO,
+  DOC_CHIP_EMERALD,
 } from '@/lib/coachProfileConstants';
 
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
@@ -387,6 +392,12 @@ export default function CoachProfileWizard({ mode, organizationId, staffProfileI
       setAvatarUploading(false);
       e.target.value = '';
     }
+  }
+
+  function documentViewUrl(docId: string) {
+    return mode === 'admin'
+      ? `/api/v1/orgs/${organizationId}/staff/${staffProfileId}/documents/${docId}/view`
+      : `/api/v1/me/staff/documents/${docId}/view`;
   }
 
   async function uploadDocument(docType: string, file: File) {
@@ -901,15 +912,31 @@ export default function CoachProfileWizard({ mode, organizationId, staffProfileI
                         <Trash2 className="h-4 w-4" />
                       </button>
                     )}
+                    {existing && (
+                      // The global `a, button { min-height: 36px }` touch-target rule (globals.css) doesn't
+                      // cover <label>, so without this override View (an <a>) renders taller than Upload.
+                      <a
+                        href={documentViewUrl(existing.id)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ minHeight: 0 }}
+                        className={`${DOC_CHIP_BASE} ${DOC_CHIP_TEXT} ${DOC_CHIP_INDIGO}`}
+                      >
+                        <ExternalLink className="h-3 w-3 shrink-0" /> View
+                      </a>
+                    )}
                     <label
-                      className={`inline-flex cursor-pointer items-center gap-1.5 rounded-xl border px-3 py-1.5 text-[11px] font-bold transition-all ${
-                        pending || existing
-                          ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20'
-                          : 'border-indigo-500/30 bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20'
+                      title={pending || existing ? 'Replace document' : 'Upload document'}
+                      className={`${DOC_CHIP_BASE} ${
+                        existing
+                          ? `${DOC_CHIP_ICON_ONLY} ${DOC_CHIP_EMERALD}`
+                          : pending
+                            ? `${DOC_CHIP_TEXT} ${DOC_CHIP_EMERALD}`
+                            : `${DOC_CHIP_TEXT} ${DOC_CHIP_INDIGO}`
                       }`}
                     >
-                      {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
-                      {uploading ? 'Uploading…' : pending || existing ? 'Replace' : 'Upload'}
+                      {uploading ? <Loader2 className="h-3 w-3 shrink-0 animate-spin" /> : <Upload className="h-3 w-3 shrink-0" />}
+                      {!existing && (uploading ? 'Uploading…' : pending ? 'Replace' : 'Upload')}
                       <input
                         type="file"
                         accept="image/*,application/pdf"
