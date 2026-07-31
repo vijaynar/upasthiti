@@ -11,8 +11,9 @@
 // functions RLS itself uses — same function, same answer, no drift.
 
 import { randomBytes, createHash } from 'node:crypto';
-import { db } from '@abhyas/platform';
+import { db, storage } from '@abhyas/platform';
 import type { SessionContext } from '@abhyas/kernel';
+import { writeAuditLog } from '@abhyas/module-audit';
 
 export const ORG_TYPES = [
   'independent_coach',
@@ -62,6 +63,16 @@ export class NotAuthorizedError extends Error {
 
 function isUniqueViolation(err: unknown): boolean {
   return typeof err === 'object' && err !== null && 'code' in err && (err as { code?: string }).code === '23505';
+}
+
+function isForeignKeyViolation(err: unknown): boolean {
+  return typeof err === 'object' && err !== null && 'code' in err && (err as { code?: string }).code === '23503';
+}
+
+export class OrganizationLifecycleError extends Error {
+  constructor(reason: string) {
+    super(`[tenancy-rbac] ${reason}`);
+  }
 }
 
 // Minimal structural shape of a pg client's query() — enough for the
@@ -293,6 +304,147 @@ export async function isActiveMember(session: SessionContext, organizationId: st
       [session.userId, organizationId]
     );
     return result.rows.length > 0;
+  });
+}
+
+async function isOrgOwner(client: QueryClient, userId: string, organizationId: string): Promise<boolean> {
+  const result = await client.query(
+    `select 1 from memberships m
+     join membership_roles mr on mr.membership_id = m.id
+     join roles r on r.id = mr.role_id
+     where m.user_id = $1 and m.organization_id = $2 and m.status = 'active'
+       and r.key = 'owner' and r.organization_id is null`,
+    [userId, organizationId]
+  );
+  return result.rows.length > 0;
+}
+
+// Cleanup for an abandoned org signup (Doc 02 §9 onboarding creates the org
+// + owner membership immediately on step 1, before the profile wizard is
+// ever finished — see onboarding page comments) or for a rejected
+// verification. Deliberately scoped to 'pending'/'rejected' only: an
+// active/suspended org has real member and business data an owner should
+// never lose to a single self-service click. `organizations` has no DELETE
+// grant to `authenticated` (migration 0005) — same cross-actor-write shape
+// as acceptInvitation/decideJoinRequest above, service-role after an
+// app-layer ownership check.
+export async function deleteOrganization(session: SessionContext, organizationId: string): Promise<void> {
+  const owner = await db.withRequestContext(session, (client) => isOrgOwner(client, session.userId, organizationId));
+  if (!owner) throw new NotAuthorizedError('delete this workspace');
+
+  const client = await db.getServiceClient();
+  let orgName: string | null = null;
+  let documentPaths: string[] = [];
+  try {
+    await client.query('begin');
+    const before = await client.query<{ status: string; name: string }>(`select status, name from organizations where id = $1`, [organizationId]);
+    const status = before.rows[0]?.status;
+    if (!status) throw new OrganizationLifecycleError('Workspace not found.');
+    if (status !== 'pending' && status !== 'rejected') {
+      throw new OrganizationLifecycleError('Only a pending or rejected workspace can be deleted. Leave an active workspace instead.');
+    }
+    orgName = before.rows[0].name;
+
+    // Captured before the memberships cascade wipes staff_documents rows —
+    // each upload path is timestamped/unique to that document (see
+    // /api/v1/me/staff/documents/upload-url), so removing them can't affect
+    // another org's documents even though the path lives under the
+    // uploading user's own identity prefix, not an org-scoped one.
+    const docs = await client.query<{ storage_path: string }>(`select storage_path from staff_documents where organization_id = $1`, [organizationId]);
+    documentPaths = docs.rows.map((r) => r.storage_path);
+
+    // Dependency order for tables with no ON DELETE CASCADE from
+    // organizations; membership_roles cascades automatically once its
+    // parent memberships row is gone.
+    await client.query(`delete from join_requests where organization_id = $1`, [organizationId]);
+    await client.query(`delete from invitations where organization_id = $1`, [organizationId]);
+    await client.query(`delete from org_branding where organization_id = $1`, [organizationId]);
+    await client.query(`delete from org_domains where organization_id = $1`, [organizationId]);
+    await client.query(`delete from listings where organization_id = $1`, [organizationId]);
+    // membership_roles_protect_last_owner (migration 0004) is BEFORE DELETE
+    // on membership_roles and still fires on the cascade delete triggered
+    // below — from its point of view we're removing the org's only owner
+    // while the org row still exists, so it raises. That protection is
+    // correct for revokeRole/leave; it's a false positive here, where the
+    // whole org (including the owner) is intentionally going away. Disabled
+    // only for this statement, transactionally scoped — reverts on
+    // commit/rollback either way.
+    await client.query(`alter table membership_roles disable trigger membership_roles_protect_last_owner`);
+    await client.query(`delete from memberships where organization_id = $1`, [organizationId]);
+    await client.query(`alter table membership_roles enable trigger membership_roles_protect_last_owner`);
+    await client.query(`delete from branches where organization_id = $1`, [organizationId]);
+    // audit_log.organization_id is a nullable FK with no cascade — any org
+    // that was ever touched by a verify/reject/reason-logged action (e.g. a
+    // 'rejected' org always has its rejection entry) would otherwise block
+    // this delete forever. Detach rather than erase: the historical
+    // action/actor/detail/occurred_at rows all survive, just no longer
+    // pointing at a row that's about to stop existing.
+    await client.query(`update audit_log set organization_id = null where organization_id = $1`, [organizationId]);
+    await client.query(`delete from organizations where id = $1`, [organizationId]);
+    await client.query('commit');
+  } catch (err) {
+    await client.query('rollback').catch(() => {});
+    if (err instanceof OrganizationLifecycleError) throw err;
+    // Any other FK still pointing at this org (enrollments, batches, charges...)
+    // means real business data exists despite the 'pending'/'rejected' status —
+    // refuse rather than silently deleting only part of it.
+    if (isForeignKeyViolation(err)) {
+      throw new OrganizationLifecycleError('This workspace has data attached to it and cannot be deleted. Contact support.');
+    }
+    throw err;
+  } finally {
+    client.release();
+  }
+
+  // Best-effort Storage cleanup — a separate HTTP system from Postgres, so
+  // it can't be part of the transaction above; the DB deletion already
+  // succeeded by this point, so a failure here (network blip, already-gone
+  // object) becomes an orphaned file, never a reason to report the
+  // workspace deletion itself as failed.
+  if (documentPaths.length > 0) {
+    const docsStorage = storage.makeSupabaseStorageAdapter('coach-documents');
+    await Promise.allSettled(documentPaths.map((path) => docsStorage.remove(path as storage.StoragePrefix)));
+  }
+
+  // organizationId omitted (not organizationId: organizationId) — the org
+  // row is gone by now and audit_log.organization_id has a real FK to
+  // organizations(id) (nullable, no ON DELETE SET NULL); passing the
+  // now-dangling id would 23503 this insert. name is carried in `detail`
+  // instead so the audit trail stays readable after the org is gone.
+  await writeAuditLog(session, {
+    action: 'org.delete',
+    targetType: 'organization',
+    targetId: organizationId,
+    detail: { name: orgName },
+  });
+}
+
+// Self-service "leave" for a member of someone else's org (Doc 02 §9 — a
+// coach can join several academies). memberships_leave_self (migration
+// 0005) is the real gate: self-row only, status -> 'left' only; the
+// assert_owner_remains_on_membership_suspend trigger (migration 0004)
+// backstops the case of a non-owner accidentally being an org's last owner.
+// Owners are refused up front with a clear message rather than relying on
+// that trigger's bare exception.
+export async function leaveOrganization(session: SessionContext, organizationId: string): Promise<void> {
+  const owner = await db.withRequestContext(session, (client) => isOrgOwner(client, session.userId, organizationId));
+  if (owner) {
+    throw new OrganizationLifecycleError('Workspace owners cannot leave — delete the workspace or transfer ownership first.');
+  }
+
+  await db.withRequestContext(session, async (client) => {
+    const result = await client.query(
+      `update memberships set status = 'left' where user_id = $1 and organization_id = $2 and status = 'active'`,
+      [session.userId, organizationId]
+    );
+    if (result.rowCount === 0) throw new NotAuthorizedError('leave this workspace');
+  });
+
+  await writeAuditLog(session, {
+    action: 'org.leave',
+    targetType: 'organization',
+    targetId: organizationId,
+    organizationId,
   });
 }
 

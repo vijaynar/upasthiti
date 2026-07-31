@@ -27,6 +27,8 @@ import {
   Building2,
   Shield,
   Sliders,
+  Trash2,
+  Archive,
 } from 'lucide-react';
 import InviteCoachPanel from '@/components/InviteCoachPanel';
 import { PageHeader } from '@/components/PageHeader';
@@ -35,9 +37,13 @@ type Tab = 'verification' | 'organizations' | 'roles' | 'users' | 'support' | 'a
 
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, { ...init, headers: { 'Content-Type': 'application/json', ...init?.headers } });
-  const body = await res.json();
-  if (!res.ok) throw new Error(body.error?.message ?? 'Something went wrong.');
-  return body.data as T;
+  // An unhandled server error can respond with an empty/non-JSON body —
+  // res.json() itself throws "Unexpected end of JSON input" in that case,
+  // which would otherwise leak straight into the UI as a raw parser error
+  // instead of a message a user can act on.
+  const body = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(body?.error?.message ?? `Something went wrong (status ${res.status}).`);
+  return body?.data as T;
 }
 
 export default function PlatformConsolePage() {
@@ -220,6 +226,34 @@ function OrganizationsPanel() {
     }
   }
 
+  async function deleteOrg(org: OrgSummary) {
+    if (!window.confirm(`Permanently delete "${org.name}"? This unverified organization and its data will be gone for good.`)) return;
+    setBusy(org.id);
+    setError(null);
+    try {
+      await api(`/api/v1/platform/organizations/${org.id}`, { method: 'DELETE' });
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong.');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function archiveOrg(org: OrgSummary) {
+    if (!window.confirm(`Archive "${org.name}"? Members will lose access; this is a soft-delete, not permanent.`)) return;
+    setBusy(org.id);
+    setError(null);
+    try {
+      await api(`/api/v1/platform/organizations/${org.id}/archive`, { method: 'POST' });
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong.');
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <div>
       <PageHeader badge="Organizations" badgeIcon={Building2} title="Organizations" description="Every organization on the platform, with lifecycle controls." />
@@ -265,6 +299,24 @@ function OrganizationsPanel() {
                           <RotateCcw className="h-3.5 w-3.5 text-emerald-400" /> Reinstate
                         </>
                       )}
+                    </button>
+                  )}
+                  {(org.status === 'active' || org.status === 'suspended') && (
+                    <button
+                      disabled={busy === org.id}
+                      onClick={() => archiveOrg(org)}
+                      className="flex items-center gap-1 rounded-lg border border-white/10 px-3 py-1.5 text-xs font-medium text-slate-300 hover:bg-white/10 disabled:opacity-50"
+                    >
+                      <Archive className="h-3.5 w-3.5 text-amber-400" /> Archive
+                    </button>
+                  )}
+                  {(org.status === 'pending' || org.status === 'rejected') && (
+                    <button
+                      disabled={busy === org.id}
+                      onClick={() => deleteOrg(org)}
+                      className="flex items-center gap-1 rounded-lg border border-red-500/20 bg-red-500/5 px-3 py-1.5 text-xs font-medium text-red-400 hover:bg-red-500/10 disabled:opacity-50"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" /> Delete
                     </button>
                   )}
                 </div>
@@ -1960,6 +2012,20 @@ function formatAuditDescription(entry: AuditEntry): string {
   }
   if (action === 'platform.org.reinstate') {
     return `Reinstated organization ${entry.orgName ? `'${entry.orgName}'` : entry.targetId ?? ''}`;
+  }
+  if (action === 'platform.org.delete') {
+    const name = entry.orgName || d.name;
+    return `Permanently deleted organization ${name ? `'${name}'` : entry.targetId ?? ''}${d.reason ? ` (Reason: ${d.reason})` : ''}`;
+  }
+  if (action === 'platform.org.archive') {
+    return `Archived organization ${entry.orgName ? `'${entry.orgName}'` : entry.targetId ?? ''}${d.reason ? ` (Reason: ${d.reason})` : ''}`;
+  }
+  if (action === 'org.delete') {
+    const name = entry.orgName || d.name;
+    return `${actor} deleted workspace ${name ? `'${name}'` : entry.targetId ?? ''}`;
+  }
+  if (action === 'org.leave') {
+    return `${actor} left workspace ${entry.orgName ? `'${entry.orgName}'` : entry.targetId ?? ''}`;
   }
   if (action.includes('switch_role')) {
     return `User ${entry.actorEmail || actor} switched active role from '${d.fromRole ?? 'previous'}' to '${d.toRole ?? 'new'}'`;

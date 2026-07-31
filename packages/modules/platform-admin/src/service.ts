@@ -28,7 +28,7 @@
 // "schema follows the module that needs it" precedent as org_domains
 // (Phase 3) and coach_assignments.batch_id (Phase 4).
 
-import { db, queue } from '@abhyas/platform';
+import { db, queue, storage } from '@abhyas/platform';
 import type { SessionContext } from '@abhyas/kernel';
 import { writeAuditLog } from '@abhyas/module-audit';
 
@@ -48,6 +48,10 @@ export class SupportGrantInvalidError extends Error {
   constructor(reason = 'This support access grant cannot be revoked.') {
     super(`[platform-admin] ${reason}`);
   }
+}
+
+function isForeignKeyViolation(err: unknown): boolean {
+  return typeof err === 'object' && err !== null && 'code' in err && (err as { code?: string }).code === '23503';
 }
 
 export async function hasPlatformPerm(session: SessionContext, permission: string): Promise<boolean> {
@@ -296,6 +300,113 @@ export async function setOrganizationSuspension(
   }
   await writeAuditLog(session, {
     action: action === 'suspend' ? 'platform.org.suspend' : 'platform.org.reinstate',
+    targetType: 'organization',
+    targetId: organizationId,
+    organizationId,
+    detail: reason ? { reason } : null,
+  });
+}
+
+// Permanent delete — scoped to orgs that never got past verification
+// ('pending'/'rejected'), so there's no real member/business data at stake.
+// A verified org must be archived instead (below), never hard-deleted.
+export async function deleteOrganization(session: SessionContext, organizationId: string, reason?: string): Promise<void> {
+  await assertPlatformPerm(session, 'platform.org.lifecycle', 'delete this organization');
+  const client = await db.getServiceClient();
+  let orgName: string | null = null;
+  let documentPaths: string[] = [];
+  try {
+    await client.query('begin');
+    const before = await client.query<{ status: string; name: string }>(`select status, name from organizations where id = $1`, [organizationId]);
+    const status = before.rows[0]?.status;
+    if (!status) throw new OrganizationStateError('Organization not found.');
+    if (status !== 'pending' && status !== 'rejected') {
+      throw new OrganizationStateError('Only a pending or rejected (unverified) organization can be permanently deleted. Archive a verified organization instead.');
+    }
+    orgName = before.rows[0].name;
+
+    // Captured before the memberships cascade wipes staff_documents rows —
+    // each upload path is timestamped/unique to that document, so removing
+    // them can't affect another org's documents even though the path lives
+    // under the uploading user's own identity prefix, not an org-scoped one.
+    const docs = await client.query<{ storage_path: string }>(`select storage_path from staff_documents where organization_id = $1`, [organizationId]);
+    documentPaths = docs.rows.map((r) => r.storage_path);
+
+    // Same dependency order as tenancy-rbac's self-service deleteOrganization
+    // — membership_roles cascades once its parent memberships row is gone.
+    await client.query(`delete from join_requests where organization_id = $1`, [organizationId]);
+    await client.query(`delete from invitations where organization_id = $1`, [organizationId]);
+    await client.query(`delete from org_branding where organization_id = $1`, [organizationId]);
+    await client.query(`delete from org_domains where organization_id = $1`, [organizationId]);
+    await client.query(`delete from listings where organization_id = $1`, [organizationId]);
+    // membership_roles_protect_last_owner (migration 0004) still fires on
+    // this cascade delete — from its point of view the org's only owner is
+    // being removed while the org row still exists, so it raises. Correct
+    // protection for revokeRole; a false positive here since the whole org
+    // is intentionally going away. Disabled only for this statement,
+    // transactionally scoped.
+    await client.query(`alter table membership_roles disable trigger membership_roles_protect_last_owner`);
+    await client.query(`delete from memberships where organization_id = $1`, [organizationId]);
+    await client.query(`alter table membership_roles enable trigger membership_roles_protect_last_owner`);
+    await client.query(`delete from branches where organization_id = $1`, [organizationId]);
+    // audit_log.organization_id is a nullable FK with no cascade — any org
+    // that was ever touched by a verify/reject/reason-logged action (e.g. a
+    // 'rejected' org always has its rejection entry) would otherwise block
+    // this delete forever. Detach rather than erase: the historical rows
+    // survive, just no longer pointing at a row that's about to stop existing.
+    await client.query(`update audit_log set organization_id = null where organization_id = $1`, [organizationId]);
+    await client.query(`delete from organizations where id = $1`, [organizationId]);
+    await client.query('commit');
+  } catch (err) {
+    await client.query('rollback').catch(() => {});
+    if (err instanceof OrganizationStateError) throw err;
+    if (isForeignKeyViolation(err)) {
+      throw new OrganizationStateError('This organization has data attached to it and cannot be permanently deleted.');
+    }
+    throw err;
+  } finally {
+    client.release();
+  }
+
+  // Best-effort Storage cleanup — separate HTTP system from Postgres, can't
+  // join the transaction above; the DB deletion already succeeded by this
+  // point, so a failure here becomes an orphaned file, never a reason to
+  // report the org deletion itself as failed.
+  if (documentPaths.length > 0) {
+    const docsStorage = storage.makeSupabaseStorageAdapter('coach-documents');
+    await Promise.allSettled(documentPaths.map((path) => docsStorage.remove(path as storage.StoragePrefix)));
+  }
+
+  // organizationId omitted, same reason as tenancy-rbac's deleteOrganization
+  // — the row is gone and audit_log.organization_id has a real FK to it.
+  await writeAuditLog(session, {
+    action: 'platform.org.delete',
+    targetType: 'organization',
+    targetId: organizationId,
+    detail: { name: orgName, ...(reason ? { reason } : {}) },
+  });
+}
+
+// Soft delete for a verified org — status -> 'archived' (already a modeled
+// terminal state, migration 0002's organizations CHECK constraint), keeping
+// all member/business data intact and reversible only by direct DB action,
+// unlike suspend/reinstate which is meant to be toggled routinely.
+export async function archiveOrganization(session: SessionContext, organizationId: string, reason?: string): Promise<void> {
+  await assertPlatformPerm(session, 'platform.org.lifecycle', 'archive this organization');
+  const client = await db.getServiceClient();
+  try {
+    const before = await client.query<{ status: string }>(`select status from organizations where id = $1`, [organizationId]);
+    const currentStatus = before.rows[0]?.status;
+    if (!currentStatus) throw new OrganizationStateError('Organization not found.');
+    if (currentStatus !== 'active' && currentStatus !== 'suspended') {
+      throw new OrganizationStateError('Only an active or suspended (verified) organization can be archived.');
+    }
+    await client.query(`update organizations set status = 'archived' where id = $1`, [organizationId]);
+  } finally {
+    client.release();
+  }
+  await writeAuditLog(session, {
+    action: 'platform.org.archive',
     targetType: 'organization',
     targetId: organizationId,
     organizationId,

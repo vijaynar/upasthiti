@@ -16,6 +16,7 @@ export interface Membership {
   orgStatus: string;
   branchId: string | null;
   status: string;
+  activeRoleKey: string | null;
 }
 
 async function api<T>(url: string): Promise<T | null> {
@@ -34,6 +35,7 @@ interface WorkspaceContextValue {
   memberships: Membership[];
   activeOrg: Membership | null;
   switchWorkspace: (organizationId: string) => Promise<void>;
+  refreshMemberships: () => Promise<void>;
 }
 
 const WorkspaceContext = createContext<WorkspaceContextValue | null>(null);
@@ -90,8 +92,17 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     setActiveOrg((prev) => memberships.find((m) => m.organizationId === organizationId) ?? prev);
   }, [memberships]);
 
+  // Re-fetches the membership list after a delete/leave — used by the
+  // workspace picker page instead of a full reload so the sidebar and
+  // picker stay in sync immediately.
+  const refreshMemberships = useCallback(async () => {
+    const orgs = (await api<Membership[]>('/api/v1/orgs')) ?? [];
+    setMemberships(orgs);
+    setActiveOrg((prev) => (prev ? orgs.find((o) => o.organizationId === prev.organizationId) ?? null : prev));
+  }, []);
+
   return (
-    <WorkspaceContext.Provider value={{ loading, memberships, activeOrg, switchWorkspace }}>
+    <WorkspaceContext.Provider value={{ loading, memberships, activeOrg, switchWorkspace, refreshMemberships }}>
       {children}
     </WorkspaceContext.Provider>
   );
