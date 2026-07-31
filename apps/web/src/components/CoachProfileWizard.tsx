@@ -698,7 +698,7 @@ export default function CoachProfileWizard({ mode, organizationId, staffProfileI
             </div>
             <div>
               <Label>Email address</Label>
-              <input value={email ?? ''} disabled placeholder="—" className={fieldClass('cursor-not-allowed text-slate-500')} />
+              <input value={email ?? ''} readOnly placeholder="—" className={fieldClass('cursor-text text-slate-500')} />
               <p className="mt-1 text-[11px] text-slate-600">Set at signup — can&apos;t be changed here.</p>
             </div>
             <div>
