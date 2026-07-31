@@ -24,6 +24,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { MapPin, Search, Sparkles, ArrowRight, ChevronRight } from 'lucide-react';
 import { useCategoryTaxonomy } from '@/lib/useCategoryTaxonomy';
+import { useAcademyOperationEnabled } from '@/lib/useFeatureFlags';
 
 function initials(name: string | null): string {
   if (!name) return '';
@@ -67,6 +68,7 @@ const CATEGORY_COLORS = [
 
 export default function ExplorePage() {
   const router = useRouter();
+  const academyEnabled = useAcademyOperationEnabled();
   const { categories } = useCategoryTaxonomy();
   const [topPicks, setTopPicks] = useState<TopPickCoach[]>([]);
   const [cities, setCities] = useState<City[]>([]);
@@ -116,8 +118,8 @@ export default function ExplorePage() {
             Find the{' '}
             <span className="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
               Best Coaches
-            </span>{' '}
-            &amp; Academies Near You
+            </span>
+            {academyEnabled ? ' & Academies Near You' : ' Near You'}
           </h1>
           <p className="mx-auto mb-8 max-w-xl text-sm text-slate-400 sm:text-base">
             Search city/area-wise and discover top-rated professionals across sports, education, music, dance and more.
@@ -255,7 +257,9 @@ export default function ExplorePage() {
       <section className="mx-auto max-w-7xl px-4 pb-16 sm:px-6 lg:px-8">
         <div className="glass-panel relative overflow-hidden rounded-3xl border border-indigo-500/15 bg-indigo-500/[0.03] p-8 text-center sm:p-12">
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-indigo-500/5 via-transparent to-purple-500/5" />
-          <h3 className="relative mb-3 text-2xl font-black text-white sm:text-3xl">Are you a Coach or Academy?</h3>
+          <h3 className="relative mb-3 text-2xl font-black text-white sm:text-3xl">
+            {academyEnabled ? 'Are you a Coach or Academy?' : 'Are you a Coach?'}
+          </h3>
           <p className="relative mx-auto mb-6 max-w-md text-sm text-slate-400">
             List your profile on Abhyas and reach thousands of students looking for quality coaching in your city.
           </p>

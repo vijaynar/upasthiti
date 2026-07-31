@@ -8,6 +8,7 @@ import { cookies } from 'next/headers';
 import { LayoutDashboard } from 'lucide-react';
 import { jwt as platformJwt } from '@abhyas/platform';
 import { TAGLINE } from '@/lib/brand';
+import { isAcademyOperationEnabledServer } from '@/lib/featureFlags.server';
 
 async function getOptionalUserId(): Promise<string | null> {
   try {
@@ -28,7 +29,8 @@ const NAV_LINKS = [
 ];
 
 export default async function PublicSiteHeader({ showAuthButtons = true }: { showAuthButtons?: boolean }) {
-  const userId = await getOptionalUserId();
+  const [userId, academyEnabled] = await Promise.all([getOptionalUserId(), isAcademyOperationEnabledServer()]);
+  const navLinks = academyEnabled ? NAV_LINKS : NAV_LINKS.filter((item) => item.label !== 'Academies');
 
   return (
     <header className="sticky top-0 z-50 glass-panel border-b border-white/[0.08]">
@@ -46,7 +48,7 @@ export default async function PublicSiteHeader({ showAuthButtons = true }: { sho
           </Link>
 
           <nav className="absolute left-1/2 hidden -translate-x-1/2 items-center gap-0.5 md:flex">
-            {NAV_LINKS.map((item) => (
+            {navLinks.map((item) => (
               <Link
                 key={item.label}
                 href={item.href}

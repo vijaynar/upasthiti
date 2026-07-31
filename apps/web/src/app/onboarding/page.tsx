@@ -13,6 +13,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Building2, Mail, Search, UserRound, AlertCircle, CheckCircle2 } from 'lucide-react';
 import CoachProfileWizard from '@/components/CoachProfileWizard';
 import AcademyOnboardingWizard from '@/components/AcademyOnboardingWizard';
+import { useAcademyOperationEnabled } from '@/lib/useFeatureFlags';
 
 type Intent = 'choose' | 'coach' | 'academy' | 'invite' | 'join';
 
@@ -327,6 +328,7 @@ function JoinRequestForm() {
 function OnboardingContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const academyEnabled = useAcademyOperationEnabled();
   const initialIntent = (searchParams.get('intent') as Intent) || (searchParams.get('token') ? 'invite' : 'choose');
   const [intent, setIntent] = useState<Intent>(initialIntent);
   const [coachWizardOrgId, setCoachWizardOrgId] = useState<string | null>(null);
@@ -340,8 +342,10 @@ function OnboardingContent() {
     await activateWorkspace(organizationId);
     if (checkRole && (await hasCoachRole(organizationId))) {
       setCoachWizardOrgId(organizationId);
-    } else {
+    } else if (academyEnabled) {
       setAcademyWizardOrgId(organizationId);
+    } else {
+      finish();
     }
   }
 
@@ -366,7 +370,7 @@ function OnboardingContent() {
     );
   }
 
-  if (intent === 'academy' || academyWizardOrgId) {
+  if (academyEnabled && (intent === 'academy' || academyWizardOrgId)) {
     return (
       <div className="flex min-h-screen items-center justify-center px-4 py-12">
         <AcademyOnboardingWizard
@@ -403,7 +407,9 @@ function OnboardingContent() {
       </div>
       <div className="mt-6 space-y-3">
         <IntentButton icon={UserRound} label="I'm a coach" hint="Set up your own coaching workspace" onClick={() => setIntent('coach')} />
-        <IntentButton icon={Building2} label="I run an academy" hint="Academy, school, studio, or similar" onClick={() => setIntent('academy')} />
+        {academyEnabled && (
+          <IntentButton icon={Building2} label="I run an academy" hint="Academy, school, studio, or similar" onClick={() => setIntent('academy')} />
+        )}
         <IntentButton icon={Mail} label="I have an invite" hint="Join a workspace you were invited to" onClick={() => setIntent('invite')} />
         <IntentButton icon={Search} label="I'm a parent or student" hint="Find and request to join an organization" onClick={() => setIntent('join')} />
       </div>

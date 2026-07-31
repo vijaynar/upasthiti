@@ -19,6 +19,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, ChevronRight, MapPin, Search, SlidersHorizontal, Star, X } from 'lucide-react';
 import { useCategoryTaxonomy, type Category } from '@/lib/useCategoryTaxonomy';
+import { useAcademyOperationEnabled } from '@/lib/useFeatureFlags';
 import { Chip } from '@/components/Chip';
 
 async function api<T>(url: string): Promise<T> {
@@ -91,6 +92,7 @@ export default function AcademiesPage() {
 function AcademiesSearch() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const academyEnabled = useAcademyOperationEnabled();
   const { categories } = useCategoryTaxonomy();
   const [cities, setCities] = useState<City[]>([]);
   const [listings, setListings] = useState<ListingResult[]>([]);
@@ -120,6 +122,10 @@ function AcademiesSearch() {
     },
     [router, searchParams]
   );
+
+  useEffect(() => {
+    if (!academyEnabled) router.replace('/explore');
+  }, [academyEnabled, router]);
 
   useEffect(() => {
     api<{ cities: City[] }>('/api/v1/public/taxonomy').then((t) => setCities(t.cities)).catch(() => {});
@@ -181,6 +187,8 @@ function AcademiesSearch() {
   function clearAll() {
     router.push('/explore/academies');
   }
+
+  if (!academyEnabled) return null;
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
