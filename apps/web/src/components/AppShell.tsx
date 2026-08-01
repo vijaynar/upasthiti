@@ -426,7 +426,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             </button>
           </div>
 
-          <div className="flex items-center gap-2 py-0.5">
+          <div className="flex items-start gap-2 py-0.5">
             <div className="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-slate-800 text-indigo-400">
               {avatarPath ? (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -439,9 +439,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               <h5 className="truncate text-xs font-bold text-slate-200">{displayName ?? '…'}</h5>
               <div className="mt-0.5">
               {isPlatformStaff ? (
-                <span className="flex w-full items-center rounded-md border border-white/10 bg-white/5 px-1.5 text-[8px] font-extrabold uppercase tracking-wide text-slate-400">
+                <div className="flex h-7 w-full items-center rounded-md border border-white/10 bg-white/5 px-1.5 text-[8px] font-extrabold uppercase tracking-wide text-slate-400">
                   {platformRoles.join(', ').replace(/_/g, ' ')}
-                </span>
+                </div>
               ) : activeOrg ? (
                 heldRoleKeys.length > 1 ? (
                   <>
@@ -449,7 +449,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                       type="button"
                       onClick={() => setRoleMenuOpen((v) => !v)}
                       disabled={switchingRole}
-                      className="flex w-full items-center justify-between rounded-md border border-white/10 bg-white/5 px-1.5 text-[8px] font-extrabold uppercase tracking-wide text-slate-400 hover:bg-white/10 hover:text-slate-200 disabled:opacity-60"
+                      className="flex h-7 w-full items-center justify-between rounded-md border border-white/10 bg-white/5 px-1.5 text-[8px] font-extrabold uppercase tracking-wide text-slate-400 hover:bg-white/10 hover:text-slate-200 disabled:opacity-60"
                     >
                       {switchingRole ? 'Switching…' : ORG_ROLE_LABELS[activeRoleKey ?? ''] ?? activeRoleKey ?? '…'}
                       <ChevronDown className="h-2.5 w-2.5" />
@@ -479,24 +479,24 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                     )}
                   </>
                 ) : (
-                  <span className="flex w-full items-center rounded-md border border-white/10 bg-white/5 px-1.5 text-[8px] font-extrabold uppercase tracking-wide text-slate-400">
+                  <div className="flex h-7 w-full items-center rounded-md border border-white/10 bg-white/5 px-1.5 text-[8px] font-extrabold uppercase tracking-wide text-slate-400">
                     {ORG_ROLE_LABELS[activeRoleKey ?? ''] ?? activeRoleKey ?? '…'}
-                  </span>
+                  </div>
                 )
               ) : (
-                <span className="flex w-full items-center rounded-md border border-white/10 bg-white/5 px-1.5 text-[8px] font-extrabold uppercase tracking-wide text-slate-400">
+                <div className="flex h-7 w-full items-center rounded-md border border-white/10 bg-white/5 px-1.5 text-[8px] font-extrabold uppercase tracking-wide text-slate-400">
                   No workspace
-                </span>
+                </div>
               )}
               </div>
             </div>
 
-            <div className="relative shrink-0">
+            <div className="relative mt-[18px] shrink-0">
               <button
                 type="button"
                 onClick={() => setShowSettings((v) => !v)}
                 title="Settings"
-                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 text-slate-400 hover:bg-white/10 hover:text-slate-200 transition"
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-white/10 bg-white/5 text-slate-400 hover:bg-white/10 hover:text-slate-200 transition"
               >
                 <Settings className="h-3.5 w-3.5" />
               </button>
