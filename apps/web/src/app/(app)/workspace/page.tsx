@@ -148,13 +148,23 @@ export default function WorkspacePage() {
           </ul>
         )}
 
-        <Link
-          href="/onboarding"
-          className="btn-secondary flex items-center justify-center gap-2 rounded-lg border border-dashed border-white/20 px-4 py-2.5 text-sm font-medium text-slate-300 hover:bg-white/10"
-        >
-          <Plus className="h-4 w-4" />
-          Add another workspace
-        </Link>
+        {activeOrg?.orgType === 'independent_coach' ? (
+          <span
+            aria-disabled="true"
+            className="flex cursor-not-allowed items-center justify-center gap-2 rounded-lg border border-dashed border-white/10 px-4 py-2.5 text-sm font-medium text-slate-500"
+          >
+            <Plus className="h-4 w-4" />
+            Add another workspace
+          </span>
+        ) : (
+          <Link
+            href="/onboarding"
+            className="btn-secondary flex items-center justify-center gap-2 rounded-lg border border-dashed border-white/20 px-4 py-2.5 text-sm font-medium text-slate-300 hover:bg-white/10"
+          >
+            <Plus className="h-4 w-4" />
+            Add another workspace
+          </Link>
+        )}
       </div>
     </div>
   );
