@@ -145,7 +145,7 @@ function OwnerView({ orgId }: { orgId: string }) {
           <TodaySchedule sessions={data.todaysSessions} />
         </SectionCard>
 
-        <SectionCard title="Recent enrollments" action={{ label: 'People', href: '/people' }}>
+        <SectionCard title="Recent enrollments" action={{ label: 'Students', href: '/people' }}>
           {data.recentEnrollments.length === 0 ? (
             <EmptyRow>No enrollments yet.</EmptyRow>
           ) : (

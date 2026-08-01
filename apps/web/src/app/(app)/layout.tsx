@@ -3,7 +3,7 @@ import { WorkspaceProvider } from '@/lib/workspace';
 
 // Shared across every authenticated route segment in this group (dashboard,
 // people, scheduling, attendance, progress, finance, staff, marketplace,
-// notifications, me, family, workspace, platform) so AppShell mounts once
+// notifications, announcements, me, workspace, platform) so AppShell mounts once
 // and persists across navigation instead of remounting per segment — each
 // used to have its own layout.tsx wrapping AppShell independently, which
 // made React tear down and rebuild the whole sidebar (and refetch /me,

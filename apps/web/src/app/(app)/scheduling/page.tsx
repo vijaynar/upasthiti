@@ -9,7 +9,7 @@
 // later).
 
 import { useEffect, useState } from 'react';
-import { CalendarDays, Plus, Trash2, Users, X } from 'lucide-react';
+import { CalendarDays, CalendarPlus, Plus, Trash2, Users, X } from 'lucide-react';
 import { PageHeader } from '@/components/PageHeader';
 
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
@@ -89,7 +89,15 @@ interface Enrollment {
   rollNumber: string | null;
 }
 
+interface AvailabilitySlot {
+  id: string;
+  dayOfWeek: number;
+  startTime: string;
+  endTime: string;
+}
+
 const DOW_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const DAY_NAMES = ['', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 function statusBadgeClass(status: ClassSession['status']): string {
   switch (status) {
@@ -336,6 +344,9 @@ export default function SchedulingPage() {
         />
 
         {error && <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-400">{error}</div>}
+
+        {/* My availability */}
+        <MyAvailabilitySection />
 
         {/* Programs */}
         <section className="glass-panel rounded-xl p-4">
@@ -625,5 +636,103 @@ export default function SchedulingPage() {
         </section>
       </div>
     </div>
+  );
+}
+
+function MyAvailabilitySection() {
+  const [slots, setSlots] = useState<AvailabilitySlot[] | null>(null);
+  const [dayOfWeek, setDayOfWeek] = useState(1);
+  const [startTime, setStartTime] = useState('09:00');
+  const [endTime, setEndTime] = useState('17:00');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  function load() {
+    api<AvailabilitySlot[]>('/api/v1/me/staff/availability').then(setSlots).catch((err) => setError(err.message));
+  }
+
+  useEffect(load, []);
+
+  async function addSlot() {
+    if (!slots) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const next = [...slots.map((s) => ({ dayOfWeek: s.dayOfWeek, startTime: s.startTime, endTime: s.endTime })), { dayOfWeek, startTime, endTime }];
+      const updated = await api<AvailabilitySlot[]>('/api/v1/me/staff/availability', { method: 'PUT', body: JSON.stringify({ slots: next }) });
+      setSlots(updated);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeSlot(id: string) {
+    if (!slots) return;
+    setError(null);
+    try {
+      const next = slots.filter((s) => s.id !== id).map((s) => ({ dayOfWeek: s.dayOfWeek, startTime: s.startTime, endTime: s.endTime }));
+      const updated = await api<AvailabilitySlot[]>('/api/v1/me/staff/availability', { method: 'PUT', body: JSON.stringify({ slots: next }) });
+      setSlots(updated);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong.');
+    }
+  }
+
+  return (
+    <section className="glass-panel rounded-xl p-4">
+      <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-white">
+        <CalendarPlus className="h-4 w-4 text-indigo-400" /> My availability
+      </h2>
+      {error && <p className="mb-3 text-sm text-red-400">{error}</p>}
+      {slots === null ? (
+        <p className="text-sm text-slate-400">Loading…</p>
+      ) : (
+        <ul className="mb-3 space-y-1">
+          {slots.map((s) => (
+            <li key={s.id} className="flex items-center justify-between rounded-lg border border-white/10 px-3 py-1.5 text-sm text-slate-300">
+              {DAY_NAMES[s.dayOfWeek]} {s.startTime}–{s.endTime}
+              <button onClick={() => removeSlot(s.id)} className="text-slate-500 hover:text-red-400">
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </li>
+          ))}
+          {slots.length === 0 && <li className="text-sm text-slate-400">No availability set yet.</li>}
+        </ul>
+      )}
+      <div className="flex flex-wrap items-end gap-2">
+        <select
+          value={dayOfWeek}
+          onChange={(e) => setDayOfWeek(Number(e.target.value))}
+          className="glass-input rounded-lg px-2 py-1.5 text-sm"
+        >
+          {DAY_NAMES.slice(1).map((d, i) => (
+            <option key={d} value={i + 1}>
+              {d}
+            </option>
+          ))}
+        </select>
+        <input
+          type="time"
+          value={startTime}
+          onChange={(e) => setStartTime(e.target.value)}
+          className="glass-input rounded-lg px-2 py-1.5 text-sm"
+        />
+        <input
+          type="time"
+          value={endTime}
+          onChange={(e) => setEndTime(e.target.value)}
+          className="glass-input rounded-lg px-2 py-1.5 text-sm"
+        />
+        <button
+          disabled={busy}
+          onClick={addSlot}
+          className="btn-premium flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-50"
+        >
+          <Plus className="h-3.5 w-3.5" /> Add slot
+        </button>
+      </div>
+    </section>
   );
 }

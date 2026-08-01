@@ -1,8 +1,8 @@
 'use client';
 
 // Global app shell for every authenticated V2 surface (/platform, /people,
-// /scheduling, /attendance, /finance, /notifications, /marketplace,
-// /family, /workspace, /me/*) — before this, each of those routes rendered
+// /scheduling, /attendance, /finance, /notifications, /announcements,
+// /marketplace, /workspace, /me/*) — before this, each of those routes rendered
 // bare (no logo, no workspace context, no theme control, no way to sign
 // out) because V2 never got its own version of V1's admin sidebar
 // (apps/web/src/app/admin/layout.tsx, still on V1's Supabase-direct-client
@@ -31,7 +31,6 @@ import {
   Store,
   ShieldCheck,
   UserCog,
-  Briefcase,
   TrendingUp,
   UserRound,
   LogOut,
@@ -85,21 +84,19 @@ const ORG_ROLE_LABELS: Record<string, string> = {
 // a guess — traced to each module's `*_select_staff` policy), used to
 // show/hide the item by the caller's active role only.
 const ORG_NAV = [
-  { label: 'People', href: '/people', icon: Users, permission: 'people.student.read' },
+  { label: 'Students', href: '/people', icon: Users, permission: 'people.student.read' },
   { label: 'Scheduling', href: '/scheduling', icon: CalendarClock, permission: 'schedule.calendar.read' },
   { label: 'Attendance', href: '/attendance', icon: ScanFace, permission: 'attendance.read' },
-  { label: 'Progress', href: '/progress', icon: TrendingUp, permission: 'people.student.read' },
   { label: 'Finance', href: '/finance', icon: Wallet, permission: 'finance.charge.read' },
   { label: 'Staff HR', href: '/staff', icon: UserCog, permission: 'hr.staff.onboard' },
   { label: 'Marketplace', href: '/marketplace', icon: Store, permission: 'market.listing.manage' },
   { label: 'Notifications', href: '/notifications', icon: Bell, permission: 'notify.log.read' },
+  { label: 'Announcements', href: '/announcements', icon: Megaphone, permission: 'notify.announcement.read' },
 ];
 
 const ME_NAV = [
   { label: 'My Profile', href: '/me/profile', icon: UserCog },
-  { label: 'Family', href: '/family', icon: UserRound },
   { label: 'My progress', href: '/me/progress', icon: TrendingUp },
-  { label: 'My HR', href: '/me/staff', icon: Briefcase },
   { label: 'My notifications', href: '/me/notifications', icon: Bell },
 ];
 

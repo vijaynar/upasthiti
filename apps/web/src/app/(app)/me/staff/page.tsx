@@ -5,7 +5,7 @@
 // active organization. Mirrors /family's self-service style.
 
 import { useEffect, useState } from 'react';
-import { Briefcase, CalendarPlus, FileUp, IndianRupee, Trash2 } from 'lucide-react';
+import { Briefcase, CalendarPlus, FileUp, IndianRupee } from 'lucide-react';
 import { PageHeader } from '@/components/PageHeader';
 
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
@@ -20,13 +20,6 @@ interface StaffProfile {
   designation: string | null;
   employmentType: string;
   status: string;
-}
-
-interface AvailabilitySlot {
-  id: string;
-  dayOfWeek: number;
-  startTime: string;
-  endTime: string;
 }
 
 interface LeaveRequest {
@@ -52,8 +45,6 @@ interface PayoutSettings {
   currency: string;
   commissionPct: number | null;
 }
-
-const DAY_NAMES = ['', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 function ErrorBanner({ error }: { error: string | null }) {
   if (!error) return null;
@@ -101,7 +92,6 @@ export default function MyStaffPage() {
       />
 
       <div className="space-y-6">
-        <AvailabilityCard />
         <LeaveRequestsCard />
         <DocumentsCard />
         <PayoutCard />
@@ -118,100 +108,6 @@ function Card({ title, icon, children }: { title: string; icon: React.ReactNode;
       </h2>
       {children}
     </div>
-  );
-}
-
-function AvailabilityCard() {
-  const [slots, setSlots] = useState<AvailabilitySlot[] | null>(null);
-  const [dayOfWeek, setDayOfWeek] = useState(1);
-  const [startTime, setStartTime] = useState('09:00');
-  const [endTime, setEndTime] = useState('17:00');
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  function load() {
-    api<AvailabilitySlot[]>('/api/v1/me/staff/availability').then(setSlots).catch((err) => setError(err.message));
-  }
-
-  useEffect(load, []);
-
-  async function addSlot() {
-    if (!slots) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const next = [...slots.map((s) => ({ dayOfWeek: s.dayOfWeek, startTime: s.startTime, endTime: s.endTime })), { dayOfWeek, startTime, endTime }];
-      const updated = await api<AvailabilitySlot[]>('/api/v1/me/staff/availability', { method: 'PUT', body: JSON.stringify({ slots: next }) });
-      setSlots(updated);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong.');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function removeSlot(id: string) {
-    if (!slots) return;
-    setError(null);
-    try {
-      const next = slots.filter((s) => s.id !== id).map((s) => ({ dayOfWeek: s.dayOfWeek, startTime: s.startTime, endTime: s.endTime }));
-      const updated = await api<AvailabilitySlot[]>('/api/v1/me/staff/availability', { method: 'PUT', body: JSON.stringify({ slots: next }) });
-      setSlots(updated);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong.');
-    }
-  }
-
-  return (
-    <Card title="My availability" icon={<CalendarPlus className="h-4 w-4 text-indigo-400" />}>
-      <ErrorBanner error={error} />
-      {slots === null ? (
-        <p className="text-sm text-slate-400">Loading…</p>
-      ) : (
-        <ul className="mb-3 space-y-1">
-          {slots.map((s) => (
-            <li key={s.id} className="flex items-center justify-between rounded-lg border border-white/10 px-3 py-1.5 text-sm text-slate-300">
-              {DAY_NAMES[s.dayOfWeek]} {s.startTime}–{s.endTime}
-              <button onClick={() => removeSlot(s.id)} className="text-slate-500 hover:text-red-400">
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-      <div className="flex flex-wrap items-end gap-2">
-        <select
-          value={dayOfWeek}
-          onChange={(e) => setDayOfWeek(Number(e.target.value))}
-          className="rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-sm text-slate-200 outline-none focus:border-indigo-500"
-        >
-          {DAY_NAMES.slice(1).map((d, i) => (
-            <option key={d} value={i + 1}>
-              {d}
-            </option>
-          ))}
-        </select>
-        <input
-          type="time"
-          value={startTime}
-          onChange={(e) => setStartTime(e.target.value)}
-          className="rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-sm text-slate-200 outline-none focus:border-indigo-500"
-        />
-        <input
-          type="time"
-          value={endTime}
-          onChange={(e) => setEndTime(e.target.value)}
-          className="rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-sm text-slate-200 outline-none focus:border-indigo-500"
-        />
-        <button
-          disabled={busy}
-          onClick={addSlot}
-          className="rounded-lg border border-indigo-500 bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
-        >
-          Add slot
-        </button>
-      </div>
-    </Card>
   );
 }
 

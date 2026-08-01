@@ -116,7 +116,7 @@ export default function PeoplePage() {
       <div className="flex flex-1 items-center justify-center px-4">
         <div className="glass-panel max-w-sm space-y-2 rounded-xl p-8 text-center">
           <GraduationCap className="mx-auto h-8 w-8 text-indigo-400" />
-          <h1 className="text-lg font-semibold text-white">People</h1>
+          <h1 className="text-lg font-semibold text-white">Students</h1>
           <p className="text-sm text-slate-400">Pick an active workspace first — this page shows the roster for whichever org you&apos;re working in.</p>
         </div>
       </div>
@@ -126,7 +126,7 @@ export default function PeoplePage() {
   return (
     <div className="p-8">
       <div className="mx-auto max-w-3xl">
-        <PageHeader badge="Team & Members" badgeIcon={GraduationCap} title="People" description="Enrollments for the active workspace." />
+        <PageHeader badge="Team & Members" badgeIcon={GraduationCap} title="Students" description="Enrollments for the active workspace." />
 
         {error && <div className="mb-4 rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-400">{error}</div>}
 

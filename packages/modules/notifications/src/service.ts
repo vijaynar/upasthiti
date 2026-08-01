@@ -287,6 +287,55 @@ export async function listDeliveries(
   });
 }
 
+// ── Org announcements (staff, notify.announcement.read / .manage,
+// migration 0008) ───────────────────────────────────────────────────────
+// A per-workspace notice board — distinct from the platform-wide
+// `announcements` table (@abhyas/module-platform-admin), which is authored
+// by platform staff and has no organization_id. RLS is the real gate here
+// (org_announcements_select_staff / _insert_staff), same as
+// listDeliveries/sendManualNotification above — no app-layer permission
+// check duplicated in this file.
+
+export interface OrgAnnouncement {
+  id: string;
+  title: string;
+  body: string;
+  publishedAt: string;
+  createdAt: string;
+}
+
+function mapAnnouncementRow(row: { id: string; title: string; body: string; published_at: string; created_at: string }): OrgAnnouncement {
+  return { id: row.id, title: row.title, body: row.body, publishedAt: row.published_at, createdAt: row.created_at };
+}
+
+export async function listOrgAnnouncements(session: SessionContext, input: { organizationId: string }): Promise<OrgAnnouncement[]> {
+  return db.withRequestContext(session, async (client) => {
+    const result = await client.query<Parameters<typeof mapAnnouncementRow>[0]>(
+      `select id, title, body, published_at, created_at from org_announcements where organization_id = $1 order by published_at desc`,
+      [input.organizationId]
+    );
+    return result.rows.map(mapAnnouncementRow);
+  });
+}
+
+export interface CreateOrgAnnouncementInput {
+  organizationId: string;
+  title: string;
+  body: string;
+}
+
+export async function createOrgAnnouncement(session: SessionContext, input: CreateOrgAnnouncementInput): Promise<OrgAnnouncement> {
+  return db.withRequestContext(session, async (client) => {
+    const result = await client.query<Parameters<typeof mapAnnouncementRow>[0]>(
+      `insert into org_announcements (organization_id, title, body, created_by)
+       values ($1, $2, $3, $4)
+       returning id, title, body, published_at, created_at`,
+      [input.organizationId, input.title, input.body, session.userId]
+    );
+    return mapAnnouncementRow(result.rows[0]);
+  });
+}
+
 // ── Dispatch (service-role — apps/worker) ─────────────────────────────────
 // Renders a template's {{placeholders}} against `variables` — intentionally
 // simple (no conditionals/loops); notification bodies are short single-line
