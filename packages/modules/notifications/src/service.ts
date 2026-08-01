@@ -288,52 +288,163 @@ export async function listDeliveries(
 }
 
 // ── Org announcements (staff, notify.announcement.read / .manage,
-// migration 0008) ───────────────────────────────────────────────────────
+// migrations 0008 + 0009) ─────────────────────────────────────────────────
 // A per-workspace notice board — distinct from the platform-wide
 // `announcements` table (@abhyas/module-platform-admin), which is authored
 // by platform staff and has no organization_id. RLS is the real gate here
 // (org_announcements_select_staff / _insert_staff), same as
 // listDeliveries/sendManualNotification above — no app-layer permission
-// check duplicated in this file.
+// check duplicated in this file. Coach self-service (0009) reuses the same
+// notify.announcement.manage gate as owner/org_admin/branch_admin — "own
+// batches" only narrows the audience picker (scheduling.listMyBatches()),
+// not who may post.
+
+export type OrgAnnouncementStatus = 'draft' | 'scheduled' | 'published' | 'archived';
+export type OrgAnnouncementTag = 'general' | 'event' | 'urgent' | 'holiday' | 'academic';
+export type OrgAnnouncementAudience = 'all' | 'batches';
 
 export interface OrgAnnouncement {
   id: string;
   title: string;
   body: string;
-  publishedAt: string;
+  status: OrgAnnouncementStatus;
+  tag: OrgAnnouncementTag;
+  audienceType: OrgAnnouncementAudience;
+  batchIds: string[];
+  scheduledAt: string | null;
+  publishedAt: string | null;
   createdAt: string;
 }
 
-function mapAnnouncementRow(row: { id: string; title: string; body: string; published_at: string; created_at: string }): OrgAnnouncement {
-  return { id: row.id, title: row.title, body: row.body, publishedAt: row.published_at, createdAt: row.created_at };
+function mapAnnouncementRow(row: {
+  id: string;
+  title: string;
+  body: string;
+  status: OrgAnnouncementStatus;
+  tag: OrgAnnouncementTag;
+  audience_type: OrgAnnouncementAudience;
+  batch_ids: string[] | null;
+  scheduled_at: string | null;
+  published_at: string | null;
+  created_at: string;
+}): OrgAnnouncement {
+  return {
+    id: row.id,
+    title: row.title,
+    body: row.body,
+    status: row.status,
+    tag: row.tag,
+    audienceType: row.audience_type,
+    batchIds: row.batch_ids ?? [],
+    scheduledAt: row.scheduled_at,
+    publishedAt: row.published_at,
+    createdAt: row.created_at,
+  };
 }
+
+const ANNOUNCEMENT_COLUMNS = `
+  a.id, a.title, a.body, a.status, a.tag, a.audience_type, a.scheduled_at, a.published_at, a.created_at,
+  coalesce((select array_agg(ab.batch_id) from org_announcement_batches ab where ab.announcement_id = a.id), '{}') as batch_ids
+`;
 
 export async function listOrgAnnouncements(session: SessionContext, input: { organizationId: string }): Promise<OrgAnnouncement[]> {
   return db.withRequestContext(session, async (client) => {
     const result = await client.query<Parameters<typeof mapAnnouncementRow>[0]>(
-      `select id, title, body, published_at, created_at from org_announcements where organization_id = $1 order by published_at desc`,
+      `select ${ANNOUNCEMENT_COLUMNS} from org_announcements a where a.organization_id = $1 order by a.created_at desc`,
       [input.organizationId]
     );
     return result.rows.map(mapAnnouncementRow);
   });
 }
 
+export const PUBLISH_ANNOUNCEMENT_JOB_KIND = 'announcements.publish';
+
 export interface CreateOrgAnnouncementInput {
   organizationId: string;
   title: string;
   body: string;
+  tag?: OrgAnnouncementTag;
+  status?: 'draft' | 'scheduled' | 'published';
+  scheduledAt?: string;
+  audienceType?: OrgAnnouncementAudience;
+  batchIds?: string[];
 }
 
 export async function createOrgAnnouncement(session: SessionContext, input: CreateOrgAnnouncementInput): Promise<OrgAnnouncement> {
-  return db.withRequestContext(session, async (client) => {
-    const result = await client.query<Parameters<typeof mapAnnouncementRow>[0]>(
-      `insert into org_announcements (organization_id, title, body, created_by)
-       values ($1, $2, $3, $4)
-       returning id, title, body, published_at, created_at`,
-      [input.organizationId, input.title, input.body, session.userId]
+  const status = input.status ?? 'published';
+  const audienceType = input.audienceType ?? 'all';
+  const batchIds = audienceType === 'batches' ? (input.batchIds ?? []) : [];
+
+  const announcement = await db.withRequestContext(session, async (client) => {
+    const result = await client.query<{ id: string }>(
+      `insert into org_announcements (organization_id, title, body, tag, status, audience_type, scheduled_at, published_at, created_by)
+       values ($1, $2, $3, $4, $5, $6, $7, case when $5 = 'published' then now() else null end, $8)
+       returning id`,
+      [
+        input.organizationId,
+        input.title,
+        input.body,
+        input.tag ?? 'general',
+        status,
+        audienceType,
+        status === 'scheduled' ? (input.scheduledAt ?? null) : null,
+        session.userId,
+      ]
     );
-    return mapAnnouncementRow(result.rows[0]);
+    const id = result.rows[0].id;
+    for (const batchId of batchIds) {
+      await client.query(`insert into org_announcement_batches (announcement_id, batch_id) values ($1, $2)`, [id, batchId]);
+    }
+    const row = await client.query<Parameters<typeof mapAnnouncementRow>[0]>(
+      `select ${ANNOUNCEMENT_COLUMNS} from org_announcements a where a.id = $1`,
+      [id]
+    );
+    return mapAnnouncementRow(row.rows[0]);
   });
+
+  if (status === 'scheduled' && announcement.scheduledAt) {
+    await queue.enqueue(
+      PUBLISH_ANNOUNCEMENT_JOB_KIND,
+      { announcementId: announcement.id },
+      { runAt: new Date(announcement.scheduledAt), idempotencyKey: `${PUBLISH_ANNOUNCEMENT_JOB_KIND}:${announcement.id}` }
+    );
+  }
+
+  return announcement;
+}
+
+export async function updateOrgAnnouncementStatus(
+  session: SessionContext,
+  input: { announcementId: string; status: 'published' | 'archived' | 'draft' }
+): Promise<void> {
+  await db.withRequestContext(session, async (client) => {
+    const result = await client.query(
+      `update org_announcements
+       set status = $2,
+           published_at = case when $2 = 'published' and published_at is null then now() else published_at end,
+           updated_at = now()
+       where id = $1`,
+      [input.announcementId, input.status]
+    );
+    if (result.rowCount === 0) throw new NotAuthorizedError('update this announcement');
+  });
+}
+
+// Service-role — flips a due `scheduled` announcement to `published`
+// (apps/worker's announcements.publish handler). Idempotent: only touches
+// rows still in `scheduled`, so a redelivered job is a safe no-op, same
+// precedent as dispatchDelivery's `status !== 'queued'` guard below.
+export async function publishScheduledOrgAnnouncement(announcementId: string): Promise<void> {
+  const client = await db.getServiceClient();
+  try {
+    await client.query(
+      `update org_announcements set status = 'published', published_at = now(), updated_at = now()
+       where id = $1 and status = 'scheduled'`,
+      [announcementId]
+    );
+  } finally {
+    client.release();
+  }
 }
 
 // ── Dispatch (service-role — apps/worker) ─────────────────────────────────

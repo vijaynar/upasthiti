@@ -1,6 +1,6 @@
 // GET/POST /api/v1/orgs/{id}/batches (Doc 07 §7)
 import type { NextRequest } from 'next/server';
-import { listBatches, createBatch, type BatchMode, type BatchSchedule } from '@abhyas/module-scheduling';
+import { listBatches, listMyBatches, createBatch, type BatchMode, type BatchSchedule } from '@abhyas/module-scheduling';
 import { getSessionFromRequest, jsonData, jsonError, isRlsDenied } from '@/lib/v2-session';
 
 const VALID_MODES: BatchMode[] = ['in_person', 'online', 'hybrid'];
@@ -11,6 +11,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const { id } = await params;
   const { searchParams } = new URL(req.url);
+
+  // ?mine=true — "batches I coach" (my_batch_ids()), e.g. the announcement
+  // composer's audience picker. Distinct from the org-wide staff listing
+  // below, which needs schedule.calendar.read at branch scope.
+  if (searchParams.get('mine') === 'true') {
+    return jsonData(await listMyBatches(session));
+  }
+
   return jsonData(
     await listBatches(session, {
       organizationId: id,

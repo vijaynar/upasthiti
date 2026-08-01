@@ -2,7 +2,13 @@ import { queue } from '@abhyas/platform';
 import { materializeSessions } from '@abhyas/module-scheduling';
 import { evaluateAbsences, purgeWithdrawnFaceEmbeddings } from '@abhyas/module-attendance';
 import { assessFine, ABSENCE_CONFIRMED_JOB_KIND, type AssessFineInput } from '@abhyas/module-finance';
-import { dispatchDelivery, notifyAbsenceConfirmed, DISPATCH_DELIVERY_JOB_KIND } from '@abhyas/module-notifications';
+import {
+  dispatchDelivery,
+  notifyAbsenceConfirmed,
+  publishScheduledOrgAnnouncement,
+  DISPATCH_DELIVERY_JOB_KIND,
+  PUBLISH_ANNOUNCEMENT_JOB_KIND,
+} from '@abhyas/module-notifications';
 import { activateOrgListings, ORG_VERIFIED_JOB_KIND } from '@abhyas/module-marketplace';
 
 // Job-kind -> handler registry (Doc 14 §8 job inventory). Each module
@@ -82,6 +88,15 @@ async function runDispatchDelivery(job: queue.Job): Promise<void> {
   await dispatchDelivery(deliveryId, variables);
 }
 
+// One-shot "Schedule for Later" consumer (createOrgAnnouncement enqueues
+// this at the requested scheduled_at). Idempotent —
+// publishScheduledOrgAnnouncement only flips rows still in 'scheduled', so a
+// redelivered job is a safe no-op.
+async function runPublishScheduledAnnouncement(job: queue.Job): Promise<void> {
+  const { announcementId } = job.payload as { announcementId: string };
+  await publishScheduledOrgAnnouncement(announcementId);
+}
+
 // One-shot consumer of platform.org_verified (Phase 11 — enqueued by
 // platform-admin.decideOrganizationVerification() on approval, Doc 02 §9 /
 // PRD US-1 AC5: a listing published before its org finished verification
@@ -99,5 +114,6 @@ export const JOB_HANDLERS: Record<string, JobHandler[]> = {
   'attendance.purge_withdrawn_face_embeddings': [runPurgeWithdrawnFaceEmbeddings],
   [ABSENCE_CONFIRMED_JOB_KIND]: [runAssessFine, runNotifyAbsenceConfirmed],
   [DISPATCH_DELIVERY_JOB_KIND]: [runDispatchDelivery],
+  [PUBLISH_ANNOUNCEMENT_JOB_KIND]: [runPublishScheduledAnnouncement],
   [ORG_VERIFIED_JOB_KIND]: [runActivateOrgListings],
 };
