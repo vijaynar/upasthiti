@@ -1,6 +1,6 @@
 // GET/PATCH /api/v1/orgs/{id}/batches/{batchId} (Doc 07 §7)
 import type { NextRequest } from 'next/server';
-import { getBatch, updateBatch, NotAuthorizedError, type BatchMode, type BatchStatus, type BatchSchedule } from '@abhyas/module-scheduling';
+import { getBatch, updateBatch, setBatchPrimaryMetric, NotAuthorizedError, type BatchMode, type BatchStatus, type BatchSchedule } from '@abhyas/module-scheduling';
 import { getSessionFromRequest, jsonData, jsonError } from '@/lib/v2-session';
 
 const VALID_MODES: BatchMode[] = ['in_person', 'online', 'hybrid'];
@@ -35,6 +35,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       schedule,
       graceMinutes: typeof body?.graceMinutes === 'number' ? body.graceMinutes : undefined,
     });
+    // Separate call, not folded into updateBatch's patch — primaryMetricKey's
+    // null is a meaningful "stop tracking" value, not a coalesce no-op (see
+    // setBatchPrimaryMetric's own comment).
+    if (Object.prototype.hasOwnProperty.call(body ?? {}, 'primaryMetricKey')) {
+      const key = typeof body.primaryMetricKey === 'string' ? body.primaryMetricKey : null;
+      await setBatchPrimaryMetric(session, batchId, key);
+    }
     return jsonData({ updated: true });
   } catch (err) {
     if (err instanceof NotAuthorizedError) return jsonError('forbidden', err.message, 403);

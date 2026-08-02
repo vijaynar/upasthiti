@@ -9,7 +9,7 @@
 // later).
 
 import { useEffect, useState } from 'react';
-import { CalendarDays, CalendarPlus, Plus, Trash2, Users, X } from 'lucide-react';
+import { CalendarDays, CalendarPlus, Plus, Trash2, Users, UserPlus, X } from 'lucide-react';
 import { PageHeader } from '@/components/PageHeader';
 
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
@@ -47,6 +47,22 @@ interface Batch {
   capacity: number | null;
   status: 'active' | 'archived';
   schedule: BatchSchedule;
+  primaryMetricKey: string | null;
+}
+
+interface MetricDefinition {
+  id: string;
+  key: string;
+  label: string;
+  unit: string | null;
+}
+
+interface BatchJoinRequest {
+  id: string;
+  batchId: string;
+  status: 'pending' | 'approved' | 'rejected';
+  batchName?: string;
+  studentDisplayName?: string;
 }
 
 interface CoachAssignment {
@@ -120,6 +136,8 @@ export default function SchedulingPage() {
   const [members, setMembers] = useState<Member[]>([]);
   const [enrollments, setEnrollments] = useState<Enrollment[]>([]);
   const [holidays, setHolidays] = useState<Holiday[]>([]);
+  const [metrics, setMetrics] = useState<MetricDefinition[]>([]);
+  const [joinRequests, setJoinRequests] = useState<BatchJoinRequest[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const [expandedBatchId, setExpandedBatchId] = useState<string | null>(null);
@@ -157,9 +175,11 @@ export default function SchedulingPage() {
       .catch((err) => setError(err.message));
     api<Member[]>(`/api/v1/orgs/${orgId}/members`).then(setMembers).catch(() => {});
     api<Enrollment[]>(`/api/v1/orgs/${orgId}/enrollments`).then(setEnrollments).catch(() => {});
+    api<MetricDefinition[]>(`/api/v1/orgs/${orgId}/progress/metrics`).then(setMetrics).catch(() => {});
     loadPrograms();
     loadBatches();
     loadHolidays();
+    loadJoinRequests();
   }, [orgId]);
 
   useEffect(() => {
@@ -306,6 +326,34 @@ export default function SchedulingPage() {
     try {
       await api(`/api/v1/orgs/${orgId}/holidays/${holidayId}`, { method: 'DELETE' });
       loadHolidays();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong.');
+    }
+  }
+
+  function loadJoinRequests() {
+    if (!orgId) return;
+    api<BatchJoinRequest[]>(`/api/v1/orgs/${orgId}/batch-join-requests`).then(setJoinRequests).catch(() => {});
+  }
+
+  async function decideJoinRequest(requestId: string, decision: 'approved' | 'rejected') {
+    if (!orgId) return;
+    setError(null);
+    try {
+      await api(`/api/v1/orgs/${orgId}/batch-join-requests/${requestId}/decide`, { method: 'POST', body: JSON.stringify({ decision }) });
+      loadJoinRequests();
+      if (decision === 'approved' && expandedBatchId) reloadBatchDetail(expandedBatchId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong.');
+    }
+  }
+
+  async function setPrimaryMetric(batchId: string, primaryMetricKey: string) {
+    if (!orgId) return;
+    setError(null);
+    try {
+      await api(`/api/v1/orgs/${orgId}/batches/${batchId}`, { method: 'PATCH', body: JSON.stringify({ primaryMetricKey: primaryMetricKey || null }) });
+      loadBatches();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong.');
     }
@@ -478,20 +526,33 @@ export default function SchedulingPage() {
             <ul className="glass-panel divide-y divide-white/10 rounded-xl overflow-hidden">
               {batches.map((b) => (
                 <li key={b.id} className="p-3">
-                  <button
-                    onClick={() => setExpandedBatchId((prev) => (prev === b.id ? null : b.id))}
-                    className="flex w-full items-center justify-between gap-4 text-left"
-                  >
-                    <div>
+                  <div className="flex w-full items-center justify-between gap-4">
+                    <button
+                      onClick={() => setExpandedBatchId((prev) => (prev === b.id ? null : b.id))}
+                      className="min-w-0 flex-1 text-left"
+                    >
                       <p className="text-sm font-medium text-slate-100">{b.name}</p>
                       <p className="text-xs text-slate-400">
                         {branchName(b.branchId)} · {b.schedule.days.map((d) => DOW_LABELS[d - 1]).join('/')} · {b.schedule.startTime}-{b.schedule.endTime}
                       </p>
-                    </div>
-                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${b.status === 'active' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-white/5 text-slate-400 border border-white/10'}`}>
+                    </button>
+                    <select
+                      value={b.primaryMetricKey ?? ''}
+                      onChange={(e) => setPrimaryMetric(b.id, e.target.value)}
+                      title="Progress metric shown on the student portal for this batch"
+                      className="glass-input shrink-0 rounded px-1.5 py-1 text-[11px]"
+                    >
+                      <option value="">No progress goal</option>
+                      {metrics.map((m) => (
+                        <option key={m.key} value={m.key}>
+                          {m.label}
+                        </option>
+                      ))}
+                    </select>
+                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${b.status === 'active' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-white/5 text-slate-400 border border-white/10'}`}>
                       {b.status}
                     </span>
-                  </button>
+                  </div>
 
                   {expandedBatchId === b.id && (
                     <div className="mt-3 grid gap-4 border-t border-white/10 pt-3 sm:grid-cols-3">
@@ -587,6 +648,43 @@ export default function SchedulingPage() {
                       </div>
                     </div>
                   )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        {/* Batch join requests — students requesting to join a batch they browsed
+            on the student portal (migration 0011); RLS already scopes this list
+            to batches the caller manages. */}
+        <section className="glass-panel rounded-xl p-4">
+          <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-white">
+            <UserPlus className="h-4 w-4 text-indigo-400" /> Batch join requests
+          </h2>
+          {joinRequests.length === 0 ? (
+            <p className="text-sm text-slate-400">No pending requests.</p>
+          ) : (
+            <ul className="glass-panel divide-y divide-white/10 rounded-xl overflow-hidden">
+              {joinRequests.map((r) => (
+                <li key={r.id} className="flex items-center justify-between p-3 text-sm">
+                  <span className="text-slate-200">
+                    <span className="font-medium">{r.studentDisplayName ?? 'Student'}</span> wants to join{' '}
+                    <span className="font-medium">{r.batchName ?? r.batchId}</span>
+                  </span>
+                  <div className="flex gap-1.5">
+                    <button
+                      onClick={() => decideJoinRequest(r.id, 'approved')}
+                      className="rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-emerald-500"
+                    >
+                      Approve
+                    </button>
+                    <button
+                      onClick={() => decideJoinRequest(r.id, 'rejected')}
+                      className="rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-semibold text-slate-300 hover:bg-white/10"
+                    >
+                      Reject
+                    </button>
+                  </div>
                 </li>
               ))}
             </ul>

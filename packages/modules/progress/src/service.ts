@@ -50,6 +50,11 @@ export interface MetricDefinition {
   label: string;
   unit: string | null;
   direction: MetricDirection;
+  // The goal value for this metric (e.g. 50 for "50-lap swim goal") — null
+  // means no goal is set, so any batch-progress ring built on it should
+  // render "not tracked" rather than a fabricated percentage
+  // (docsV2/STUDENT_PORTAL_SPEC.md, migration 0011).
+  targetValue: number | null;
 }
 
 function mapMetricRow(row: {
@@ -60,6 +65,7 @@ function mapMetricRow(row: {
   label: string;
   unit: string | null;
   direction: MetricDirection;
+  target_value: string | null;
 }): MetricDefinition {
   return {
     id: row.id,
@@ -69,10 +75,11 @@ function mapMetricRow(row: {
     label: row.label,
     unit: row.unit,
     direction: row.direction,
+    targetValue: row.target_value === null ? null : Number(row.target_value),
   };
 }
 
-const METRIC_COLUMNS = `id, organization_id, sport_key, key, label, unit, direction`;
+const METRIC_COLUMNS = `id, organization_id, sport_key, key, label, unit, direction, target_value`;
 // Platform library (org null) + the caller's own org rows are both visible
 // via metric_definitions_select; the optional sport filter is a value ($1).
 const LIST_METRICS_ALL_SQL = `select ${METRIC_COLUMNS} from metric_definitions order by organization_id nulls first, sport_key, label`;
@@ -126,6 +133,19 @@ export async function deleteMetricDefinition(session: SessionContext, metricId: 
   await db.withRequestContext(session, async (client) => {
     const result = await client.query(DELETE_METRIC_SQL, [metricId]);
     if (result.rowCount === 0) throw new NotAuthorizedError('delete this metric definition');
+  });
+}
+
+// Only org-owned metrics can carry a goal (platform-library rows have
+// organization_id is null and metric_definitions_update's RLS already
+// requires organization_id = current_org(), so this is redundant-safe, not
+// a new gate). RLS-gated: progress.metric.manage.
+const SET_METRIC_TARGET_SQL = `update metric_definitions set target_value = $1 where id = $2 and organization_id is not null`;
+
+export async function setMetricTarget(session: SessionContext, metricId: string, targetValue: number | null): Promise<void> {
+  await db.withRequestContext(session, async (client) => {
+    const result = await client.query(SET_METRIC_TARGET_SQL, [targetValue, metricId]);
+    if (result.rowCount === 0) throw new NotAuthorizedError('set a target for this metric');
   });
 }
 

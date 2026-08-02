@@ -102,6 +102,11 @@ export interface Batch {
   status: BatchStatus;
   schedule: BatchSchedule;
   graceMinutes: number;
+  // The metric that represents this batch's "progress" for student-facing
+  // surfaces (docsV2/STUDENT_PORTAL_SPEC.md) — null until staff sets one.
+  // Resolved at read time against metric_definitions (org override, else
+  // platform default) for its target_value/direction/unit.
+  primaryMetricKey: string | null;
 }
 
 function mapBatchRow(row: {
@@ -115,6 +120,7 @@ function mapBatchRow(row: {
   status: BatchStatus;
   schedule: BatchSchedule;
   grace_minutes: number;
+  primary_metric_key: string | null;
 }): Batch {
   return {
     id: row.id,
@@ -127,10 +133,11 @@ function mapBatchRow(row: {
     status: row.status,
     schedule: row.schedule,
     graceMinutes: row.grace_minutes,
+    primaryMetricKey: row.primary_metric_key,
   };
 }
 
-const BATCH_COLUMNS = `id, organization_id, branch_id, program_id, name, mode, capacity, status, schedule, grace_minutes`;
+const BATCH_COLUMNS = `id, organization_id, branch_id, program_id, name, mode, capacity, status, schedule, grace_minutes, primary_metric_key`;
 
 const INSERT_BATCH_SQL = `insert into batches (organization_id, branch_id, program_id, name, mode, capacity, schedule, grace_minutes)
    values ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -190,6 +197,20 @@ const UPDATE_BATCH_SQL = `update batches set
      schedule = coalesce($5, schedule),
      grace_minutes = coalesce($6, grace_minutes)
    where id = $7`;
+
+// Separate from updateBatch's coalesce-based patch (name/mode/etc. treat
+// null as "leave unchanged") because primary_metric_key's null IS a
+// meaningful value ("stop tracking progress for this batch"), not a no-op
+// sentinel — coalesce can't express both "unchanged" and "clear" with the
+// same null. RLS-gated (batches_update_staff) — schedule.batch.update.
+const SET_BATCH_PRIMARY_METRIC_SQL = `update batches set primary_metric_key = $1 where id = $2`;
+
+export async function setBatchPrimaryMetric(session: SessionContext, batchId: string, metricKey: string | null): Promise<void> {
+  await db.withRequestContext(session, async (client) => {
+    const result = await client.query(SET_BATCH_PRIMARY_METRIC_SQL, [metricKey, batchId]);
+    if (result.rowCount === 0) throw new NotAuthorizedError('update this batch');
+  });
+}
 
 // Re-materializes when `schedule` changes (same reasoning as createBatch) —
 // an edited recurrence should reflect in the upcoming-sessions view
@@ -369,6 +390,184 @@ export async function removeFromBatchRoster(session: SessionContext, enrollmentI
   await db.withRequestContext(session, async (client) => {
     const result = await client.query(UPDATE_BATCH_ENROLLMENT_SQL, ['left', new Date().toISOString().slice(0, 10), enrollmentId, batchId]);
     if (result.rowCount === 0) throw new NotAuthorizedError('update this batch roster entry');
+  });
+}
+
+// ── Batch join requests (migration 0011, docsV2/STUDENT_PORTAL_SPEC.md) ─
+// The student-initiated analog of addToBatchRoster: a student requests to
+// join a batch they can now browse (batches_select_org_student) but aren't
+// in yet, a coach/admin with schedule.batch.update on that batch approves
+// or rejects. Approval reuses INSERT_BATCH_ENROLLMENT_SQL's own upsert —
+// the approving staff member already holds the exact permission that insert
+// requires, so this never needs a service-role escalation.
+
+export type BatchJoinRequestStatus = 'pending' | 'approved' | 'rejected';
+
+export interface BatchJoinRequest {
+  id: string;
+  organizationId: string;
+  branchId: string;
+  batchId: string;
+  enrollmentId: string;
+  requestedBy: string;
+  status: BatchJoinRequestStatus;
+  decidedBy: string | null;
+  decidedAt: string | null;
+  decisionNote: string | null;
+  createdAt: string;
+  // Only populated by the staff-facing list (joined for display).
+  batchName?: string | undefined;
+  studentDisplayName?: string | undefined;
+}
+
+function mapBatchJoinRequestRow(row: {
+  id: string;
+  organization_id: string;
+  branch_id: string;
+  batch_id: string;
+  enrollment_id: string;
+  requested_by: string;
+  status: BatchJoinRequestStatus;
+  decided_by: string | null;
+  decided_at: string | null;
+  decision_note: string | null;
+  created_at: string;
+  batch_name?: string;
+  student_display_name?: string;
+}): BatchJoinRequest {
+  return {
+    id: row.id,
+    organizationId: row.organization_id,
+    branchId: row.branch_id,
+    batchId: row.batch_id,
+    enrollmentId: row.enrollment_id,
+    requestedBy: row.requested_by,
+    status: row.status,
+    decidedBy: row.decided_by,
+    decidedAt: row.decided_at,
+    decisionNote: row.decision_note,
+    createdAt: row.created_at,
+    batchName: row.batch_name,
+    studentDisplayName: row.student_display_name,
+  };
+}
+
+const JOIN_REQUEST_COLUMNS = `id, organization_id, branch_id, batch_id, enrollment_id, requested_by, status, decided_by, decided_at, decision_note, created_at`;
+
+// batches_select_org_student (migration 0011) is the read-side gate — a
+// student only sees other active batches in an org they hold an active
+// enrollment in. Excludes batches already joined (active roster row) or
+// already requested (a live pending row) so the browse list only ever shows
+// real next actions.
+const LIST_JOINABLE_BATCHES_SQL = `select ${BATCH_COLUMNS} from batches b
+   where b.organization_id = $1
+     and b.status = 'active'
+     and not exists (
+       select 1 from batch_enrollments be
+       join enrollments e on e.id = be.enrollment_id
+       where be.batch_id = b.id and e.student_user_id = $2 and be.status = 'active'
+     )
+     and not exists (
+       select 1 from batch_join_requests bjr
+       join enrollments e on e.id = bjr.enrollment_id
+       where bjr.batch_id = b.id and e.student_user_id = $2 and bjr.status = 'pending'
+     )
+   order by b.name`;
+
+export async function listJoinableBatches(session: SessionContext, organizationId: string): Promise<Batch[]> {
+  return db.withRequestContext(session, async (client) => {
+    const result = await client.query<Parameters<typeof mapBatchRow>[0]>(LIST_JOINABLE_BATCHES_SQL, [organizationId, session.userId]);
+    return result.rows.map(mapBatchRow);
+  });
+}
+
+export class DuplicateJoinRequestError extends Error {
+  constructor() {
+    super('[scheduling] You already have a pending request for this batch.');
+  }
+}
+
+// INSERT...SELECT resolves the caller's own active enrollment in the
+// batch's org server-side (never trusts a client-supplied enrollmentId) —
+// batch_join_requests_insert_self's WITH CHECK still re-verifies the same
+// ownership independently.
+const REQUEST_BATCH_JOIN_SQL = `insert into batch_join_requests (organization_id, branch_id, batch_id, enrollment_id, requested_by)
+   select b.organization_id, b.branch_id, b.id, e.id, $2
+   from batches b
+   join enrollments e on e.organization_id = b.organization_id and e.student_user_id = $2 and e.status = 'active'
+   where b.id = $1
+   returning ${JOIN_REQUEST_COLUMNS}`;
+
+export async function requestBatchJoin(session: SessionContext, batchId: string): Promise<BatchJoinRequest> {
+  return db.withRequestContext(session, async (client) => {
+    try {
+      const result = await client.query<Parameters<typeof mapBatchJoinRequestRow>[0]>(REQUEST_BATCH_JOIN_SQL, [batchId, session.userId]);
+      const row = result.rows[0];
+      if (!row) throw new NotAuthorizedError('request to join this batch');
+      return mapBatchJoinRequestRow(row);
+    } catch (err) {
+      if (err && typeof err === 'object' && 'code' in err && (err as { code: string }).code === '23505') {
+        throw new DuplicateJoinRequestError();
+      }
+      throw err;
+    }
+  });
+}
+
+const LIST_MY_JOIN_REQUESTS_SQL = `select ${JOIN_REQUEST_COLUMNS} from batch_join_requests bjr
+   where exists (select 1 from enrollments e where e.id = bjr.enrollment_id and e.student_user_id = $1)
+   order by bjr.created_at desc`;
+
+export async function listMyBatchJoinRequests(session: SessionContext): Promise<BatchJoinRequest[]> {
+  return db.withRequestContext(session, async (client) => {
+    const result = await client.query<Parameters<typeof mapBatchJoinRequestRow>[0]>(LIST_MY_JOIN_REQUESTS_SQL, [session.userId]);
+    return result.rows.map(mapBatchJoinRequestRow);
+  });
+}
+
+// Staff-facing queue — RLS (batch_join_requests_select_staff) already
+// narrows this to requests on batches the caller holds schedule.batch.update
+// on, same scope as the roster-management endpoints.
+const LIST_PENDING_JOIN_REQUESTS_SQL = `select bjr.id, bjr.organization_id, bjr.branch_id, bjr.batch_id, bjr.enrollment_id, bjr.requested_by,
+     bjr.status, bjr.decided_by, bjr.decided_at, bjr.decision_note, bjr.created_at,
+     b.name as batch_name, u.display_name as student_display_name
+   from batch_join_requests bjr
+   join batches b on b.id = bjr.batch_id
+   join enrollments e on e.id = bjr.enrollment_id
+   left join users u on u.id = e.student_user_id
+   where bjr.organization_id = $1 and bjr.status = 'pending'
+   order by bjr.created_at`;
+
+export async function listPendingBatchJoinRequests(session: SessionContext, organizationId: string): Promise<BatchJoinRequest[]> {
+  return db.withRequestContext(session, async (client) => {
+    const result = await client.query<Parameters<typeof mapBatchJoinRequestRow>[0]>(LIST_PENDING_JOIN_REQUESTS_SQL, [organizationId]);
+    return result.rows.map(mapBatchJoinRequestRow);
+  });
+}
+
+const DECIDE_JOIN_REQUEST_SQL = `update batch_join_requests set status = $1, decided_by = $2, decided_at = now(), decision_note = $3
+   where id = $4 and status = 'pending'
+   returning batch_id, enrollment_id`;
+
+export async function decideBatchJoinRequest(
+  session: SessionContext,
+  requestId: string,
+  decision: 'approved' | 'rejected',
+  note?: string
+): Promise<void> {
+  await db.withRequestContext(session, async (client) => {
+    const decided = await client.query<{ batch_id: string; enrollment_id: string }>(DECIDE_JOIN_REQUEST_SQL, [
+      decision,
+      session.userId,
+      note ?? null,
+      requestId,
+    ]);
+    const row = decided.rows[0];
+    if (!row) throw new NotAuthorizedError('decide this join request');
+
+    if (decision === 'approved') {
+      await client.query(INSERT_BATCH_ENROLLMENT_SQL, [row.enrollment_id, row.batch_id]);
+    }
   });
 }
 

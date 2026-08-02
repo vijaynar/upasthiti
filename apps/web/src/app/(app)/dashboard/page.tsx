@@ -21,6 +21,8 @@ import {
   ListChecks,
   Store,
   LayoutGrid,
+  Flame,
+  ScanFace,
 } from 'lucide-react';
 import {
   DashboardHeader,
@@ -29,6 +31,7 @@ import {
   EmptyRow,
   StatusPill,
   DashboardLoading,
+  ProgressRing,
   fmtTime,
   fmtMoney,
 } from '@/components/DashboardKit';
@@ -75,6 +78,48 @@ interface CoachDashboard {
 
 const MGMT_ROLES = ['owner', 'org_admin', 'branch_admin', 'front_desk'];
 const COACH_ROLES = ['coach', 'assistant_coach'];
+
+interface BatchProgress {
+  tracked: boolean;
+  metricLabel: string | null;
+  unit: string | null;
+  targetValue: number | null;
+  latestValue: number | null;
+  pct: number | null;
+}
+
+interface BatchSummary {
+  batchId: string;
+  batchName: string;
+  enrollmentStatus: 'active' | 'left';
+  programName: string | null;
+  mode: string;
+  coachName: string | null;
+  attendancePct: number | null;
+  nextSessionAt: string | null;
+  progress: BatchProgress;
+}
+
+interface StudentAnnouncement {
+  id: string;
+  title: string;
+  body: string;
+  tag: string;
+  publishedAt: string | null;
+}
+
+interface StudentDashboard {
+  currency: string;
+  activeBatchesCount: number;
+  attendancePct: number | null;
+  attendanceTrendDelta: number | null;
+  streakDays: number;
+  upcomingPaymentsMinor: number;
+  upcomingPaymentsCount: number;
+  pendingApprovalsCount: number;
+  todaysSessions: DashboardSession[];
+  announcements: StudentAnnouncement[];
+}
 
 function TodaySchedule({ sessions }: { sessions: DashboardSession[] }) {
   if (sessions.length === 0) return <EmptyRow>No sessions scheduled today.</EmptyRow>;
@@ -253,6 +298,132 @@ function CoachView({ orgId }: { orgId: string }) {
   );
 }
 
+function StudentBatchCard({ batch }: { batch: BatchSummary }) {
+  return (
+    <Link
+      href={`/me/batches/${batch.batchId}`}
+      className="glass-panel glass-panel-hover flex items-center gap-4 rounded-2xl border p-4 transition-all duration-200"
+      style={{ borderColor: 'var(--panel-border)' }}
+    >
+      <div className="flex shrink-0 gap-2">
+        <ProgressRing pct={batch.attendancePct} label="Attend." size={64} tone="primary" />
+        <ProgressRing pct={batch.progress.pct} label="Progress" size={64} tone="accent" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-bold" style={{ color: 'var(--foreground)' }}>
+          {batch.batchName}
+        </p>
+        <p className="truncate text-xs" style={{ color: 'var(--foreground-muted)' }}>
+          {batch.coachName ? `Coach ${batch.coachName}` : 'No coach assigned'}
+        </p>
+        <p className="mt-1 text-xs" style={{ color: 'var(--foreground-subtle)' }}>
+          {batch.nextSessionAt ? `Next ${fmtTime(batch.nextSessionAt)}` : 'No upcoming session'}
+        </p>
+      </div>
+    </Link>
+  );
+}
+
+function AnnouncementsList({ items }: { items: StudentAnnouncement[] }) {
+  if (items.length === 0) return <EmptyRow>No announcements yet.</EmptyRow>;
+  return (
+    <ul className="space-y-2">
+      {items.map((a) => (
+        <li key={a.id} className="rounded-xl px-3 py-2.5" style={{ backgroundColor: 'var(--overlay-xs)' }}>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>
+              {a.title}
+            </span>
+            {a.publishedAt && (
+              <span className="shrink-0 text-[10px]" style={{ color: 'var(--foreground-subtle)' }}>
+                {new Date(a.publishedAt).toLocaleDateString()}
+              </span>
+            )}
+          </div>
+          <p className="mt-0.5 line-clamp-2 text-xs" style={{ color: 'var(--foreground-muted)' }}>
+            {a.body}
+          </p>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function StudentView({ orgId }: { orgId: string }) {
+  const [data, setData] = useState<StudentDashboard | null>(null);
+  const [batches, setBatches] = useState<BatchSummary[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    api<StudentDashboard>(`/api/v1/orgs/${orgId}/dashboard/student`).then(setData).catch((e) => setError(e.message));
+    api<BatchSummary[]>(`/api/v1/orgs/${orgId}/me/batches`).then(setBatches).catch(() => setBatches([]));
+  }, [orgId]);
+
+  if (error) return <div className="mx-6 rounded-lg border p-4 text-sm" style={{ color: 'var(--danger)', borderColor: 'var(--danger-glow)' }}>{error}</div>;
+  if (!data) return <DashboardLoading />;
+
+  const attendanceHint =
+    data.attendanceTrendDelta === null ? undefined : `${data.attendanceTrendDelta >= 0 ? '+' : ''}${data.attendanceTrendDelta}% this month`;
+  const activeBatches = batches?.filter((b) => b.enrollmentStatus === 'active') ?? null;
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+        <StatCard
+          label="Overall attendance"
+          value={data.attendancePct === null ? '—' : `${data.attendancePct}%`}
+          icon={ScanFace}
+          tone="primary"
+          hint={attendanceHint}
+          href="/me/attendance"
+        />
+        <StatCard label="Current streak" value={`${data.streakDays} day${data.streakDays === 1 ? '' : 's'}`} icon={Flame} tone="accent" href="/me/attendance" />
+        <StatCard label="Active batches" value={data.activeBatchesCount} icon={CalendarClock} tone="primary" href="/me/batches" />
+        <StatCard
+          label="Upcoming payments"
+          value={fmtMoney(data.upcomingPaymentsMinor, data.currency)}
+          icon={Wallet}
+          tone={data.upcomingPaymentsMinor > 0 ? 'warning' : 'success'}
+          hint={data.upcomingPaymentsCount > 0 ? `${data.upcomingPaymentsCount} due` : undefined}
+          href="/me/payments"
+        />
+        <StatCard
+          label="Pending approvals"
+          value={data.pendingApprovalsCount}
+          icon={ClipboardCheck}
+          tone={data.pendingApprovalsCount > 0 ? 'warning' : 'primary'}
+          hint={data.pendingApprovalsCount > 0 ? 'Action required' : undefined}
+          href="/me/batches"
+        />
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <SectionCard title="Today's schedule" action={{ label: 'Full schedule', href: '/me/schedule' }}>
+          <TodaySchedule sessions={data.todaysSessions} />
+        </SectionCard>
+
+        <SectionCard title="Announcements">
+          <AnnouncementsList items={data.announcements} />
+        </SectionCard>
+      </div>
+
+      <SectionCard title="My active batches" action={{ label: 'All batches', href: '/me/batches' }}>
+        {activeBatches === null ? (
+          <EmptyRow>Loading…</EmptyRow>
+        ) : activeBatches.length === 0 ? (
+          <EmptyRow>You&apos;re not enrolled in any batches yet.</EmptyRow>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {activeBatches.map((b) => (
+              <StudentBatchCard key={b.batchId} batch={b} />
+            ))}
+          </div>
+        )}
+      </SectionCard>
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const [orgId, setOrgId] = useState<string | null | undefined>(undefined);
   const [roles, setRoles] = useState<string[] | null>(null);
@@ -299,15 +470,12 @@ export default function DashboardPage() {
 
   if (roles === null || view === null) {
     if (roles !== null && !isMgmt && !isCoach) {
-      // A member with no management/coaching role — point them at their own surfaces.
+      // A member with no management/coaching role is a student (or a
+      // guardian-only member — /family already covers that view separately).
       return (
-        <div className="p-8">
-          <DashboardHeader badge="Overview" icon={LayoutGrid} title="Welcome" subtitle="Here's where to find what matters to you." />
-          <div className="grid gap-4 sm:grid-cols-3">
-            <StatCard label="My schedule" value="View" icon={CalendarClock} tone="primary" href="/me/progress" />
-            <StatCard label="My progress" value="View" icon={TrendingUp} tone="accent" href="/me/progress" />
-            <StatCard label="Family" value="Manage" icon={Users} tone="success" href="/family" />
-          </div>
+        <div className="p-6 md:p-8">
+          <DashboardHeader badge="Overview" icon={LayoutGrid} title="Dashboard" subtitle="Your batches and progress at a glance." />
+          <StudentView orgId={orgId} />
         </div>
       );
     }

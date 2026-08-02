@@ -160,6 +160,60 @@ export function StatusPill({ status }: { status: string }) {
   );
 }
 
+// Compact SVG progress ring — attendance %/batch progress % throughout the
+// student portal (docsV2/STUDENT_PORTAL_SPEC.md). null renders a dashed
+// "not tracked" ring rather than a fabricated 0%, per that spec's own rule.
+export function ProgressRing({
+  pct,
+  label,
+  size = 88,
+  tone = 'primary',
+}: {
+  pct: number | null;
+  label?: string;
+  size?: number;
+  tone?: Tone;
+}) {
+  const stroke = Math.round(size * 0.1);
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const t = TONE_VAR[tone];
+  const offset = pct === null ? 0 : c - (Math.max(0, Math.min(100, pct)) / 100) * c;
+  return (
+    <div className="relative flex shrink-0 items-center justify-center" style={{ width: size, height: size }}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90">
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--overlay-sm)" strokeWidth={stroke} />
+        {pct !== null && (
+          <circle
+            cx={size / 2}
+            cy={size / 2}
+            r={r}
+            fill="none"
+            stroke={t.color}
+            strokeWidth={stroke}
+            strokeDasharray={c}
+            strokeDashoffset={offset}
+            strokeLinecap="round"
+          />
+        )}
+        {pct === null && (
+          <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--panel-border)" strokeWidth={stroke} strokeDasharray="2 6" />
+        )}
+      </svg>
+      <div className="absolute flex flex-col items-center">
+        <span className="text-sm font-black" style={{ color: pct === null ? 'var(--foreground-subtle)' : 'var(--foreground)' }}>
+          {pct === null ? '—' : `${pct}%`}
+        </span>
+        {label && (
+          <span className="text-[9px] font-bold uppercase tracking-wide" style={{ color: 'var(--foreground-subtle)' }}>
+            {label}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function DashboardLoading() {
   return (
     <div className="p-8">

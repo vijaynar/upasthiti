@@ -25,6 +25,7 @@ import {
   Gauge,
   Users,
   CalendarClock,
+  CalendarDays,
   ScanFace,
   Wallet,
   Bell,
@@ -96,7 +97,11 @@ const ORG_NAV = [
 
 const ME_NAV = [
   { label: 'My Profile', href: '/me/profile', icon: UserCog },
-  { label: 'My progress', href: '/me/progress', icon: TrendingUp },
+  { label: 'My Batches', href: '/me/batches', icon: CalendarClock },
+  { label: 'My Schedule', href: '/me/schedule', icon: CalendarDays },
+  { label: 'My Attendance', href: '/me/attendance', icon: ScanFace },
+  { label: 'My Performance', href: '/me/performance', icon: TrendingUp },
+  { label: 'My Payments', href: '/me/payments', icon: Wallet },
   { label: 'My notifications', href: '/me/notifications', icon: Bell },
 ];
 

@@ -28,6 +28,10 @@ interface RosterEntry {
   batchNames: string[];
 }
 
+interface MetricDefinitionWithTarget extends MetricDefinition {
+  targetValue: number | null;
+}
+
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -37,10 +41,50 @@ function ErrorBanner({ error }: { error: string | null }) {
   return <div className="mb-4 rounded-lg bg-red-500/10 p-3 text-sm text-red-400 border border-red-500/20">{error}</div>;
 }
 
+// Sets the goal (target_value) a batch's progress ring is measured against
+// on the student portal — undefined here just means "not set yet", never a
+// fabricated default (docsV2/STUDENT_PORTAL_SPEC.md's resolved open
+// question on batch progress %).
+function GoalEditor({
+  metricId,
+  unit,
+  targetValue,
+  onSave,
+}: {
+  metricId: string;
+  unit: string | null;
+  targetValue: number | null;
+  onSave: (value: number | null) => void;
+}) {
+  const [value, setValue] = useState(targetValue === null ? '' : String(targetValue));
+
+  useEffect(() => {
+    setValue(targetValue === null ? '' : String(targetValue));
+  }, [targetValue, metricId]);
+
+  return (
+    <div className="mt-2 flex items-center gap-1.5 text-xs">
+      <span className="text-slate-500">Student-portal goal:</span>
+      <input
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={() => {
+          const num = value.trim() === '' ? null : Number(value);
+          if (num !== targetValue && !(num !== null && Number.isNaN(num))) onSave(num);
+        }}
+        inputMode="decimal"
+        placeholder="none"
+        className="w-16 rounded border border-white/10 bg-white/5 px-1.5 py-0.5 text-slate-200 outline-none focus:border-indigo-500"
+      />
+      {unit && <span className="text-slate-500">{unit}</span>}
+    </div>
+  );
+}
+
 export default function ProgressPage() {
   const [orgId, setOrgId] = useState<string | null>(null);
   const [roster, setRoster] = useState<RosterEntry[] | null>(null);
-  const [metrics, setMetrics] = useState<MetricDefinition[]>([]);
+  const [metrics, setMetrics] = useState<MetricDefinitionWithTarget[]>([]);
   const [ownBatchesOnly, setOwnBatchesOnly] = useState(false);
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<RosterEntry | null>(null);
@@ -50,10 +94,23 @@ export default function ProgressPage() {
     api<{ activeOrgId: string | null }>('/api/v1/me/workspace').then((w) => setOrgId(w.activeOrgId));
   }, []);
 
-  useEffect(() => {
+  function loadMetrics() {
     if (!orgId) return;
-    api<MetricDefinition[]>(`/api/v1/orgs/${orgId}/progress/metrics`).then(setMetrics).catch(() => {});
-  }, [orgId]);
+    api<MetricDefinitionWithTarget[]>(`/api/v1/orgs/${orgId}/progress/metrics`).then(setMetrics).catch(() => {});
+  }
+
+  useEffect(loadMetrics, [orgId]);
+
+  async function setMetricGoal(metricId: string, targetValue: number | null) {
+    if (!orgId) return;
+    setError(null);
+    try {
+      await api(`/api/v1/orgs/${orgId}/progress/metrics/${metricId}`, { method: 'PATCH', body: JSON.stringify({ targetValue }) });
+      loadMetrics();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong.');
+    }
+  }
 
   useEffect(() => {
     if (!orgId) return;
@@ -141,7 +198,7 @@ export default function ProgressPage() {
         {/* Detail */}
         <section>
           {selected ? (
-            <StudentProgress orgId={orgId} student={selected} metrics={metrics} />
+            <StudentProgress orgId={orgId} student={selected} metrics={metrics} onSetMetricGoal={setMetricGoal} />
           ) : (
             <div className="flex h-64 items-center justify-center rounded-xl border border-dashed border-white/10">
               <p className="text-sm text-slate-500">Select a student to view and log progress.</p>
@@ -153,7 +210,17 @@ export default function ProgressPage() {
   );
 }
 
-function StudentProgress({ orgId, student, metrics }: { orgId: string; student: RosterEntry; metrics: MetricDefinition[] }) {
+function StudentProgress({
+  orgId,
+  student,
+  metrics,
+  onSetMetricGoal,
+}: {
+  orgId: string;
+  student: RosterEntry;
+  metrics: MetricDefinitionWithTarget[];
+  onSetMetricGoal: (metricId: string, targetValue: number | null) => void;
+}) {
   const [entries, setEntries] = useState<ProgressEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [metricKey, setMetricKey] = useState('');
@@ -310,6 +377,14 @@ function StudentProgress({ orgId, student, metrics }: { orgId: string; student: 
                     </span>
                   )}
                 </div>
+                {def?.organizationId && (
+                  <GoalEditor
+                    metricId={def.id}
+                    unit={def.unit}
+                    targetValue={def.targetValue}
+                    onSave={(v) => onSetMetricGoal(def.id, v)}
+                  />
+                )}
                 <div className="mt-3 space-y-1 border-t border-white/5 pt-2">
                   {list
                     .slice()
