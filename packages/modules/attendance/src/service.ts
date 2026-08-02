@@ -143,6 +143,31 @@ export async function listFaceEnrollments(session: SessionContext, input: { enro
   });
 }
 
+// ── Face-bio status summary (Students page) ─────────────────────────
+// One row per enrollment with at least one non-tombstoned face sample —
+// avoids an N+1 listFaceEnrollments call per row in the Students table.
+// Same silent-empty-join caveat as finance's getFeeStatusSummary: a caller
+// without attendance.face.enroll at a branch sees every one of that
+// branch's face_enrollments filtered out by RLS, so this reads as "every
+// student missing face bio" rather than raising an authorization error.
+const FACE_BIO_STATUS_SUMMARY_SQL = `select e.id as enrollment_id, bool_or(fe.id is not null) as enrolled
+  from enrollments e
+  left join face_enrollments fe on fe.enrollment_id = e.id and fe.deleted_at is null
+  where e.organization_id = $1 and ($2::uuid is null or e.branch_id = $2)
+  group by e.id`;
+
+export interface FaceBioStatusEntry {
+  enrollmentId: string;
+  enrolled: boolean;
+}
+
+export async function getFaceBioStatusSummary(session: SessionContext, organizationId: string, branchId?: string): Promise<FaceBioStatusEntry[]> {
+  return db.withRequestContext(session, async (client) => {
+    const result = await client.query<{ enrollment_id: string; enrolled: boolean }>(FACE_BIO_STATUS_SUMMARY_SQL, [organizationId, branchId ?? null]);
+    return result.rows.map((row) => ({ enrollmentId: row.enrollment_id, enrolled: row.enrolled }));
+  });
+}
+
 // Revokes one bad/stale sample (re-enrollment case) — distinct from the
 // consent-withdrawal purge job, which is the compliance-driven path.
 export async function deleteFaceEnrollment(session: SessionContext, faceEnrollmentId: string): Promise<void> {

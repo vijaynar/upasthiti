@@ -761,10 +761,25 @@ export interface JoinRequestSummary {
   id: string;
   branchId: string | null;
   requesterUserId: string;
+  subjectUserId: string;
+  subjectDisplayName: string | null;
+  subjectAvatarPath: string | null;
   requestedRole: RequestedRole;
   status: string;
   createdAt: string;
 }
+
+// Subject name/avatar come via a LEFT JOIN, not an inner join: users_select_
+// org_join_requester (migration 0010) only grants visibility while the
+// request is 'pending', so a caller listing decided/withdrawn requests sees
+// null for those two columns rather than an error — a deliberate silent-
+// partial, same shape as every other RLS-scoped join in this schema.
+const LIST_JOIN_REQUESTS_SQL = `select jr.id, jr.branch_id, jr.requester_user_id, jr.subject_user_id, jr.requested_role, jr.status, jr.created_at,
+    u.display_name as subject_display_name, u.avatar_path as subject_avatar_path
+  from join_requests jr
+  left join users u on u.id = jr.subject_user_id
+  where jr.organization_id = $1
+  order by jr.created_at desc`;
 
 export async function listJoinRequests(session: SessionContext, organizationId: string): Promise<JoinRequestSummary[]> {
   return db.withRequestContext(session, async (client) => {
@@ -772,18 +787,20 @@ export async function listJoinRequests(session: SessionContext, organizationId: 
       id: string;
       branch_id: string | null;
       requester_user_id: string;
+      subject_user_id: string;
       requested_role: RequestedRole;
       status: string;
       created_at: string;
-    }>(
-      `select id, branch_id, requester_user_id, requested_role, status, created_at
-       from join_requests where organization_id = $1 order by created_at desc`,
-      [organizationId]
-    );
+      subject_display_name: string | null;
+      subject_avatar_path: string | null;
+    }>(LIST_JOIN_REQUESTS_SQL, [organizationId]);
     return result.rows.map((row) => ({
       id: row.id,
       branchId: row.branch_id,
       requesterUserId: row.requester_user_id,
+      subjectUserId: row.subject_user_id,
+      subjectDisplayName: row.subject_display_name,
+      subjectAvatarPath: row.subject_avatar_path,
       requestedRole: row.requested_role,
       status: row.status,
       createdAt: row.created_at,

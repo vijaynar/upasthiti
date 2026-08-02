@@ -12,7 +12,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const { id } = await params;
   const { searchParams } = new URL(req.url);
-  return jsonData(await listPayments(session, { organizationId: id, status: (searchParams.get('status') as PaymentStatus | null) ?? undefined }));
+  return jsonData(
+    await listPayments(session, {
+      organizationId: id,
+      status: (searchParams.get('status') as PaymentStatus | null) ?? undefined,
+      payerUserId: searchParams.get('payerUserId') ?? undefined,
+    })
+  );
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

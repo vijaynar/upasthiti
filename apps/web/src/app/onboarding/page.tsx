@@ -216,8 +216,8 @@ function AcceptInviteForm({ onAccepted }: { onAccepted: (organizationId: string)
   );
 }
 
-function JoinRequestForm() {
-  const [slug, setSlug] = useState('');
+function JoinRequestForm({ initialSlug }: { initialSlug?: string }) {
+  const [slug, setSlug] = useState(initialSlug ?? '');
   const [resolved, setResolved] = useState<{ id: string; name: string; orgType: string } | null>(null);
   const [role, setRole] = useState<'student' | 'coach' | 'assistant_coach'>('student');
   const [loading, setLoading] = useState(false);
@@ -392,9 +392,10 @@ function OnboardingContent() {
     );
   }
   if (intent === 'join') {
+    const prefilledOrg = searchParams.get('org') ?? undefined;
     return (
       <Shell onBack={() => setIntent('choose')}>
-        <JoinRequestForm />
+        <JoinRequestForm initialSlug={prefilledOrg} />
       </Shell>
     );
   }

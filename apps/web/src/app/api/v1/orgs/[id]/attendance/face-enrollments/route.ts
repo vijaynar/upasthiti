@@ -41,6 +41,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return jsonData(enrollment, 201);
   } catch (err) {
     if (isRlsDenied(err)) return jsonError('forbidden', 'You do not have permission to enroll a face here.', 403);
+    // consentId is caller-supplied free text (staff paste it in from what a
+    // guardian/student read out to them, Doc 07 §8) — these two failure
+    // modes are expected user error, not server bugs, and used to reach the
+    // browser as an uncaught 500 with no JSON body (res.json() on the client
+    // then failing with a useless "Unexpected end of JSON input").
+    const pgErr = err as { code?: string; message?: string };
+    if (pgErr?.code === '22P02') {
+      return jsonError('invalid_request', 'That consent ID isn’t a valid ID — double-check for typos.', 400);
+    }
+    if (pgErr?.code === '23503' || (pgErr?.code === 'P0001' && pgErr.message?.includes('biometric_face consent'))) {
+      return jsonError(
+        'consent_not_found',
+        'No active biometric consent found for this student with that ID. The student (if 18 or older) or their guardian needs to grant consent first — from Family → "Grant biometric consent" — then share the resulting ID with you.',
+        400
+      );
+    }
     throw err;
   }
 }

@@ -16,7 +16,27 @@ import { Camera, Loader2, RefreshCw } from 'lucide-react';
 let faceapi: any = null;
 const MODELS_URL = '/models';
 
-export function FaceScanner({ onCapture, busy }: { onCapture: (embedding: number[]) => void; busy?: boolean }) {
+export interface FaceCaptureMeta {
+  qualityScore: number;
+  frameDataUrl: string;
+  webglBackend: string | null;
+}
+
+// onCapture's 2nd param, frameClassName, and captureLabel are all additive —
+// existing callers (attendance check-in/enrollment, which only pass
+// onCapture/busy) keep their current small frame and default label
+// unchanged; the Students "Register Face Key" page uses the wider options.
+export function FaceScanner({
+  onCapture,
+  busy,
+  frameClassName = 'max-w-xs',
+  captureLabel = 'Capture face',
+}: {
+  onCapture: (embedding: number[], meta: FaceCaptureMeta) => void;
+  busy?: boolean;
+  frameClassName?: string;
+  captureLabel?: string;
+}) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [loadingModels, setLoadingModels] = useState(true);
   const [modelError, setModelError] = useState<string | null>(null);
@@ -81,7 +101,16 @@ export function FaceScanner({ onCapture, busy }: { onCapture: (embedding: number
         setCaptureError('No face detected — align the face inside the frame and try again.');
         return;
       }
-      onCapture(Array.from(detection.descriptor) as number[]);
+      const canvas = document.createElement('canvas');
+      canvas.width = videoRef.current.videoWidth;
+      canvas.height = videoRef.current.videoHeight;
+      canvas.getContext('2d')?.drawImage(videoRef.current, 0, 0);
+      const webglBackend = typeof faceapi.tf?.getBackend === 'function' ? faceapi.tf.getBackend() : null;
+      onCapture(Array.from(detection.descriptor) as number[], {
+        qualityScore: detection.detection.score,
+        frameDataUrl: canvas.toDataURL('image/jpeg', 0.85),
+        webglBackend,
+      });
     } catch (err) {
       setCaptureError(err instanceof Error ? err.message : 'Face capture failed.');
     } finally {
@@ -91,7 +120,7 @@ export function FaceScanner({ onCapture, busy }: { onCapture: (embedding: number
 
   return (
     <div className="space-y-2">
-      <div className="relative flex aspect-[4/3] w-full max-w-xs items-center justify-center overflow-hidden rounded-lg bg-neutral-900">
+      <div className={`relative flex aspect-[4/3] w-full ${frameClassName} items-center justify-center overflow-hidden rounded-lg bg-neutral-900`}>
         {loadingModels && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-neutral-400">
             <Loader2 className="h-6 w-6 animate-spin" />
@@ -111,7 +140,7 @@ export function FaceScanner({ onCapture, busy }: { onCapture: (embedding: number
         className="btn-premium flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-50"
       >
         {scanning ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Camera className="h-3.5 w-3.5" />}
-        {scanning ? 'Capturing…' : 'Capture face'}
+        {scanning ? 'Capturing…' : captureLabel}
       </button>
     </div>
   );

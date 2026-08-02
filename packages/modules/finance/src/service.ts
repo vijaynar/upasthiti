@@ -352,7 +352,7 @@ const INSERT_PAYMENT_SQL = `insert into payments (organization_id, payer_user_id
 const INSERT_PAYMENT_WITH_CREATED_AT_SQL = `insert into payments (organization_id, payer_user_id, method, proof_path, amount_minor, currency, status, created_at)
    values ($1, $2, $3, $4, $5, $6, $7, coalesce($8, now())) returning ${PAYMENT_COLUMNS}`;
 const LIST_PAYMENTS_SQL = `select ${PAYMENT_COLUMNS} from payments
-   where organization_id = $1 and ($2::text is null or status = $2)
+   where organization_id = $1 and ($2::text is null or status = $2) and ($3::uuid is null or payer_user_id = $3)
    order by created_at desc`;
 const LIST_MY_PAYMENTS_SQL = `select ${PAYMENT_COLUMNS} from payments where payer_user_id = current_user_id() order by created_at desc`;
 const SELECT_PAYMENT_SQL = `select ${PAYMENT_COLUMNS} from payments where id = $1`;
@@ -504,11 +504,16 @@ export async function rejectPayment(session: SessionContext, paymentId: string, 
 export interface ListPaymentsInput {
   organizationId: string;
   status?: PaymentStatus;
+  payerUserId?: string;
 }
 
 export async function listPayments(session: SessionContext, input: ListPaymentsInput): Promise<Payment[]> {
   return db.withRequestContext(session, async (client) => {
-    const result = await client.query<Parameters<typeof mapPaymentRow>[0]>(LIST_PAYMENTS_SQL, [input.organizationId, input.status ?? null]);
+    const result = await client.query<Parameters<typeof mapPaymentRow>[0]>(LIST_PAYMENTS_SQL, [
+      input.organizationId,
+      input.status ?? null,
+      input.payerUserId ?? null,
+    ]);
     return result.rows.map(mapPaymentRow);
   });
 }
@@ -517,6 +522,56 @@ export async function listMyPayments(session: SessionContext): Promise<Payment[]
   return db.withRequestContext(session, async (client) => {
     const result = await client.query<Parameters<typeof mapPaymentRow>[0]>(LIST_MY_PAYMENTS_SQL);
     return result.rows.map(mapPaymentRow);
+  });
+}
+
+// ── Fee status summary (Students page) ──────────────────────────────
+// One row per enrollment (even those with no charges at all, via the LEFT
+// JOIN) so the Students table can show a status for every row without an
+// N+1 charges fetch per student. Same silent-empty-join shape as any other
+// RLS-scoped join in this codebase: a caller without finance.charge.read at
+// a branch sees every one of that branch's charges filtered out, and every
+// enrollment reads as 'no_dues' rather than an authorization error — not a
+// bug, just this function's blind spot for a caller who can read students
+// but not their charges.
+
+export type FeeStatus = 'no_dues' | 'paid' | 'pending' | 'overdue';
+
+export interface FeeStatusEntry {
+  enrollmentId: string;
+  feeStatus: FeeStatus;
+  nextDueOn: string | null;
+  amountDueMinor: number;
+}
+
+const FEE_STATUS_SUMMARY_SQL = `select e.id as enrollment_id,
+    case
+      when bool_or(c.status = 'open' and c.due_on < current_date) then 'overdue'
+      when bool_or(c.status in ('open', 'pending_verification')) then 'pending'
+      when count(c.id) = 0 then 'no_dues'
+      else 'paid'
+    end as fee_status,
+    min(c.due_on) filter (where c.status in ('open', 'pending_verification')) as next_due_on,
+    coalesce(sum(c.amount_minor) filter (where c.status in ('open', 'pending_verification')), 0) as amount_due_minor
+  from enrollments e
+  left join charges c on c.enrollment_id = e.id
+  where e.organization_id = $1 and ($2::uuid is null or e.branch_id = $2)
+  group by e.id`;
+
+export async function getFeeStatusSummary(session: SessionContext, organizationId: string, branchId?: string): Promise<FeeStatusEntry[]> {
+  return db.withRequestContext(session, async (client) => {
+    const result = await client.query<{
+      enrollment_id: string;
+      fee_status: FeeStatus;
+      next_due_on: string | null;
+      amount_due_minor: string | number;
+    }>(FEE_STATUS_SUMMARY_SQL, [organizationId, branchId ?? null]);
+    return result.rows.map((row) => ({
+      enrollmentId: row.enrollment_id,
+      feeStatus: row.fee_status,
+      nextDueOn: row.next_due_on,
+      amountDueMinor: Number(row.amount_due_minor),
+    }));
   });
 }
 
