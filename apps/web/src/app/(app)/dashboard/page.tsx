@@ -46,6 +46,7 @@ async function api<T>(url: string): Promise<T> {
 interface DashboardSession {
   sessionId: string;
   batchName: string;
+  organizationName?: string;
   startsAt: string;
   endsAt: string;
   status: string;
@@ -92,6 +93,8 @@ interface BatchSummary {
   batchId: string;
   batchName: string;
   enrollmentStatus: 'active' | 'left';
+  organizationId: string;
+  organizationName: string;
   programName: string | null;
   mode: string;
   coachName: string | null;
@@ -106,11 +109,14 @@ interface StudentAnnouncement {
   body: string;
   tag: string;
   publishedAt: string | null;
+  organizationName: string;
 }
 
 interface StudentDashboard {
   currency: string;
   activeBatchesCount: number;
+  activeOrgsCount: number;
+  activeCoachesCount: number;
   attendancePct: number | null;
   attendanceTrendDelta: number | null;
   streakDays: number;
@@ -137,6 +143,11 @@ function TodaySchedule({ sessions }: { sessions: DashboardSession[] }) {
             </span>
             <span className="text-sm font-medium" style={{ color: 'var(--foreground)' }}>
               {s.batchName}
+              {s.organizationName && (
+                <span className="ml-1.5 font-normal" style={{ color: 'var(--foreground-subtle)' }}>
+                  · {s.organizationName}
+                </span>
+              )}
             </span>
           </div>
           <StatusPill status={s.status} />
@@ -314,7 +325,7 @@ function StudentBatchCard({ batch }: { batch: BatchSummary }) {
           {batch.batchName}
         </p>
         <p className="truncate text-xs" style={{ color: 'var(--foreground-muted)' }}>
-          {batch.coachName ? `Coach ${batch.coachName}` : 'No coach assigned'}
+          {batch.organizationName} · {batch.coachName ? `Coach ${batch.coachName}` : 'No coach assigned'}
         </p>
         <p className="mt-1 text-xs" style={{ color: 'var(--foreground-subtle)' }}>
           {batch.nextSessionAt ? `Next ${fmtTime(batch.nextSessionAt)}` : 'No upcoming session'}
@@ -343,21 +354,24 @@ function AnnouncementsList({ items }: { items: StudentAnnouncement[] }) {
           <p className="mt-0.5 line-clamp-2 text-xs" style={{ color: 'var(--foreground-muted)' }}>
             {a.body}
           </p>
+          <p className="mt-1 text-[10px] font-semibold uppercase tracking-wide" style={{ color: 'var(--foreground-subtle)' }}>
+            {a.organizationName}
+          </p>
         </li>
       ))}
     </ul>
   );
 }
 
-function StudentView({ orgId }: { orgId: string }) {
+function StudentView() {
   const [data, setData] = useState<StudentDashboard | null>(null);
   const [batches, setBatches] = useState<BatchSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    api<StudentDashboard>(`/api/v1/orgs/${orgId}/dashboard/student`).then(setData).catch((e) => setError(e.message));
-    api<BatchSummary[]>(`/api/v1/orgs/${orgId}/me/batches`).then(setBatches).catch(() => setBatches([]));
-  }, [orgId]);
+    api<StudentDashboard>('/api/v1/me/dashboard').then(setData).catch((e) => setError(e.message));
+    api<BatchSummary[]>('/api/v1/me/batches').then(setBatches).catch(() => setBatches([]));
+  }, []);
 
   if (error) return <div className="mx-6 rounded-lg border p-4 text-sm" style={{ color: 'var(--danger)', borderColor: 'var(--danger-glow)' }}>{error}</div>;
   if (!data) return <DashboardLoading />;
@@ -365,6 +379,12 @@ function StudentView({ orgId }: { orgId: string }) {
   const attendanceHint =
     data.attendanceTrendDelta === null ? undefined : `${data.attendanceTrendDelta >= 0 ? '+' : ''}${data.attendanceTrendDelta}% this month`;
   const activeBatches = batches?.filter((b) => b.enrollmentStatus === 'active') ?? null;
+  const batchesHint =
+    data.activeCoachesCount > 0
+      ? `Across ${data.activeCoachesCount} coach${data.activeCoachesCount === 1 ? '' : 'es'}${
+          data.activeOrgsCount > 1 ? `, ${data.activeOrgsCount} academies` : ''
+        }`
+      : undefined;
 
   return (
     <div className="space-y-6">
@@ -378,7 +398,7 @@ function StudentView({ orgId }: { orgId: string }) {
           href="/me/attendance"
         />
         <StatCard label="Current streak" value={`${data.streakDays} day${data.streakDays === 1 ? '' : 's'}`} icon={Flame} tone="accent" href="/me/attendance" />
-        <StatCard label="Active batches" value={data.activeBatchesCount} icon={CalendarClock} tone="primary" href="/me/batches" />
+        <StatCard label="Active batches" value={data.activeBatchesCount} icon={CalendarClock} tone="primary" hint={batchesHint} href="/me/batches" />
         <StatCard
           label="Upcoming payments"
           value={fmtMoney(data.upcomingPaymentsMinor, data.currency)}
@@ -428,11 +448,19 @@ export default function DashboardPage() {
   const [orgId, setOrgId] = useState<string | null | undefined>(undefined);
   const [roles, setRoles] = useState<string[] | null>(null);
   const [view, setView] = useState<'owner' | 'coach' | null>(null);
+  // Independent of the active workspace — a student belongs to N unrelated
+  // orgs at once and has no "workspace" of their own (see StudentView's
+  // backing endpoints), so this checks for student status directly rather
+  // than waiting on orgId/roles in the active workspace.
+  const [hasStudentBatches, setHasStudentBatches] = useState<boolean | null>(null);
 
   useEffect(() => {
     api<{ activeOrgId: string | null }>('/api/v1/me/workspace')
       .then((w) => setOrgId(w.activeOrgId))
       .catch(() => setOrgId(null));
+    api<BatchSummary[]>('/api/v1/me/batches')
+      .then((b) => setHasStudentBatches(b.length > 0))
+      .catch(() => setHasStudentBatches(false));
   }, []);
 
   useEffect(() => {
@@ -455,9 +483,22 @@ export default function DashboardPage() {
     setView(isMgmt ? 'owner' : isCoach ? 'coach' : null);
   }, [roles, isMgmt, isCoach]);
 
-  if (orgId === undefined) return <DashboardLoading />;
+  const stillResolving = orgId === undefined || hasStudentBatches === null || (orgId ? roles === null : false);
+  if (stillResolving) return <DashboardLoading />;
 
-  if (!orgId) {
+  // Staff role in the active workspace wins (they're mid-task in that org);
+  // otherwise, if the caller is a student anywhere, that's an org-agnostic
+  // view regardless of whatever workspace happens to be active.
+  if (!isMgmt && !isCoach && hasStudentBatches) {
+    return (
+      <div className="p-6 md:p-8">
+        <DashboardHeader badge="Overview" icon={LayoutGrid} title="Dashboard" subtitle="Your batches and progress at a glance." />
+        <StudentView />
+      </div>
+    );
+  }
+
+  if (!orgId || view === null) {
     return (
       <div className="p-8">
         <DashboardHeader badge="Overview" icon={LayoutGrid} title="Dashboard" subtitle="Select a workspace to see its dashboard." />
@@ -466,20 +507,6 @@ export default function DashboardPage() {
         </Link>
       </div>
     );
-  }
-
-  if (roles === null || view === null) {
-    if (roles !== null && !isMgmt && !isCoach) {
-      // A member with no management/coaching role is a student (or a
-      // guardian-only member — /family already covers that view separately).
-      return (
-        <div className="p-6 md:p-8">
-          <DashboardHeader badge="Overview" icon={LayoutGrid} title="Dashboard" subtitle="Your batches and progress at a glance." />
-          <StudentView orgId={orgId} />
-        </div>
-      );
-    }
-    return <DashboardLoading />;
   }
 
   const subtitle =

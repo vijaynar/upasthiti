@@ -28,26 +28,15 @@ interface BatchSummary {
 }
 
 export default function MyPerformancePage() {
-  const [orgId, setOrgId] = useState<string | null | undefined>(undefined);
   const [entries, setEntries] = useState<ProgressEntry[] | null>(null);
   const [metrics, setMetrics] = useState<MetricDefinition[]>([]);
   const [batches, setBatches] = useState<BatchSummary[]>([]);
 
   useEffect(() => {
-    api<{ activeOrgId: string | null }>('/api/v1/me/workspace')
-      .then((w) => setOrgId(w.activeOrgId))
-      .catch(() => setOrgId(null));
-  }, []);
-
-  useEffect(() => {
     api<ProgressEntry[]>('/api/v1/me/progress').then(setEntries).catch(() => setEntries([]));
     api<MetricDefinition[]>('/api/v1/me/progress/metrics').then(setMetrics).catch(() => {});
+    api<BatchSummary[]>('/api/v1/me/batches').then(setBatches).catch(() => {});
   }, []);
-
-  useEffect(() => {
-    if (!orgId) return;
-    api<BatchSummary[]>(`/api/v1/orgs/${orgId}/me/batches`).then(setBatches).catch(() => {});
-  }, [orgId]);
 
   const metricByKey = useMemo(() => new Map(metrics.map((m) => [m.key, m])), [metrics]);
 

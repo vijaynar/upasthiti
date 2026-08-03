@@ -323,28 +323,29 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </div>
 
         {/* Active workspace card */}
-        <Link
-          href="/workspace"
-          className="mx-2.5 mt-2 flex items-center gap-2 rounded-lg border border-indigo-500/10 bg-indigo-950/20 p-2 hover:border-indigo-500/25 transition-all"
-        >
-          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-indigo-500/30 bg-indigo-500/10 text-indigo-400">
-            <ShieldCheck className="h-3.5 w-3.5" />
-          </div>
-          <div className="overflow-hidden">
-            <h4 className="truncate text-xs font-bold tracking-wide text-slate-200">
-              {isPlatformStaff ? 'Abhyas Platform' : activeOrg ? activeOrg.organizationName : 'No workspace selected'}
-            </h4>
-            <p className="truncate text-[10px] text-slate-400/80">
-              {isPlatformStaff ? 'platform.abhyas.app' : activeOrg ? `${activeOrg.organizationSlug}.abhyas.app` : 'Choose a workspace →'}
-            </p>
-          </div>
-        </Link>
+        {(memberships.length > 0 || isPlatformStaff) && (
+          <Link
+            href="/workspace"
+            className="mx-2.5 mt-2 flex items-center gap-2 rounded-lg border border-indigo-500/10 bg-indigo-950/20 p-2 hover:border-indigo-500/25 transition-all"
+          >
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-indigo-500/30 bg-indigo-500/10 text-indigo-400">
+              <ShieldCheck className="h-3.5 w-3.5" />
+            </div>
+            <div className="overflow-hidden">
+              <h4 className="truncate text-xs font-bold tracking-wide text-slate-200">
+                {isPlatformStaff ? 'Abhyas Platform' : activeOrg ? activeOrg.organizationName : 'No workspace selected'}
+              </h4>
+              <p className="truncate text-[10px] text-slate-400/80">
+                {isPlatformStaff ? 'platform.abhyas.app' : activeOrg ? `${activeOrg.organizationSlug}.abhyas.app` : 'Choose a workspace →'}
+              </p>
+            </div>
+          </Link>
+        )}
 
         {/* Nav */}
         <nav className="no-scrollbar flex-1 space-y-4 overflow-y-auto px-2.5 py-2">
           <div className="space-y-1">
-            {isPlatformStaff && navItem({ label: 'Dashboard', href: '/platform/dashboard', icon: LayoutDashboard })}
-            {activeOrg && navItem({ label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard })}
+            {navItem({ label: 'Dashboard', href: isPlatformStaff ? '/platform/dashboard' : '/dashboard', icon: LayoutDashboard })}
           </div>
 
           {activeOrg && (
@@ -487,7 +488,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 )
               ) : (
                 <div className="flex h-7 w-full items-center rounded-md border border-white/10 bg-white/5 px-1.5 text-[8px] font-extrabold uppercase tracking-wide text-slate-400">
-                  No workspace
+                  {memberships.length === 0 ? 'Student / Guardian' : 'No workspace'}
                 </div>
               )}
               </div>
@@ -515,26 +516,24 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                     <div className="px-2.5 pb-1 pt-1 text-[9px] font-bold uppercase tracking-wider text-slate-500">
                       Settings
                     </div>
-                    <div className="relative">
-                      <button
-                        type="button"
-                        onClick={() => setWorkspaceExpanded((v) => !v)}
-                        className={`flex w-full items-center justify-between px-2.5 py-1.5 text-left text-xs font-medium transition ${
-                          workspaceExpanded ? 'bg-white/5 text-slate-200' : 'text-slate-300 hover:bg-white/5'
-                        }`}
-                      >
-                        <span className="flex items-center gap-2">
-                          <LayoutGrid className="h-3.5 w-3.5 text-slate-400" />
-                          Workspace
-                        </span>
-                        <ChevronRight className="h-3 w-3 shrink-0 text-slate-500" />
-                      </button>
-                      {workspaceExpanded && (
-                        <div className="absolute bottom-0 left-full z-50 ml-1 w-56 overflow-hidden rounded-lg border border-white/10 bg-slate-900 py-1 shadow-xl">
-                          {memberships.length === 0 ? (
-                            <div className="px-2.5 py-1.5 text-[11px] text-slate-500">No workspaces yet</div>
-                          ) : (
-                            memberships.map((m) => (
+                    {memberships.length > 0 && (
+                      <div className="relative">
+                        <button
+                          type="button"
+                          onClick={() => setWorkspaceExpanded((v) => !v)}
+                          className={`flex w-full items-center justify-between px-2.5 py-1.5 text-left text-xs font-medium transition ${
+                            workspaceExpanded ? 'bg-white/5 text-slate-200' : 'text-slate-300 hover:bg-white/5'
+                          }`}
+                        >
+                          <span className="flex items-center gap-2">
+                            <LayoutGrid className="h-3.5 w-3.5 text-slate-400" />
+                            Workspace
+                          </span>
+                          <ChevronRight className="h-3 w-3 shrink-0 text-slate-500" />
+                        </button>
+                        {workspaceExpanded && (
+                          <div className="absolute bottom-0 left-full z-50 ml-1 w-56 overflow-hidden rounded-lg border border-white/10 bg-slate-900 py-1 shadow-xl">
+                            {memberships.map((m) => (
                               <button
                                 key={m.organizationId}
                                 type="button"
@@ -552,22 +551,22 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                                   <Check className="h-3 w-3 shrink-0 text-indigo-400" />
                                 )}
                               </button>
-                            ))
-                          )}
-                          <Link
-                            href="/onboarding"
-                            onClick={() => {
-                              setShowSettings(false);
-                              setWorkspaceExpanded(false);
-                            }}
-                            className="flex items-center gap-2 border-t border-white/10 px-2.5 py-1.5 text-xs font-medium text-indigo-400 hover:bg-white/5 transition"
-                          >
-                            <Plus className="h-3.5 w-3.5" />
-                            Add workspace
-                          </Link>
-                        </div>
-                      )}
-                    </div>
+                            ))}
+                            <Link
+                              href="/onboarding"
+                              onClick={() => {
+                                setShowSettings(false);
+                                setWorkspaceExpanded(false);
+                              }}
+                              className="flex items-center gap-2 border-t border-white/10 px-2.5 py-1.5 text-xs font-medium text-indigo-400 hover:bg-white/5 transition"
+                            >
+                              <Plus className="h-3.5 w-3.5" />
+                              Add workspace
+                            </Link>
+                          </div>
+                        )}
+                      </div>
+                    )}
                     <div className="mt-1 border-t border-white/10 pt-1">
                       <button
                         type="button"

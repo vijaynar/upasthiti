@@ -51,6 +51,7 @@ export interface OwnerDashboard {
 export interface DashboardSession {
   sessionId: string;
   batchName: string;
+  organizationName?: string;
   startsAt: string;
   endsAt: string;
   status: string;
@@ -283,6 +284,8 @@ export interface BatchSummary {
   // the program" vs. "withdrew" state, so this is deliberately the same
   // bucket for both.
   enrollmentStatus: 'active' | 'left';
+  organizationId: string;
+  organizationName: string;
   programName: string | null;
   mode: string;
   schedule: { days: number[]; startTime: string; endTime: string; startDate: string; endDate?: string | null };
@@ -296,6 +299,8 @@ interface BatchSummaryRow {
   batch_id: string;
   batch_name: string;
   enrollment_status: 'active' | 'left';
+  organization_id: string;
+  organization_name: string;
   mode: string;
   schedule: BatchSummary['schedule'];
   primary_metric_key: string | null;
@@ -328,9 +333,19 @@ function resolveBatchProgress(row: BatchSummaryRow): BatchProgress {
 // One row per active batch enrollment, with attendance % and progress %
 // resolved via LATERAL subqueries rather than separate round-trips — the
 // per-student batch count is small (a handful), so this stays cheap.
+//
+// Org-agnostic on purpose (no organization_id filter/param) — a student is a
+// member of N unrelated orgs simultaneously (different academies, different
+// independent coaches) and has no "active workspace" of their own (that
+// concept only makes sense for staff operating inside one org at a time).
+// enrollments_select_self / batch_enrollments_select_self (migration 0005)
+// are keyed on student_user_id only, not current_org(), so this already
+// returns exactly the caller's own rows across every org without needing
+// service-role or a per-org loop.
 const MY_BATCH_SUMMARIES_SQL = `
   select
     b.id as batch_id, b.name as batch_name, be.status as enrollment_status, b.mode, b.schedule, b.primary_metric_key,
+    e.organization_id, o.name as organization_name,
     p.name as program_name,
     coach.display_name as coach_name,
     coalesce(att.total, 0) as attendance_total,
@@ -341,6 +356,7 @@ const MY_BATCH_SUMMARIES_SQL = `
   from batch_enrollments be
   join batches b on b.id = be.batch_id
   join enrollments e on e.id = be.enrollment_id
+  join organizations o on o.id = e.organization_id
   left join programs p on p.id = b.program_id
   left join lateral (
     select u.display_name
@@ -376,12 +392,12 @@ const MY_BATCH_SUMMARIES_SQL = `
     order by recorded_on desc, created_at desc
     limit 1
   ) latest on b.primary_metric_key is not null
-  where e.student_user_id = $1 and e.organization_id = $2 and be.status in ('active', 'left')
-  order by (be.status = 'active') desc, b.name`;
+  where e.student_user_id = $1 and be.status in ('active', 'left')
+  order by (be.status = 'active') desc, o.name, b.name`;
 
-export async function listMyBatchSummaries(session: SessionContext, organizationId: string): Promise<BatchSummary[]> {
+export async function listMyBatchSummaries(session: SessionContext): Promise<BatchSummary[]> {
   return db.withRequestContext(session, async (client) => {
-    const result = await client.query<BatchSummaryRow>(MY_BATCH_SUMMARIES_SQL, [session.userId, organizationId]);
+    const result = await client.query<BatchSummaryRow>(MY_BATCH_SUMMARIES_SQL, [session.userId]);
     return result.rows.map((row) => {
       const total = Number(row.attendance_total);
       const present = Number(row.attendance_present);
@@ -389,6 +405,8 @@ export async function listMyBatchSummaries(session: SessionContext, organization
         batchId: row.batch_id,
         batchName: row.batch_name,
         enrollmentStatus: row.enrollment_status,
+        organizationId: row.organization_id,
+        organizationName: row.organization_name,
         programName: row.program_name,
         mode: row.mode,
         schedule: row.schedule,
@@ -407,11 +425,18 @@ export interface StudentAnnouncement {
   body: string;
   tag: string;
   publishedAt: string | null;
+  organizationName: string;
 }
 
 export interface StudentDashboard {
+  // Best-effort display currency — this app is currently single-currency
+  // per deployment in practice, so aggregating across orgs just reports the
+  // first org's currency (or INR) rather than doing real multi-currency
+  // math. Revisit if orgs on different currencies ever coexist for one student.
   currency: string;
   activeBatchesCount: number;
+  activeOrgsCount: number;
+  activeCoachesCount: number;
   attendancePct: number | null; // null = no attendance recorded yet, not 0%
   attendanceTrendDelta: number | null; // this month's % minus last month's, in points
   streakDays: number;
@@ -425,34 +450,50 @@ export interface StudentDashboard {
   announcements: StudentAnnouncement[];
 }
 
+// Org-agnostic (see MY_BATCH_SUMMARIES_SQL's comment above) — every subquery
+// here is keyed on the caller's own student_user_id, never current_org(), so
+// it aggregates across every org the student is enrolled in.
 const STUDENT_KPIS_SQL = `
   select
-    (select default_currency from organizations where id = $1) as currency,
+    (select coalesce(min(o.default_currency), 'INR') from organizations o
+       join enrollments e on e.organization_id = o.id
+       where e.student_user_id = $1 and e.status = 'active') as currency,
     (select count(*) from batch_enrollments be join enrollments e on e.id = be.enrollment_id
-       where e.student_user_id = $2 and e.organization_id = $1 and be.status = 'active') as active_batches,
+       where e.student_user_id = $1 and be.status = 'active') as active_batches,
+    (select count(distinct e.organization_id) from enrollments e
+       where e.student_user_id = $1 and e.status = 'active') as active_orgs,
+    (select count(distinct coach.membership_id) from batch_enrollments be
+       join enrollments e on e.id = be.enrollment_id
+       join batches b on b.id = be.batch_id
+       join coach_assignments coach on coach.batch_id = b.id
+       where e.student_user_id = $1 and be.status = 'active') as active_coaches,
     (select coalesce(sum(c.amount_minor), 0) from charges c join enrollments e on e.id = c.enrollment_id
-       where e.student_user_id = $2 and e.organization_id = $1 and c.status = 'open' and c.due_on >= current_date) as upcoming_minor,
+       where e.student_user_id = $1 and c.status = 'open' and c.due_on >= current_date) as upcoming_minor,
     (select count(*) from charges c join enrollments e on e.id = c.enrollment_id
-       where e.student_user_id = $2 and e.organization_id = $1 and c.status = 'open' and c.due_on >= current_date) as upcoming_count,
+       where e.student_user_id = $1 and c.status = 'open' and c.due_on >= current_date) as upcoming_count,
     (select count(*) from batch_join_requests bjr join enrollments e on e.id = bjr.enrollment_id
-       where e.student_user_id = $2 and bjr.status = 'pending') as pending_join_requests,
-    (select count(*) from payments where payer_user_id = $2 and organization_id = $1 and status = 'pending_verification') as pending_payment_proofs`;
+       where e.student_user_id = $1 and bjr.status = 'pending') as pending_join_requests,
+    (select count(*) from payments where payer_user_id = $1 and status = 'pending_verification') as pending_payment_proofs`;
 
 const STUDENT_TODAY_SESSIONS_SQL = `
-  select cs.id as session_id, b.name as batch_name, cs.starts_at, cs.ends_at, cs.status
+  select cs.id as session_id, b.name as batch_name, o.name as organization_name, cs.starts_at, cs.ends_at, cs.status
   from class_sessions cs
   join batch_enrollments be on be.batch_id = cs.batch_id and be.status = 'active'
   join enrollments e on e.id = be.enrollment_id
+  join organizations o on o.id = e.organization_id
   join batches b on b.id = cs.batch_id
-  where e.student_user_id = $1 and e.organization_id = $2 and cs.session_date = current_date
+  where e.student_user_id = $1 and cs.session_date = current_date
   order by cs.starts_at
   limit 12`;
 
+// RLS (org_announcements_select_student, migration 0011) already restricts
+// rows to orgs where the caller holds an active enrollment — no explicit
+// join needed here, same as listMyCharges' current_user_id()-only shape.
 const STUDENT_ANNOUNCEMENTS_SQL = `
-  select id, title, body, tag, published_at
-  from org_announcements
-  where organization_id = $1
-  order by published_at desc nulls last
+  select a.id, a.title, a.body, a.tag, a.published_at, o.name as organization_name
+  from org_announcements a
+  join organizations o on o.id = a.organization_id
+  order by a.published_at desc nulls last
   limit 6`;
 
 // Bounded to the last 180 days — enough to compute a meaningful streak and
@@ -464,7 +505,7 @@ const STUDENT_ATTENDANCE_HISTORY_SQL = `
   select ae.status, cs.session_date::text as session_date
   from attendance_events ae
   join class_sessions cs on cs.id = ae.class_session_id
-  where ae.enrollment_id in (select id from enrollments where student_user_id = $1 and organization_id = $2)
+  where ae.enrollment_id in (select id from enrollments where student_user_id = $1)
     and ae.superseded_by is null
     and cs.session_date >= current_date - interval '180 days'
   order by cs.session_date desc`;
@@ -515,31 +556,33 @@ function computeAttendanceStats(rows: { status: string; session_date: string }[]
   return { pct, trendDelta, streakDays };
 }
 
-export async function getStudentDashboard(session: SessionContext, organizationId: string): Promise<StudentDashboard> {
+export async function getStudentDashboard(session: SessionContext): Promise<StudentDashboard> {
   return db.withRequestContext(session, async (client) => {
     const kpis = await client.query<{
       currency: string | null;
       active_batches: string;
+      active_orgs: string;
+      active_coaches: string;
       upcoming_minor: string;
       upcoming_count: string;
       pending_join_requests: string;
       pending_payment_proofs: string;
-    }>(STUDENT_KPIS_SQL, [organizationId, session.userId]);
+    }>(STUDENT_KPIS_SQL, [session.userId]);
     const row = kpis.rows[0];
 
     const attendanceHistory = await client.query<{ status: string; session_date: string }>(STUDENT_ATTENDANCE_HISTORY_SQL, [
       session.userId,
-      organizationId,
     ]);
     const attendance = computeAttendanceStats(attendanceHistory.rows);
 
     const sessions = await client.query<{
       session_id: string;
       batch_name: string;
+      organization_name: string;
       starts_at: string;
       ends_at: string;
       status: string;
-    }>(STUDENT_TODAY_SESSIONS_SQL, [session.userId, organizationId]);
+    }>(STUDENT_TODAY_SESSIONS_SQL, [session.userId]);
 
     const announcements = await client.query<{
       id: string;
@@ -547,11 +590,14 @@ export async function getStudentDashboard(session: SessionContext, organizationI
       body: string;
       tag: string;
       published_at: string | null;
-    }>(STUDENT_ANNOUNCEMENTS_SQL, [organizationId]);
+      organization_name: string;
+    }>(STUDENT_ANNOUNCEMENTS_SQL);
 
     return {
       currency: row?.currency ?? 'INR',
       activeBatchesCount: Number(row?.active_batches ?? 0),
+      activeOrgsCount: Number(row?.active_orgs ?? 0),
+      activeCoachesCount: Number(row?.active_coaches ?? 0),
       attendancePct: attendance.pct,
       attendanceTrendDelta: attendance.trendDelta,
       streakDays: attendance.streakDays,
@@ -561,6 +607,7 @@ export async function getStudentDashboard(session: SessionContext, organizationI
       todaysSessions: sessions.rows.map((s) => ({
         sessionId: s.session_id,
         batchName: s.batch_name,
+        organizationName: s.organization_name,
         startsAt: s.starts_at,
         endsAt: s.ends_at,
         status: s.status,
@@ -571,7 +618,60 @@ export async function getStudentDashboard(session: SessionContext, organizationI
         body: a.body,
         tag: a.tag,
         publishedAt: a.published_at,
+        organizationName: a.organization_name,
       })),
     };
+  });
+}
+
+// ── My Schedule (org-agnostic upcoming agenda, docsV2/STUDENT_PORTAL_SPEC.md) ──
+
+export interface AgendaSession {
+  sessionId: string;
+  batchId: string;
+  batchName: string;
+  organizationId: string;
+  organizationName: string;
+  sessionDate: string;
+  startsAt: string;
+  endsAt: string;
+  status: 'scheduled' | 'completed' | 'cancelled' | 'holiday';
+}
+
+const MY_UPCOMING_SESSIONS_SQL = `
+  select cs.id as session_id, cs.batch_id, b.name as batch_name, e.organization_id, o.name as organization_name,
+    cs.session_date::text as session_date, cs.starts_at, cs.ends_at, cs.status
+  from class_sessions cs
+  join batch_enrollments be on be.batch_id = cs.batch_id and be.status = 'active'
+  join enrollments e on e.id = be.enrollment_id
+  join organizations o on o.id = e.organization_id
+  join batches b on b.id = cs.batch_id
+  where e.student_user_id = $1 and cs.session_date >= $2 and cs.session_date <= $3
+  order by cs.starts_at`;
+
+export async function listMyUpcomingSessions(session: SessionContext, from: string, to: string): Promise<AgendaSession[]> {
+  return db.withRequestContext(session, async (client) => {
+    const result = await client.query<{
+      session_id: string;
+      batch_id: string;
+      batch_name: string;
+      organization_id: string;
+      organization_name: string;
+      session_date: string;
+      starts_at: string;
+      ends_at: string;
+      status: 'scheduled' | 'completed' | 'cancelled' | 'holiday';
+    }>(MY_UPCOMING_SESSIONS_SQL, [session.userId, from, to]);
+    return result.rows.map((s) => ({
+      sessionId: s.session_id,
+      batchId: s.batch_id,
+      batchName: s.batch_name,
+      organizationId: s.organization_id,
+      organizationName: s.organization_name,
+      sessionDate: s.session_date,
+      startsAt: s.starts_at,
+      endsAt: s.ends_at,
+      status: s.status,
+    }));
   });
 }

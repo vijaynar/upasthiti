@@ -1095,9 +1095,9 @@ function UserDirectoryPanel() {
   }
 
   const allUsers = (assignments ?? []).map((a) => {
-    const email = a.email || a.userEmail || `${a.userId.substring(0, 8)}@abhyas.app`;
+    const email = a.email || `${a.userId.substring(0, 8)}@abhyas.app`;
     const rawName = a.displayName || (email.includes('@') ? email.split('@')[0].replace(/[\._-]/g, ' ') : `Staff (${a.userId.substring(0, 6)})`);
-    const formattedName = rawName.replace(/\b\w/g, (c) => c.toUpperCase());
+    const formattedName = rawName.replace(/\b\w/g, (c: string) => c.toUpperCase());
     return {
       id: a.userId,
       name: formattedName,
@@ -1106,7 +1106,7 @@ function UserDirectoryPanel() {
       role: a.roleKey.toUpperCase().replace(/_/g, ' '),
       phone: '+91 98765 43210',
       status: 'Active',
-      initials: formattedName.split(' ').map((n) => n[0]).join('').substring(0, 2).toUpperCase() || 'SU',
+      initials: formattedName.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase() || 'SU',
       assignment: a,
       isSystemSuperAdmin: a.seed,
     };

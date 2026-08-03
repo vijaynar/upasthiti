@@ -20,5 +20,6 @@ async function hasActiveV2Session(): Promise<boolean> {
 
 export default async function Home() {
   const loggedIn = await hasActiveV2Session();
-  redirect(loggedIn ? '/workspace' : '/explore');
+  redirect(loggedIn ? '/dashboard' : '/explore');
 }
+

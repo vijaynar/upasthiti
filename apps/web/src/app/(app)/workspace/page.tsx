@@ -5,7 +5,8 @@
 // Reads/writes the shared WorkspaceProvider state (see @/lib/workspace) so
 // switching here updates the sidebar immediately, with no full reload.
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Building2, Check, LogOut, Plus, Trash2 } from 'lucide-react';
 import { useWorkspace } from '@/lib/workspace';
@@ -15,6 +16,14 @@ export default function WorkspacePage() {
   const [switching, setSwitching] = useState<string | null>(null);
   const [removing, setRemoving] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!loading && memberships.length === 0) {
+      router.replace('/dashboard');
+    }
+  }, [loading, memberships, router]);
+
 
   async function handleSwitch(organizationId: string) {
     setSwitching(organizationId);

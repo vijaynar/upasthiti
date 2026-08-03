@@ -1,11 +1,11 @@
 'use client';
 
 // "Schedule" — upcoming sessions across every active batch the signed-in
-// student is enrolled in (docsV2/STUDENT_PORTAL_SPEC.md Tier 1). No
-// "my sessions across all batches" endpoint exists, so this fans out to the
-// existing per-batch sessions route (class_sessions_select_self already
-// makes it visible) and merges client-side — the batch count per student is
-// small, so this stays cheap.
+// student is enrolled in, across every org (docsV2/STUDENT_PORTAL_SPEC.md
+// Tier 1, org-agnostic — a student has no single "active workspace"; see
+// listMyBatchSummaries' comment). Backed by GET /api/v1/me/schedule, which
+// aggregates class_sessions across every org server-side (RLS is still the
+// real gate, keyed on the caller's own enrollments, not current_org()).
 
 import { useEffect, useMemo, useState } from 'react';
 import { CalendarDays } from 'lucide-react';
@@ -19,57 +19,27 @@ async function api<T>(url: string): Promise<T> {
   return body.data as T;
 }
 
-interface BatchSummary {
+interface AgendaSession {
+  sessionId: string;
   batchId: string;
   batchName: string;
-  enrollmentStatus: 'active' | 'left';
-}
-
-interface ClassSession {
-  id: string;
-  batchId: string;
+  organizationName: string;
   sessionDate: string;
   startsAt: string;
   endsAt: string;
   status: 'scheduled' | 'completed' | 'cancelled' | 'holiday';
 }
 
-interface AgendaSession extends ClassSession {
-  batchName: string;
-}
-
 export default function MySchedulePage() {
-  const [orgId, setOrgId] = useState<string | null | undefined>(undefined);
   const [sessions, setSessions] = useState<AgendaSession[] | null>(null);
 
   useEffect(() => {
-    api<{ activeOrgId: string | null }>('/api/v1/me/workspace')
-      .then((w) => setOrgId(w.activeOrgId))
-      .catch(() => setOrgId(null));
-  }, []);
-
-  useEffect(() => {
-    if (!orgId) return;
-    let cancelled = false;
-    api<BatchSummary[]>(`/api/v1/orgs/${orgId}/me/batches`)
-      .then(async (batches) => {
-        const active = batches.filter((b) => b.enrollmentStatus === 'active');
-        const from = new Date().toISOString().slice(0, 10);
-        const to = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-        const perBatch = await Promise.all(
-          active.map((b) =>
-            api<ClassSession[]>(`/api/v1/orgs/${orgId}/batches/${b.batchId}/sessions?from=${from}&to=${to}`)
-              .then((list) => list.map((s) => ({ ...s, batchName: b.batchName })))
-              .catch(() => [] as AgendaSession[])
-          )
-        );
-        if (!cancelled) setSessions(perBatch.flat().sort((a, b) => (a.startsAt < b.startsAt ? -1 : 1)));
-      })
+    const from = new Date().toISOString().slice(0, 10);
+    const to = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    api<AgendaSession[]>(`/api/v1/me/schedule?from=${from}&to=${to}`)
+      .then(setSessions)
       .catch(() => setSessions([]));
-    return () => {
-      cancelled = true;
-    };
-  }, [orgId]);
+  }, []);
 
   const byDay = useMemo(() => {
     const map = new Map<string, AgendaSession[]>();
@@ -80,9 +50,6 @@ export default function MySchedulePage() {
     }
     return [...map.entries()];
   }, [sessions]);
-
-  if (orgId === undefined) return <p className="p-8 text-sm text-slate-400">Loading…</p>;
-  if (!orgId) return <p className="p-8 text-sm text-slate-400">Select an active workspace first.</p>;
 
   return (
     <div className="mx-auto max-w-3xl p-6 md:p-8">
@@ -103,13 +70,16 @@ export default function MySchedulePage() {
               </p>
               <ul className="glass-panel divide-y divide-white/10 overflow-hidden rounded-xl border" style={{ borderColor: 'var(--panel-border)' }}>
                 {list.map((s) => (
-                  <li key={s.id} className="flex items-center justify-between px-4 py-3">
+                  <li key={s.sessionId} className="flex items-center justify-between px-4 py-3">
                     <div className="flex items-center gap-3">
                       <span className="text-xs font-bold tabular-nums" style={{ color: 'var(--primary)' }}>
                         {fmtTime(s.startsAt)}
                       </span>
                       <span className="text-sm font-medium" style={{ color: 'var(--foreground)' }}>
                         {s.batchName}
+                        <span className="ml-1.5 font-normal" style={{ color: 'var(--foreground-subtle)' }}>
+                          · {s.organizationName}
+                        </span>
                       </span>
                     </div>
                     <StatusPill status={s.status} />

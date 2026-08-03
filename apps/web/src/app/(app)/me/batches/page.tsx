@@ -1,14 +1,17 @@
 'use client';
 
-// "My Batches" — the signed-in student's full batch list (docsV2/
-// STUDENT_PORTAL_SPEC.md Tier 1). All/Active/Completed tabs over
+// "My Batches" — the signed-in student's full batch list across every org
+// they're enrolled in (docsV2/STUDENT_PORTAL_SPEC.md Tier 1, org-agnostic —
+// see listMyBatchSummaries' comment). All/Active/Completed tabs over
 // listMyBatchSummaries (enrollmentStatus 'left' = Completed, per this
 // spec's resolved open question — batch_enrollments has no separate
 // "finished the program" state, so a withdrawal reads the same as
 // completion). Also the browse-and-request surface for the batch
 // join-request flow (migration 0011): a student can see other active
-// batches in the org and ask a coach to add them, mirroring the
-// org-level join_requests self-service pattern.
+// batches in an org they're already enrolled in and ask a coach to add
+// them — one "Join another batch" panel per org, since batch join-requests
+// are still necessarily org-scoped (browsing a brand-new org/coach is a
+// separate flow, via /onboarding's join-request form).
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
@@ -27,6 +30,8 @@ interface BatchSummary {
   batchId: string;
   batchName: string;
   enrollmentStatus: 'active' | 'left';
+  organizationId: string;
+  organizationName: string;
   programName: string | null;
   mode: string;
   schedule: { days: number[]; startTime: string; endTime: string };
@@ -74,7 +79,7 @@ function BatchListCard({ batch }: { batch: BatchSummary }) {
           {batch.enrollmentStatus === 'left' && <StatusPill status="completed" />}
         </div>
         <p className="mt-0.5 text-xs" style={{ color: 'var(--foreground-muted)' }}>
-          {batch.programName ?? 'General'} · {batch.coachName ? `Coach ${batch.coachName}` : 'No coach assigned'}
+          {batch.organizationName} · {batch.programName ?? 'General'} · {batch.coachName ? `Coach ${batch.coachName}` : 'No coach assigned'}
         </p>
         <p className="mt-1 text-xs" style={{ color: 'var(--foreground-subtle)' }}>
           {scheduleLabel(batch.schedule)}
@@ -89,7 +94,7 @@ function BatchListCard({ batch }: { batch: BatchSummary }) {
   );
 }
 
-function JoinBatchPanel({ orgId, onRequested }: { orgId: string; onRequested: () => void }) {
+function JoinBatchPanel({ orgId, orgName, onRequested }: { orgId: string; orgName: string; onRequested: () => void }) {
   const [open, setOpen] = useState(false);
   const [joinable, setJoinable] = useState<JoinableBatch[] | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -121,7 +126,7 @@ function JoinBatchPanel({ orgId, onRequested }: { orgId: string; onRequested: ()
       <button onClick={() => setOpen((v) => !v)} className="flex w-full items-center justify-between gap-2 text-left">
         <span className="flex items-center gap-2 text-sm font-extrabold uppercase tracking-widest" style={{ color: 'var(--foreground-muted)' }}>
           <UserPlus className="h-4 w-4" style={{ color: 'var(--primary)' }} />
-          Join another batch
+          Join another batch at {orgName}
         </span>
         <span className="text-xs font-bold" style={{ color: 'var(--primary)' }}>
           {open ? 'Hide' : 'Browse'}
@@ -171,33 +176,43 @@ function JoinBatchPanel({ orgId, onRequested }: { orgId: string; onRequested: ()
 type Tab = 'all' | 'active' | 'completed';
 
 export default function MyBatchesPage() {
-  const [orgId, setOrgId] = useState<string | null | undefined>(undefined);
   const [batches, setBatches] = useState<BatchSummary[] | null>(null);
-  const [myRequests, setMyRequests] = useState<JoinRequest[]>([]);
+  const [myRequestsByOrg, setMyRequestsByOrg] = useState<Map<string, JoinRequest[]>>(new Map());
   const [tab, setTab] = useState<Tab>('all');
   const [search, setSearch] = useState('');
   const [error, setError] = useState<string | null>(null);
 
+  function loadBatches() {
+    api<BatchSummary[]>('/api/v1/me/batches').then(setBatches).catch((e) => setError(e.message));
+  }
+  function loadRequests(orgId: string) {
+    api<JoinRequest[]>(`/api/v1/orgs/${orgId}/me/batch-join-requests`)
+      .then((list) => setMyRequestsByOrg((prev) => new Map(prev).set(orgId, list)))
+      .catch(() => {});
+  }
+
   useEffect(() => {
-    api<{ activeOrgId: string | null }>('/api/v1/me/workspace')
-      .then((w) => setOrgId(w.activeOrgId))
-      .catch(() => setOrgId(null));
+    loadBatches();
   }, []);
 
-  function loadBatches(id: string) {
-    api<BatchSummary[]>(`/api/v1/orgs/${id}/me/batches`).then(setBatches).catch((e) => setError(e.message));
-  }
-  function loadRequests(id: string) {
-    api<JoinRequest[]>(`/api/v1/orgs/${id}/me/batch-join-requests`).then(setMyRequests).catch(() => {});
-  }
+  // Orgs the student is actually enrolled in, derived from their own batch
+  // rows (org-agnostic — a student can hold enrollments at any number of
+  // unrelated academies/coaches, see listMyBatchSummaries' comment).
+  const myOrgs = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const b of batches ?? []) map.set(b.organizationId, b.organizationName);
+    return [...map.entries()].map(([organizationId, organizationName]) => ({ organizationId, organizationName }));
+  }, [batches]);
 
   useEffect(() => {
-    if (!orgId) return;
-    loadBatches(orgId);
-    loadRequests(orgId);
-  }, [orgId]);
+    for (const org of myOrgs) loadRequests(org.organizationId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [myOrgs]);
 
-  const pendingRequests = useMemo(() => myRequests.filter((r) => r.status === 'pending'), [myRequests]);
+  const pendingRequests = useMemo(
+    () => [...myRequestsByOrg.values()].flat().filter((r) => r.status === 'pending'),
+    [myRequestsByOrg]
+  );
 
   const filtered = useMemo(() => {
     if (!batches) return [];
@@ -206,9 +221,6 @@ export default function MyBatchesPage() {
       .filter((b) => (tab === 'all' ? true : tab === 'active' ? b.enrollmentStatus === 'active' : b.enrollmentStatus === 'left'))
       .filter((b) => (q ? b.batchName.toLowerCase().includes(q) : true));
   }, [batches, tab, search]);
-
-  if (orgId === undefined) return <p className="p-8 text-sm text-slate-400">Loading…</p>;
-  if (!orgId) return <p className="p-8 text-sm text-slate-400">Select an active workspace first.</p>;
 
   return (
     <div className="p-6 md:p-8">
@@ -263,7 +275,18 @@ export default function MyBatchesPage() {
         )}
       </div>
 
-      <JoinBatchPanel orgId={orgId} onRequested={() => loadRequests(orgId)} />
+      {myOrgs.length > 0 && (
+        <div className="space-y-3">
+          {myOrgs.map((org) => (
+            <JoinBatchPanel
+              key={org.organizationId}
+              orgId={org.organizationId}
+              orgName={org.organizationName}
+              onRequested={() => loadRequests(org.organizationId)}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

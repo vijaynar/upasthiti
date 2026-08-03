@@ -30,6 +30,8 @@ interface BatchSummary {
   batchId: string;
   batchName: string;
   enrollmentStatus: 'active' | 'left';
+  organizationId: string;
+  organizationName: string;
   programName: string | null;
   mode: string;
   schedule: { days: number[]; startTime: string; endTime: string };
@@ -95,7 +97,6 @@ export default function BatchDetailPage() {
   const params = useParams<{ batchId: string }>();
   const batchId = params.batchId;
 
-  const [orgId, setOrgId] = useState<string | null | undefined>(undefined);
   const [batch, setBatch] = useState<BatchSummary | null | undefined>(undefined);
   const [tab, setTab] = useState<Tab>('Overview');
   const [error, setError] = useState<string | null>(null);
@@ -107,18 +108,16 @@ export default function BatchDetailPage() {
   const [charges, setCharges] = useState<Charge[] | null>(null);
   const [payments, setPayments] = useState<Payment[] | null>(null);
 
-  useEffect(() => {
-    api<{ activeOrgId: string | null }>('/api/v1/me/workspace')
-      .then((w) => setOrgId(w.activeOrgId))
-      .catch(() => setOrgId(null));
-  }, []);
+  // The batch's own organizationId (from the cross-org /me/batches list)
+  // drives every org-scoped sub-fetch below — a student has no single
+  // "active workspace" to derive this from (see listMyBatchSummaries' comment).
+  const orgId = batch?.organizationId ?? null;
 
   useEffect(() => {
-    if (!orgId) return;
-    api<BatchSummary[]>(`/api/v1/orgs/${orgId}/me/batches`)
+    api<BatchSummary[]>('/api/v1/me/batches')
       .then((list) => setBatch(list.find((b) => b.batchId === batchId) ?? null))
       .catch((e) => setError(e.message));
-  }, [orgId, batchId]);
+  }, [batchId]);
 
   useEffect(() => {
     if (!orgId) return;
@@ -159,8 +158,7 @@ export default function BatchDetailPage() {
 
   const metricByKey = useMemo(() => new Map(metrics.map((m) => [m.key, m])), [metrics]);
 
-  if (orgId === undefined || batch === undefined) return <p className="p-8 text-sm text-slate-400">Loading…</p>;
-  if (!orgId) return <p className="p-8 text-sm text-slate-400">Select an active workspace first.</p>;
+  if (batch === undefined) return <p className="p-8 text-sm text-slate-400">Loading…</p>;
   if (error) return <div className="m-8 rounded-lg border p-4 text-sm" style={{ color: 'var(--danger)', borderColor: 'var(--danger-glow)' }}>{error}</div>;
   if (!batch) return <p className="p-8 text-sm text-slate-400">Batch not found, or you&apos;re not in it.</p>;
 
@@ -179,8 +177,8 @@ export default function BatchDetailPage() {
             {batch.batchName}
           </h1>
           <p className="mt-1 text-sm" style={{ color: 'var(--foreground-muted)' }}>
-            {batch.coachName ? `Coach ${batch.coachName}` : 'No coach assigned'} · {batch.schedule.days.map((d) => DOW_LABELS[d - 1]).join('/')} ·{' '}
-            {batch.schedule.startTime}–{batch.schedule.endTime}
+            {batch.organizationName} · {batch.coachName ? `Coach ${batch.coachName}` : 'No coach assigned'} ·{' '}
+            {batch.schedule.days.map((d) => DOW_LABELS[d - 1]).join('/')} · {batch.schedule.startTime}–{batch.schedule.endTime}
           </p>
         </div>
         {batch.enrollmentStatus === 'left' && <Pill tone="warning">Completed</Pill>}

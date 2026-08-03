@@ -1,8 +1,9 @@
 'use client';
 
-// "Attendance" — the signed-in student's full attendance record (docsV2/
-// STUDENT_PORTAL_SPEC.md Tier 1). Overall + per-batch tabs (unlike
-// Performance, this IS meaningful — attendance_events carries a
+// "Attendance" — the signed-in student's full attendance record across
+// every org they're enrolled in (docsV2/STUDENT_PORTAL_SPEC.md Tier 1,
+// org-agnostic — see listMyBatchSummaries' comment). Overall + per-batch
+// tabs (unlike Performance, this IS meaningful — attendance_events carries a
 // class_session_id that resolves to a real batch_id, so a per-batch split
 // is real data, not fabricated). A same-month calendar grid mirrors the
 // mockup's attendance trend view; built from the same event list, no new
@@ -23,6 +24,7 @@ async function api<T>(url: string): Promise<T> {
 interface BatchSummary {
   batchId: string;
   batchName: string;
+  organizationId: string;
   enrollmentStatus: 'active' | 'left';
 }
 
@@ -103,17 +105,10 @@ function MonthGrid({ events }: { events: AttendanceEvent[] }) {
 }
 
 export default function MyAttendancePage() {
-  const [orgId, setOrgId] = useState<string | null | undefined>(undefined);
   const [batches, setBatches] = useState<BatchSummary[]>([]);
   const [sessionsByBatch, setSessionsByBatch] = useState<Map<string, string>>(new Map()); // sessionId -> batchId
   const [events, setEvents] = useState<AttendanceEvent[] | null>(null);
   const [tab, setTab] = useState<string>('overall');
-
-  useEffect(() => {
-    api<{ activeOrgId: string | null }>('/api/v1/me/workspace')
-      .then((w) => setOrgId(w.activeOrgId))
-      .catch(() => setOrgId(null));
-  }, []);
 
   useEffect(() => {
     const from = new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -124,8 +119,7 @@ export default function MyAttendancePage() {
   }, []);
 
   useEffect(() => {
-    if (!orgId) return;
-    api<BatchSummary[]>(`/api/v1/orgs/${orgId}/me/batches`)
+    api<BatchSummary[]>('/api/v1/me/batches')
       .then(async (list) => {
         const active = list.filter((b) => b.enrollmentStatus === 'active');
         setBatches(active);
@@ -134,14 +128,16 @@ export default function MyAttendancePage() {
         const map = new Map<string, string>();
         await Promise.all(
           active.map(async (b) => {
-            const sessions = await api<ClassSession[]>(`/api/v1/orgs/${orgId}/batches/${b.batchId}/sessions?from=${from}&to=${to}`).catch(() => []);
+            const sessions = await api<ClassSession[]>(
+              `/api/v1/orgs/${b.organizationId}/batches/${b.batchId}/sessions?from=${from}&to=${to}`
+            ).catch(() => []);
             for (const s of sessions) map.set(s.id, b.batchId);
           })
         );
         setSessionsByBatch(map);
       })
       .catch(() => {});
-  }, [orgId]);
+  }, []);
 
   const filteredEvents = useMemo(() => {
     if (!events) return [];
