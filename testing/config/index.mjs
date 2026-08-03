@@ -55,7 +55,15 @@ export function resolveConfig(argv = process.argv.slice(2)) {
     );
   }
 
-  const datasetName = args.dataset ?? process.env.SEED_DATASET ?? 'small';
+  // Normalized to lowercase (not the raw --dataset casing) so a run-tag/state
+  // file/log line is identical no matter how the profile name was typed —
+  // resolveProfile() itself is already case-insensitive, but leaving
+  // datasetName un-normalized would still let `--dataset=CoachXS` and
+  // `--dataset=coachxs` derive DIFFERENT default run-tags for the same
+  // profile (and collide unpredictably on Windows' case-insensitive
+  // filesystem, where `CoachXS-42.json` and `coachxs-42.json` are the same
+  // file on disk despite differing here).
+  const datasetName = (args.dataset ?? process.env.SEED_DATASET ?? 'small').toLowerCase();
   const dataset = resolveProfile(datasetName);
 
   const seed = Number(args.seed ?? process.env.SEED_RANDOM_SEED ?? 42);
@@ -70,6 +78,17 @@ export function resolveConfig(argv = process.argv.slice(2)) {
     : process.env.SEED_ATTENDANCE_DAYS
     ? Number(process.env.SEED_ATTENDANCE_DAYS)
     : dataset.attendanceDays;
+
+  // Progress-metric (progress_entries) history depth. Undefined unless the
+  // profile defines one (currently only `coachxs`) or it's passed
+  // explicitly — orchestrate.mjs skips progress-metric seeding entirely
+  // when this is undefined, so existing profiles (small/medium/large/smoke)
+  // are unaffected.
+  const progressDays = args['progress-days']
+    ? Number(args['progress-days'])
+    : process.env.SEED_PROGRESS_DAYS
+    ? Number(process.env.SEED_PROGRESS_DAYS)
+    : dataset.progressDays;
 
   const clean = Boolean(args.clean ?? false);
   const resume = Boolean(args.resume ?? true) && !clean; // --clean always starts a fresh run tag
@@ -115,6 +134,7 @@ export function resolveConfig(argv = process.argv.slice(2)) {
     seed,
     states,
     attendanceDays,
+    progressDays,
     clean,
     resume,
     dryRun,

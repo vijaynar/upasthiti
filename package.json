@@ -33,6 +33,7 @@
     "seed:small": "node testing/orchestrate.mjs --dataset=small",
     "seed:medium": "node testing/orchestrate.mjs --dataset=medium",
     "seed:large": "node testing/orchestrate.mjs --dataset=large",
+    "seed:CoachXS": "node testing/orchestrate.mjs --dataset=coachxs",
     "seed:validate": "node testing/validate.mjs",
     "seed:credentials": "node testing/credentials.mjs",
     "supabase:start": "supabase start",

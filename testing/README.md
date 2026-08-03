@@ -32,6 +32,7 @@ where in `orchestrate.mjs` each one happens.
 | Marketplace | Listings, verification queue, reviews (self-account students only — see "Reviews" below) |
 | Profile completeness | Every real (logged-in) identity gets display name, gender, phone, DOB, and a lightweight generated avatar — not just a bare display name. See "Profile completeness" below for what's still out of reach (wards) and why |
 | Coach documents | Every coach-like identity with a `staff_profile` (academy coaches, sub-coaches, self-onboarded independent coaches) gets all three real `staff_documents` types: `certification`, `id_proof` (this app's closest real equivalent to "Aadhaar" — no dedicated govt-ID field exists anywhere in the schema), and `address_proof` |
+| Progress metrics | Skill-metric history (`progress_entries`, e.g. height/weight/resting-HR plus sport-specific metrics like 50m freestyle or batting average) logged weekly per student against the real platform metric library. **Opt-in**: only seeded when the resolved profile sets `progressDays` (currently only `coachxs`) — see `entities/progress.mjs` |
 
 ## Quick start
 
@@ -440,10 +441,70 @@ seeding tool. Use `--clean` for a guaranteed-consistent from-scratch run.
 | `small` | 10 | 25 | 500 | 30 | `npm run seed:small` |
 | `medium` | 100 | 250 | 10,000 | 90 | `npm run seed:medium` |
 | `large` | 1,000 | 2,500 | 100,000 | 365 | `npm run seed:large` |
+| `coachxs` | 0 | 2 | 20 | 45 | `npm run seed:CoachXS` |
 
 Counts are **approximate** targets (per Requirement #15's own "approximately"
 language) — actual per-organization batch/student counts are derived with
 rng jitter, not forced to an exact divisor.
+
+Dataset profile names (`--dataset=...` / `SEED_DATASET`) are matched
+case-insensitively (`CoachXS`, `coachxs`, `COACHXS` all resolve to the same
+profile) and the resolved name is normalized to lowercase before it's used to
+derive a default `--run-tag` or state-file name — otherwise `--dataset=CoachXS`
+and `--dataset=coachxs` would silently derive two different run-tags for the
+same profile (and collide unpredictably on a case-insensitive filesystem,
+where `CoachXS-42.json` and `coachxs-42.json` are the same file on disk).
+
+### `coachxs` — independent-coach feature depth, not scale
+
+Not a requirement-defined tier like the three above — a small, hand-picked
+scenario profile for exercising coach-facing depth locally without waiting
+out a `small` run. `npm run seed:CoachXS` (`--dataset=coachxs`, any casing)
+creates:
+
+- **2 independent coaches**, 0 academies (`academyCoachesTarget: 0` — every
+  seeded org here is an independent coach; `subCoachesTarget: 1` still gives
+  a real shot at one sub-coach, same 30%-chance path `small`/`medium`/`large`
+  use).
+- **20 students** total, split across the 2 coaches. (The generic
+  indie-coach student count is normally discounted 40% relative to academies
+  — see `orchestrate.mjs`'s `indieStudentShare` — because indie coaches are
+  usually the *minority* org type alongside a larger academy population.
+  With `academies: 0`, that discount would silently under-deliver
+  `studentsTarget`, so it's skipped whenever a profile seeds zero
+  academies.)
+- **10 of those 20 are guaranteed real, adult (18+) self-account students**
+  — not guardian-created wards — via `adultSelfAccountTarget: 10`
+  (`orchestrate.mjs`'s `adultSelfAccountBudget`, same global-cap/synchronous-
+  decrement pattern as `dailyClassesTarget` below). Every other profile
+  leaves the self-account-vs-ward split to the usual ~20% random chance with
+  no age floor; this is the one profile where a guaranteed count of loggable-
+  in, adult students is forced instead. The other 10 students still follow
+  the normal random mix (mostly guardian-created wards, any age 7-45).
+- **~5-6 batches** (`batchesTarget: 5`, rounds to ~3 per coach) — of which
+  **3 (globally, across both coaches) run a full 7-day/week schedule**
+  instead of the usual random 2-4 days/week, via `dailyClassesTarget: 3`.
+  Guarantees "3 different classes running every day" rather than leaving it
+  to chance; the remaining batches keep the normal random weekly pattern.
+  This is a profile-only knob, not exposed as a CLI flag (see
+  `profiles.mjs`).
+- **45 days of attendance history** (`attendanceDays: 45`, same mechanism
+  every profile uses).
+- **30 days of progress-metric history** (`progressDays: 30`) — this is the
+  one profile where progress-metric seeding is turned on at all; see
+  "Progress metrics" in the scenario table above and `entities/progress.mjs`.
+  Override with `--progress-days=N` / `SEED_PROGRESS_DAYS` the same way
+  `--attendance-days` overrides `attendanceDays`.
+- Everything else every other profile already produces — verification-queue
+  variety, join-request approvals, mixed charge outcomes, real states/cities
+  spread across India — unchanged, since `coachxs` reuses the exact same
+  org-build pipeline, just with different count targets.
+
+```bash
+npm run seed:CoachXS
+npm run seed:validate -- --dataset=coachxs
+npm run seed:credentials -- --dataset=coachxs
+```
 
 ## Configuration
 
@@ -458,6 +519,7 @@ per `--environment` (same env-file convention the rest of this repo uses).
 | `--seed` | `SEED_RANDOM_SEED` | `42` | deterministic PRNG seed — same seed + same dataset ⇒ same generated *content* (names, choices), though not the same wall-clock timestamps |
 | `--states` | `SEED_STATES` | all 10 | comma-separated subset, e.g. `--states=Karnataka,Telangana` |
 | `--attendance-days` | `SEED_ATTENDANCE_DAYS` | profile default | override attendance history depth |
+| `--progress-days` | `SEED_PROGRESS_DAYS` | profile default (unset on most profiles) | override progress-metric history depth; unset ⇒ no progress-metric seeding at all (see "Progress metrics" in the scenario table) |
 | `--clean` | — | off | fresh run, ignores/overwrites the state file |
 | `--resume` | — | on (unless `--clean`) | skip already-created organizations |
 | `--run-tag` | `SEED_RUN_TAG` | `<dataset>-<seed>` | state file name + email uniqueness tag — set explicitly to run two datasets against the same DB without collisions |
@@ -483,6 +545,14 @@ node testing/orchestrate.mjs --dataset=large --write-concurrency=32 --auth-concu
 
 # Validate whatever the last `small` run produced
 npm run seed:validate -- --dataset=small
+
+# Small coach-focused profile (see "coachxs" above): 2 independent coaches,
+# 20 students (10 guaranteed real adult self-account), 45 days attendance +
+# 30 days progress-metric history
+npm run seed:CoachXS
+
+# Override progress-metric depth independently of the profile default
+node testing/orchestrate.mjs --dataset=coachxs --progress-days=60
 ```
 
 ## Performance notes

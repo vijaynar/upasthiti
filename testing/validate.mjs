@@ -129,11 +129,20 @@ async function main() {
     }
     return true;
   });
-  check('Academy has org_admin/front_desk/accountant members, not just coaches', async () => {
-    const members = await owner.client.get(`/api/v1/orgs/${sampleAcademy.organizationId}/members`);
-    const roles = new Set((Array.isArray(members) ? members : []).flatMap((m) => m.roleKeys ?? []));
-    return ['org_admin', 'front_desk', 'accountant', 'coach'].every((k) => roles.has(k));
-  });
+  // org_admin/front_desk/accountant are academy-only roles (see
+  // orchestrate.mjs's org-level-roles loop) — sampleAcademy falls back to
+  // ANY org when a profile seeds zero academies (e.g. `coachxs`), so guard
+  // this the same way the multi-branch check below already does, instead of
+  // reporting a false failure against an independent-coach org.
+  if (sampleAcademy.orgType === 'academy') {
+    check('Academy has org_admin/front_desk/accountant members, not just coaches', async () => {
+      const members = await owner.client.get(`/api/v1/orgs/${sampleAcademy.organizationId}/members`);
+      const roles = new Set((Array.isArray(members) ? members : []).flatMap((m) => m.roleKeys ?? []));
+      return ['org_admin', 'front_desk', 'accountant', 'coach'].every((k) => roles.has(k));
+    });
+  } else {
+    console.log('  (this run seeded no academies — skipping org_admin/front_desk/accountant check, not a failure)');
+  }
 
   const multiBranchAcademy = orgEntries.find((o) => o.orgType === 'academy' && (o.branchCount ?? 1) > 1);
   if (multiBranchAcademy) {
@@ -169,6 +178,23 @@ async function main() {
     });
   } else {
     console.log('  (no cross-org guardian siblings recorded in this run — skipping, not a failure)');
+  }
+
+  // Progress-metric (progress_entries) history — only seeded when the
+  // resolved profile sets `progressDays` (currently only `coachxs`; see
+  // config/profiles.mjs and orchestrate.mjs's `config.progressDays` gate),
+  // so this check is conditional the same way cross-org-siblings is above.
+  if (config.progressDays) {
+    check('Org has progress-metric entries logged for enrolled students', async () => {
+      const enrollments = await owner.client.get(`/api/v1/orgs/${sampleAcademy.organizationId}/enrollments`).catch(() => []);
+      for (const e of (Array.isArray(enrollments) ? enrollments : []).slice(0, 5)) {
+        const entries = await owner.client.get(`/api/v1/orgs/${sampleAcademy.organizationId}/progress/entries?enrollmentId=${e.id}`).catch(() => []);
+        if (Array.isArray(entries) && entries.length > 0) return true;
+      }
+      return false;
+    });
+  } else {
+    console.log('  (this profile does not set progressDays — skipping progress-metric check, not a failure)');
   }
 
   if (sampleIndie) {

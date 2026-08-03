@@ -21,6 +21,7 @@ import * as coachEnt from './entities/coaches.mjs';
 import * as scheduling from './entities/scheduling.mjs';
 import * as studentEnt from './entities/students.mjs';
 import * as attendanceEnt from './entities/attendance.mjs';
+import * as progressEnt from './entities/progress.mjs';
 import * as financeEnt from './entities/finance.mjs';
 import * as marketEnt from './entities/marketplace.mjs';
 
@@ -139,6 +140,20 @@ async function main() {
   const batchesPerOrg = Math.max(1, Math.round(config.dataset.batchesTarget / totalOrgs));
   const studentsPerOrg = Math.max(2, Math.round(config.dataset.studentsTarget / totalOrgs));
   const reviewShare = Math.min(1, config.dataset.reviewsTarget / (config.dataset.studentsTarget || 1));
+  // Global cap on how many batches (across every org this run creates) get a
+  // full 7-day/week schedule instead of the usual random 2-4 days — read
+  // synchronously (no `await` between the check and the decrement) inside
+  // each batch-creation loop below, so it stays an exact global count even
+  // though academies/independent-coaches pipelines run concurrently. 0 for
+  // every profile except `coachxs`, which leaves every other profile's batch
+  // scheduling untouched.
+  let dailyClassBudget = config.dataset.dailyClassesTarget ?? 0;
+  // Same synchronous-decrement pattern as `dailyClassBudget` above, but for
+  // guaranteeing a real self-account (not guardian-created-ward), adult
+  // (18+) student count — "10 real students, not parents" — instead of
+  // leaving the self-account/ward split to the usual ~20% random chance.
+  // 0 for every profile except `coachxs`.
+  let adultSelfAccountBudget = config.dataset.adultSelfAccountTarget ?? 0;
 
   // ── Guardian pool (shared across siblings, ~1.4 kids/guardian) ──────
   const guardianEmails = [];
@@ -237,7 +252,7 @@ async function main() {
     }
   }
 
-  async function buildBatchesAndStudents(r, { orgId, branches, owner, coachMemberships, sub, targetStudents, targetBatches, feePolicyId, listingId, orgSlug, orgType }) {
+  async function buildBatchesAndStudents(r, { orgId, branches, owner, coachMemberships, sub, sportKey, targetStudents, targetBatches, feePolicyId, listingId, orgSlug, orgType }) {
     const program = await scheduling.createProgram(owner.client, orgId, {
       name: sub?.name ?? 'General Training', sportKey: undefined, description: `${sub?.name ?? 'General'} program`,
     }).catch((err) => { log.warn(`[soft-fail] ${err.message}`); return null; });
@@ -245,7 +260,12 @@ async function main() {
     const batchStart = daysAgo(today, config.attendanceDays);
     const batches = [];
     for (let i = 0; i < targetBatches; i++) {
-      const days = r.sample([1, 2, 3, 4, 5, 6, 7], r.int(2, 4)).sort();
+      // Synchronous read+decrement (no `await` in between) — see
+      // `dailyClassBudget`'s own comment for why this stays race-free
+      // across concurrently-running org pipelines.
+      const isDailyClass = dailyClassBudget > 0;
+      if (isDailyClass) dailyClassBudget -= 1;
+      const days = isDailyClass ? [1, 2, 3, 4, 5, 6, 7] : r.sample([1, 2, 3, 4, 5, 6, 7], r.int(2, 4)).sort();
       const hour = r.int(6, 19);
       // Multi-branch academies: spread batches across every real branch
       // (not just the default one) so each branch gets its own sessions/
@@ -276,16 +296,36 @@ async function main() {
     }
     if (batches.length === 0) return { studentsEnrolled: 0 };
 
+    // Progress-metric library for this org's sport, fetched once (not per
+    // student) — 'general' (height/weight/resting HR, sport-agnostic) plus
+    // whatever the org's own sport contributes (e.g. swimming/cricket).
+    // Skipped entirely when config.progressDays is unset (every profile
+    // except `coachxs` today), so this never runs an extra API call for
+    // small/medium/large/smoke.
+    let progressMetrics = [];
+    if (config.progressDays) {
+      const [generalMetrics, sportMetrics] = await Promise.all([
+        progressEnt.listMetrics(owner.client, orgId, 'general').catch(() => []),
+        sportKey ? progressEnt.listMetrics(owner.client, orgId, sportKey).catch(() => []) : Promise.resolve([]),
+      ]);
+      progressMetrics = [...(Array.isArray(generalMetrics) ? generalMetrics : []), ...(Array.isArray(sportMetrics) ? sportMetrics : [])];
+    }
+
     let studentsEnrolled = 0;
     let reviewsWritten = 0;
     for (let i = 0; i < targetStudents; i++) {
       const sr = r.child(`student-${orgSlug}-${i}`);
       const gender = sr.bool() ? 'F' : 'M';
       const person = fake.randomName(sr, gender);
-      const ageYears = sr.int(7, 45);
+      // Synchronous read+decrement (no `await` in between) — see
+      // `adultSelfAccountBudget`'s own comment for why this stays an exact
+      // global count across concurrently-running org pipelines.
+      const forcedAdultSelfAccount = adultSelfAccountBudget > 0;
+      if (forcedAdultSelfAccount) adultSelfAccountBudget -= 1;
+      const ageYears = forcedAdultSelfAccount ? sr.int(18, 45) : sr.int(7, 45);
       const batch = sr.pick(batches);
       const enrolledFrom = daysAgo(today, sr.int(0, config.attendanceDays));
-      const isSelfAccount = sr.bool(0.2);
+      const isSelfAccount = forcedAdultSelfAccount ? true : sr.bool(0.2);
       const attendanceProfile = attendanceEnt.pickAttendanceProfile(sr);
 
       let studentUserId;
@@ -328,6 +368,12 @@ async function main() {
       await attendanceEnt.generateAttendanceForStudent(owner.client, orgId, batch.id, sr, {
         enrollmentId: enrollment.id, sessions: sessionList, enrolledFrom, today, profile: attendanceProfile,
       }).catch((err) => log.warn(`attendance gen failed: ${err.message}`));
+
+      if (config.progressDays && progressMetrics.length) {
+        await progressEnt.generateProgressForStudent(owner.client, orgId, sr, {
+          enrollmentId: enrollment.id, metrics: progressMetrics, days: config.progressDays, today, enrolledFrom,
+        }).catch((err) => log.warn(`progress gen failed: ${err.message}`));
+      }
 
       if (feePolicyId) {
         const chargeCount = sr.int(1, 3);
@@ -575,7 +621,7 @@ async function main() {
     const targetBatches = Math.max(1, Math.round(config.dataset.batchesTarget / totalOrgs));
     const listing = await org.owner.client.get(`/api/v1/orgs/${org.organizationId}/listing`).catch((err) => { log.warn(`[soft-fail] ${err.message}`); return null; });
     const { studentsEnrolled } = await buildBatchesAndStudents(r, {
-      orgId: org.organizationId, branches, owner: org.owner, coachMemberships, sub: org.sub,
+      orgId: org.organizationId, branches, owner: org.owner, coachMemberships, sub: org.sub, sportKey: org.sportKey,
       targetStudents: studentsPerOrg, targetBatches, feePolicyId: feePolicy?.id, listingId: listing?.id, orgSlug: org.slug, orgType: 'academy',
     });
 
@@ -680,9 +726,16 @@ async function main() {
 
     const targetBatches = Math.max(1, Math.round(config.dataset.batchesTarget / totalOrgs));
     const listing = await org.owner.client.get(`/api/v1/orgs/${org.organizationId}/listing`).catch((err) => { log.warn(`[soft-fail] ${err.message}`); return null; });
+    // The 0.6 discount below exists to keep independent coaches secondary in
+    // size to academies (small/medium/large all have far more academies than
+    // indie-coach students). It only makes sense when academies actually
+    // exist — a profile with zero academies (e.g. `coachxs`) IS its indie
+    // coaches, and applying the discount there would silently under-deliver
+    // `studentsTarget`.
+    const indieStudentShare = config.dataset.academies > 0 ? 0.6 : 1;
     await buildBatchesAndStudents(r, {
-      orgId: org.organizationId, branches, owner: org.owner, coachMemberships, sub: org.sub,
-      targetStudents: Math.max(1, Math.round(studentsPerOrg * 0.6)), targetBatches, feePolicyId: feePolicy?.id, listingId: listing?.id, orgSlug: org.slug, orgType: 'independent_coach',
+      orgId: org.organizationId, branches, owner: org.owner, coachMemberships, sub: org.sub, sportKey: org.sportKey,
+      targetStudents: Math.max(1, Math.round(studentsPerOrg * indieStudentShare)), targetBatches, feePolicyId: feePolicy?.id, listingId: listing?.id, orgSlug: org.slug, orgType: 'independent_coach',
     });
 
     state.data.organizations[orgKey] = { organizationId: org.organizationId, branchId: org.branchId, orgType: 'independent_coach', slug: org.slug };
