@@ -31,6 +31,7 @@ import {
   X,
 } from 'lucide-react';
 import { PageHeader } from '@/components/PageHeader';
+import { StatCard } from '@/components/DashboardKit';
 import { useWorkspace } from '@/lib/workspace';
 import { AddStudentModal } from './AddStudentModal';
 import { ActionMenu, type ActionMenuItem } from './ActionMenu';
@@ -301,30 +302,30 @@ export default function PeoplePage() {
 
       {/* Stat cards */}
       <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        <StatCard icon={Users} label="Total Students" value={stats.total} subtitle={`Across ${stats.batchCount} batch${stats.batchCount === 1 ? '' : 'es'}`} />
+        <StatCard icon={Users} label="Total Students" value={stats.total} hint={`Across ${stats.batchCount} batch${stats.batchCount === 1 ? '' : 'es'}`} />
         <StatCard
           icon={UserPlus}
           label="New Requests"
           value={stats.newRequests}
-          subtitle="Awaiting approval"
-          linkLabel={stats.newRequests > 0 ? 'Review now' : undefined}
-          onLinkClick={() => setActiveTab('new_requests')}
-          tone="amber"
+          hint={stats.newRequests > 0 ? 'Review now →' : 'Awaiting approval'}
+          onClick={stats.newRequests > 0 ? () => setActiveTab('new_requests') : undefined}
+          tone="warning"
         />
         <StatCard
           icon={CheckCircle2}
           label="Active Students"
           value={stats.active}
-          subtitle={stats.total > 0 ? `${Math.round((stats.active / stats.total) * 100)}% of total` : '—'}
-          tone="emerald"
+          hint={stats.total > 0 ? `${Math.round((stats.active / stats.total) * 100)}% of total` : '—'}
+          tone="success"
         />
         <StatCard
           icon={UserX}
           label="Inactive Students"
           value={stats.inactive}
-          subtitle={stats.total > 0 ? `${Math.round((stats.inactive / stats.total) * 100)}% of total` : '—'}
+          hint={stats.total > 0 ? `${Math.round((stats.inactive / stats.total) * 100)}% of total` : '—'}
+          tone="accent"
         />
-        <StatCard icon={Wallet} label="Upcoming Fees" value={stats.upcomingFees} subtitle="Pending or overdue" tone="rose" />
+        <StatCard icon={Wallet} label="Upcoming Fees" value={stats.upcomingFees} hint="Pending or overdue" tone="danger" />
       </div>
 
       {/* Search + filters */}
@@ -482,49 +483,6 @@ export default function PeoplePage() {
           onClose={() => setDrawerEnrollmentId(null)}
           onChanged={loadRoster}
         />
-      )}
-    </div>
-  );
-}
-
-// ── Stat card ────────────────────────────────────────────────────────────
-
-function StatCard({
-  icon: Icon,
-  label,
-  value,
-  subtitle,
-  linkLabel,
-  onLinkClick,
-  tone = 'default',
-}: {
-  icon: typeof Users;
-  label: string;
-  value: number;
-  subtitle?: string;
-  linkLabel?: string;
-  onLinkClick?: () => void;
-  tone?: 'default' | 'emerald' | 'amber' | 'rose';
-}) {
-  const toneClasses: Record<string, string> = {
-    default: 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30',
-    emerald: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
-    amber: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
-    rose: 'bg-rose-500/15 text-rose-300 border-rose-500/30',
-  };
-  return (
-    <div className="glass-panel rounded-2xl p-4">
-      <div className={`mb-3 flex h-9 w-9 items-center justify-center rounded-xl border ${toneClasses[tone]}`}>
-        <Icon className="h-4 w-4" />
-      </div>
-      <p className="text-xs font-semibold text-slate-400">{label}</p>
-      <p className="text-2xl font-black text-white">{value}</p>
-      {linkLabel ? (
-        <button onClick={onLinkClick} className="mt-1 text-[11px] font-semibold text-indigo-300 hover:text-indigo-200">
-          {linkLabel}
-        </button>
-      ) : (
-        subtitle && <p className="mt-1 text-[11px] text-slate-500">{subtitle}</p>
       )}
     </div>
   );

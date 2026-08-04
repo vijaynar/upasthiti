@@ -185,10 +185,17 @@ function OwnerView({ orgId }: { orgId: string }) {
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard label="Active students" value={data.activeStudents} icon={GraduationCap} tone="primary" href="/people" />
-        <StatCard label="Active batches" value={data.activeBatches} icon={CalendarClock} tone="accent" href="/scheduling" />
-        <StatCard label="Team members" value={data.memberCount} icon={Users} tone="primary" href="/people" />
-        <StatCard label="Sessions today" value={data.sessionsToday} icon={ListChecks} tone="success" href="/scheduling" />
+        <StatCard
+          label="Active students"
+          value={data.activeStudents}
+          icon={GraduationCap}
+          tone="primary"
+          hint={data.pendingJoinRequests > 0 ? `${data.pendingJoinRequests} new request${data.pendingJoinRequests === 1 ? '' : 's'}` : 'Across all batches'}
+          href="/people"
+        />
+        <StatCard label="Active batches" value={data.activeBatches} icon={CalendarClock} tone="accent" hint="Recurring schedules" href="/scheduling" />
+        <StatCard label="Team members" value={data.memberCount} icon={Users} tone="primary" hint="Coaches & staff" href="/people" />
+        <StatCard label="Sessions today" value={data.sessionsToday} icon={ListChecks} tone="success" hint="Scheduled today" href="/scheduling" />
       </div>
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -197,6 +204,7 @@ function OwnerView({ orgId }: { orgId: string }) {
           value={fmtMoney(data.outstandingMinor, data.currency)}
           icon={Wallet}
           tone={data.outstandingMinor > 0 ? 'warning' : 'success'}
+          hint="Pending collection"
           href="/finance"
         />
         <StatCard
@@ -204,10 +212,11 @@ function OwnerView({ orgId }: { orgId: string }) {
           value={fmtMoney(data.collectedThisMonthMinor, data.currency)}
           icon={TrendingUp}
           tone="success"
+          hint="This month"
           href="/finance"
         />
         <StatCard label="Payment proofs" value={data.pendingPayments} icon={ClipboardCheck} tone={data.pendingPayments > 0 ? 'warning' : 'primary'} hint="Awaiting verification" href="/finance" />
-        <StatCard label="New leads" value={data.newLeads} icon={Store} tone={data.newLeads > 0 ? 'accent' : 'primary'} href="/marketplace" />
+        <StatCard label="New leads" value={data.newLeads} icon={Store} tone={data.newLeads > 0 ? 'accent' : 'primary'} hint="From marketplace" href="/marketplace" />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -268,9 +277,9 @@ function CoachView({ orgId }: { orgId: string }) {
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard label="My batches" value={data.assignedBatches} icon={CalendarClock} tone="primary" href="/scheduling" />
-        <StatCard label="Sessions today" value={data.sessionsToday} icon={ListChecks} tone="success" href="/scheduling" />
-        <StatCard label="Athletes coached" value={data.rosterCount} icon={GraduationCap} tone="accent" href="/progress" />
+        <StatCard label="My batches" value={data.assignedBatches} icon={CalendarClock} tone="primary" hint="Assigned to you" href="/scheduling" />
+        <StatCard label="Sessions today" value={data.sessionsToday} icon={ListChecks} tone="success" hint="Scheduled today" href="/scheduling" />
+        <StatCard label="Athletes coached" value={data.rosterCount} icon={GraduationCap} tone="accent" hint="Across your batches" href="/progress" />
         <StatCard
           label="Attendance reviews"
           value={data.pendingReviews}

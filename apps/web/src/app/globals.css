@@ -534,6 +534,16 @@ html, body {
   --card-gap: 0.25rem;
 }
 
+/* ── Stat/KPI card tokens (components/DashboardKit.tsx StatCard) ──
+   Single place to retune the tile shared by every dashboard —
+   org owner/coach/student, platform super-admin, people, announcements,
+   performance. Do not hardcode radius or wave styling in components. */
+:root {
+  --stat-card-radius: 1rem;
+  --stat-card-wave-height: 1.75rem;
+  --stat-card-wave-opacity: 0.35;
+}
+
 .rounded-2xl:is(.p-2, .p-2\.5, .p-3, .p-3\.5, .p-4, .p-4\.5, .p-5, .p-6) {
   padding: var(--card-padding) !important;
 }

@@ -195,6 +195,16 @@ export default function PlatformDashboardPage() {
   const s = data.orgsByStatus;
   const maxRevenue = Math.max(...data.revenueSummary.byAcademy.map((a) => a.amount), 1);
 
+  const trends = data.growthTrends;
+  const lastTrend = trends[trends.length - 1];
+  const prevTrend = trends[trends.length - 2];
+  const monthDelta = (key: 'students' | 'academies' | 'coaches') =>
+    lastTrend && prevTrend ? lastTrend[key] - prevTrend[key] : null;
+  const monthDeltaHint = (key: 'students' | 'academies' | 'coaches', fallback: string) => {
+    const d = monthDelta(key);
+    return d ? `${d > 0 ? '+' : ''}${d} this month` : fallback;
+  };
+
   return (
     <div className="p-6 md:p-8 space-y-8">
       <DashboardHeader
@@ -218,23 +228,24 @@ export default function PlatformDashboardPage() {
       <div className="space-y-4">
         {/* Row 1: Total academies, Branch Admins, Coaches, Students, Users */}
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-          <StatCard label="Total academies" value={data.totalOrgs} icon={Building2} tone="primary" href="/platform?tab=organizations" />
-          <StatCard label="Branch Admins" value={data.branchAdminsCount ?? 0} icon={ShieldCheck} tone="accent" />
-          <StatCard label="Coaches" value={data.coachesCount ?? 0} icon={UserCheck} tone="primary" />
-          <StatCard label="Students" value={data.studentsCount ?? 0} icon={GraduationCap} tone="success" />
-          <StatCard label="Users" value={data.totalUsers} icon={Users} tone="accent" />
+          <StatCard label="Total academies" value={data.totalOrgs} icon={Building2} tone="primary" hint={monthDeltaHint('academies', 'Across the platform')} href="/platform?tab=organizations" />
+          <StatCard label="Branch Admins" value={data.branchAdminsCount ?? 0} icon={ShieldCheck} tone="accent" hint="Academy coordinators" />
+          <StatCard label="Coaches" value={data.coachesCount ?? 0} icon={UserCheck} tone="primary" hint={monthDeltaHint('coaches', 'Registered trainers')} />
+          <StatCard label="Students" value={data.studentsCount ?? 0} icon={GraduationCap} tone="success" hint={monthDeltaHint('students', 'Active enrollments')} />
+          <StatCard label="Users" value={data.totalUsers} icon={Users} tone="accent" hint="All platform users" />
         </div>
 
         {/* Row 2: Active Batches, Today classes, Attendance %, Awaiting Verification, Active support grants */}
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-          <StatCard label="Active Batches" value={data.activeBatchesCount ?? 0} icon={Layers} tone="primary" />
-          <StatCard label="Today classes" value={data.todayClassesCount ?? 0} icon={CalendarClock} tone="warning" />
-          <StatCard label="Attendance %" value={`${data.attendancePct ?? 94.5}%`} icon={Percent} tone="success" />
+          <StatCard label="Active Batches" value={data.activeBatchesCount ?? 0} icon={Layers} tone="primary" hint="Recurring schedules" />
+          <StatCard label="Today classes" value={data.todayClassesCount ?? 0} icon={CalendarClock} tone="warning" hint="Sessions today" />
+          <StatCard label="Attendance %" value={`${data.attendancePct ?? 94.5}%`} icon={Percent} tone="success" hint="Platform average" />
           <StatCard
             label="Awaiting Verification"
             value={data.pendingVerification}
             icon={Clock}
             tone={data.pendingVerification > 0 ? 'warning' : 'success'}
+            hint={data.pendingVerification > 0 ? 'Needs review' : 'All caught up'}
             href="/platform?tab=verification"
           />
           <StatCard
@@ -242,6 +253,7 @@ export default function PlatformDashboardPage() {
             value={data.activeSupportGrants}
             icon={LifeBuoy}
             tone={data.activeSupportGrants > 0 ? 'warning' : 'primary'}
+            hint={data.activeSupportGrants > 0 ? 'Currently open' : 'None open'}
             href="/platform?tab=support"
           />
         </div>
@@ -255,8 +267,8 @@ export default function PlatformDashboardPage() {
             <div className="flex items-center gap-2">
               <TrendingUp className="h-5 w-5 text-indigo-400" />
               <div>
-                <h3 className="text-base font-black uppercase tracking-wider text-slate-100">Platform Growth Trends</h3>
-                <p className="text-xs text-slate-400">Monthly trajectory of registrations across students, coaches &amp; academies</p>
+                <h3 className="text-sm font-extrabold tracking-tight" style={{ color: 'var(--foreground)' }}>Platform Growth Trends</h3>
+                <p className="text-xs" style={{ color: 'var(--foreground-subtle)' }}>Monthly trajectory of registrations across students, coaches &amp; academies</p>
               </div>
             </div>
           </div>
@@ -361,8 +373,8 @@ export default function PlatformDashboardPage() {
           <div className="mb-4 flex items-center gap-2">
             <BarChart3 className="h-5 w-5 text-indigo-400" />
             <div>
-              <h3 className="text-base font-black uppercase tracking-wider text-slate-100">Revenue &amp; Collections</h3>
-              <p className="text-xs text-slate-400">Platform billing summaries and leading academy revenue shares</p>
+              <h3 className="text-sm font-extrabold tracking-tight" style={{ color: 'var(--foreground)' }}>Revenue &amp; Collections</h3>
+              <p className="text-xs" style={{ color: 'var(--foreground-subtle)' }}>Platform billing summaries and leading academy revenue shares</p>
             </div>
           </div>
 
@@ -449,8 +461,8 @@ export default function PlatformDashboardPage() {
           <div className="flex items-center gap-2">
             <Globe className="h-5 w-5 text-indigo-400" />
             <div>
-              <h3 className="text-base font-black uppercase tracking-wider text-slate-100">Active Academies Map</h3>
-              <p className="text-xs text-slate-400">Distribution and nodes layout of academies across major cities</p>
+              <h3 className="text-sm font-extrabold tracking-tight" style={{ color: 'var(--foreground)' }}>Active Academies Map</h3>
+              <p className="text-xs" style={{ color: 'var(--foreground-subtle)' }}>Distribution and nodes layout of academies across major cities</p>
             </div>
           </div>
         </div>
