@@ -21,11 +21,23 @@ async function api<T>(url: string): Promise<T> {
   return body.data as T;
 }
 
+import { ChevronLeft, ChevronRight, CalendarClock } from 'lucide-react';
+
 interface BatchSummary {
   batchId: string;
   batchName: string;
   organizationId: string;
+  organizationName?: string;
   enrollmentStatus: 'active' | 'left';
+  schedule?: { days: number[]; startTime: string; endTime: string };
+}
+
+const DOW_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+function scheduleLabel(s?: { days: number[]; startTime: string; endTime: string }): string {
+  if (!s || !s.days) return '';
+  const days = s.days.map((d) => DOW_LABELS[d - 1]).join(', ');
+  return `${days}${s.startTime ? ` · ${s.startTime}–${s.endTime}` : ''}`;
 }
 
 interface ClassSession {
@@ -40,63 +52,103 @@ interface AttendanceEvent {
   recordedAt: string;
 }
 
-const STATUS_COLOR: Record<string, string> = {
-  present: 'var(--success)',
-  late: 'var(--warning)',
-  absent: 'var(--danger)',
-  excused: 'var(--foreground-subtle)',
+const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; text: string }> = {
+  present: { label: 'Present', color: '#22c55e', bg: 'rgba(34, 197, 94, 0.2)', text: '#4ade80' },
+  late: { label: 'Late', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.2)', text: '#fbbf24' },
+  absent: { label: 'Absent', color: '#ef4444', bg: 'rgba(239, 68, 68, 0.2)', text: '#f87171' },
+  no_class: { label: 'No Class', color: '#64748b', bg: 'rgba(100, 116, 139, 0.15)', text: '#94a3b8' },
 };
 
 function MonthGrid({ events }: { events: AttendanceEvent[] }) {
+  const [currentDate, setCurrentDate] = useState(new Date());
+
+  const year = currentDate.getFullYear();
+  const month = currentDate.getMonth();
+
   const byDate = useMemo(() => {
-    const map = new Map<string, AttendanceEvent['status']>();
+    const map = new Map<string, string>();
     for (const e of events) {
       const date = e.recordedAt.slice(0, 10);
       const existing = map.get(date);
-      // present/late wins over absent/excused if a day has multiple entries
-      if (!existing || existing === 'absent' || existing === 'excused') map.set(date, e.status);
+      const statusKey = e.status === 'excused' ? 'no_class' : e.status;
+      if (!existing || existing === 'absent' || existing === 'no_class') map.set(date, statusKey);
     }
     return map;
   }, [events]);
 
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth();
   const firstDow = (new Date(year, month, 1).getDay() + 6) % 7; // Mon=0
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const cells: (number | null)[] = [...Array(firstDow).fill(null), ...Array.from({ length: daysInMonth }, (_, i) => i + 1)];
 
+  const monthLabel = currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+  function prevMonth() {
+    setCurrentDate(new Date(year, month - 1, 1));
+  }
+  function nextMonth() {
+    setCurrentDate(new Date(year, month + 1, 1));
+  }
+
   return (
     <div>
-      <div className="mb-2 grid grid-cols-7 gap-1 text-center text-[10px] font-bold uppercase" style={{ color: 'var(--foreground-subtle)' }}>
-        {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i) => (
+      <div className="mb-4 flex items-center justify-between">
+        <h4 className="text-sm font-bold" style={{ color: 'var(--foreground)' }}>
+          {monthLabel}
+        </h4>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={prevMonth}
+            className="flex h-7 w-7 items-center justify-center rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 transition"
+            title="Previous Month"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+          <button
+            onClick={nextMonth}
+            className="flex h-7 w-7 items-center justify-center rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 transition"
+            title="Next Month"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+
+      <div className="mb-2 grid grid-cols-7 gap-1.5 text-center text-[10px] font-extrabold uppercase" style={{ color: 'var(--foreground-subtle)' }}>
+        {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d, i) => (
           <span key={i}>{d}</span>
         ))}
       </div>
-      <div className="grid grid-cols-7 gap-1">
+
+      <div className="grid grid-cols-7 gap-1.5">
         {cells.map((day, i) => {
           if (day === null) return <div key={i} />;
-          const date = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-          const status = byDate.get(date);
+          const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+          const statusKey = byDate.get(dateStr) ?? 'no_class';
+          const cfg = STATUS_CONFIG[statusKey] ?? STATUS_CONFIG.no_class;
+
           return (
             <div
               key={i}
-              title={status ? `${date}: ${status}` : date}
-              className="flex aspect-square items-center justify-center rounded-md text-[10px] font-semibold"
+              title={`${dateStr}: ${cfg.label}`}
+              className="flex aspect-square flex-col items-center justify-center rounded-xl border text-xs font-bold transition-all"
               style={{
-                backgroundColor: status ? STATUS_COLOR[status] + '33' : 'var(--overlay-xs)',
-                color: status ? STATUS_COLOR[status] : 'var(--foreground-subtle)',
+                backgroundColor: cfg.bg,
+                borderColor: cfg.color + '44',
+                color: cfg.text,
               }}
             >
-              {day}
+              <span>{day}</span>
+              <span className="mt-0.5 text-[8px] font-normal opacity-80">{cfg.label}</span>
             </div>
           );
         })}
       </div>
-      <div className="mt-3 flex flex-wrap gap-3 text-[10px]" style={{ color: 'var(--foreground-muted)' }}>
-        {Object.entries(STATUS_COLOR).map(([status, color]) => (
-          <span key={status} className="flex items-center gap-1">
-            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} /> {status}
+
+      <div className="mt-4 flex flex-wrap items-center justify-center gap-4 text-xs font-medium" style={{ color: 'var(--foreground-muted)' }}>
+        {Object.entries(STATUS_CONFIG).map(([key, cfg]) => (
+          <span key={key} className="flex items-center gap-1.5">
+            <span className="h-3 w-3 rounded-full border" style={{ backgroundColor: cfg.color, borderColor: cfg.color }} />
+            {cfg.label}
           </span>
         ))}
       </div>
@@ -106,12 +158,12 @@ function MonthGrid({ events }: { events: AttendanceEvent[] }) {
 
 export default function MyAttendancePage() {
   const [batches, setBatches] = useState<BatchSummary[]>([]);
-  const [sessionsByBatch, setSessionsByBatch] = useState<Map<string, string>>(new Map()); // sessionId -> batchId
+  const [sessionsByBatch, setSessionsByBatch] = useState<Map<string, string>>(new Map());
   const [events, setEvents] = useState<AttendanceEvent[] | null>(null);
   const [tab, setTab] = useState<string>('overall');
 
   useEffect(() => {
-    const from = new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const from = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
     const to = new Date().toISOString().slice(0, 10);
     api<AttendanceEvent[]>(`/api/v1/me/attendance?from=${from}&to=${to}`)
       .then(setEvents)
@@ -151,11 +203,13 @@ export default function MyAttendancePage() {
     return Math.round((hits / filteredEvents.length) * 100);
   }, [filteredEvents]);
 
+  const selectedBatch = useMemo(() => batches.find((b) => b.batchId === tab), [batches, tab]);
+
   return (
-    <div className="mx-auto max-w-3xl p-6 md:p-8">
+    <div className="mx-auto max-w-4xl p-6 md:p-8">
       <PageHeader badge="Attendance" badgeIcon={ScanFace} title="My Attendance" description="Your check-ins across all your batches." />
 
-      <div className="mb-5 flex gap-1 overflow-x-auto rounded-xl p-1" style={{ backgroundColor: 'var(--overlay-sm)' }}>
+      <div className="mb-6 flex gap-1 overflow-x-auto rounded-xl p-1" style={{ backgroundColor: 'var(--overlay-sm)' }}>
         {[{ key: 'overall', label: 'Overall' }, ...batches.map((b) => ({ key: b.batchId, label: b.batchName }))].map((t) => (
           <button
             key={t.key}
@@ -171,42 +225,38 @@ export default function MyAttendancePage() {
       {events === null ? (
         <p className="text-sm text-slate-400">Loading…</p>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="glass-panel flex flex-col items-center gap-3 rounded-2xl border p-6" style={{ borderColor: 'var(--panel-border)' }}>
-            <ProgressRing pct={pct} label="Attendance" size={120} tone="primary" />
-            <p className="text-xs" style={{ color: 'var(--foreground-muted)' }}>
-              Last 180 days · {filteredEvents.length} session{filteredEvents.length === 1 ? '' : 's'} recorded
+        <div className="grid gap-6 md:grid-cols-12">
+          <div className="glass-panel flex flex-col items-center justify-between gap-4 rounded-2xl border p-6 md:col-span-4" style={{ borderColor: 'var(--panel-border)' }}>
+            {/* Batch Info / Description inside Pie Chart Card */}
+            {tab !== 'overall' && selectedBatch ? (
+              <div className="w-full flex flex-col items-center gap-1 text-center pb-3 border-b border-white/5">
+                <div className="flex flex-wrap items-center justify-center gap-1.5">
+                  <span className="font-bold text-sm" style={{ color: 'var(--primary)' }}>{selectedBatch.batchName}</span>
+                  {selectedBatch.organizationName && <span className="text-xs" style={{ color: 'var(--foreground-muted)' }}>· {selectedBatch.organizationName}</span>}
+                </div>
+                {selectedBatch.schedule && (
+                  <div className="flex items-center gap-1.5 text-xs font-medium" style={{ color: 'var(--foreground-muted)' }}>
+                    <CalendarClock className="h-3.5 w-3.5 text-indigo-400 shrink-0" />
+                    <span>{scheduleLabel(selectedBatch.schedule)}</span>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="w-full text-center pb-3 border-b border-white/5">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">All Batches Overview</span>
+              </div>
+            )}
+
+            <ProgressRing pct={pct} label="Attendance" size={130} tone="primary" />
+
+            <p className="text-center text-xs font-medium" style={{ color: 'var(--foreground-muted)' }}>
+              Score across {filteredEvents.length} recorded session{filteredEvents.length === 1 ? '' : 's'}
             </p>
           </div>
-          <div className="glass-panel rounded-2xl border p-5" style={{ borderColor: 'var(--panel-border)' }}>
-            <p className="mb-3 text-xs font-extrabold uppercase tracking-widest" style={{ color: 'var(--foreground-muted)' }}>
-              This month
-            </p>
+          <div className="glass-panel rounded-2xl border p-6 md:col-span-8" style={{ borderColor: 'var(--panel-border)' }}>
             <MonthGrid events={filteredEvents} />
           </div>
         </div>
-      )}
-
-      <h2 className="mb-3 mt-6 text-sm font-extrabold uppercase tracking-widest" style={{ color: 'var(--foreground-muted)' }}>
-        Recent check-ins
-      </h2>
-      {filteredEvents.length === 0 ? (
-        <EmptyRow>No attendance recorded yet.</EmptyRow>
-      ) : (
-        <ul className="space-y-2">
-          {filteredEvents
-            .slice()
-            .sort((a, b) => (a.recordedAt < b.recordedAt ? 1 : -1))
-            .slice(0, 30)
-            .map((e) => (
-              <li key={e.id} className="flex items-center justify-between rounded-xl px-3 py-2.5" style={{ backgroundColor: 'var(--overlay-xs)' }}>
-                <span className="text-sm" style={{ color: 'var(--foreground)' }}>
-                  {new Date(e.recordedAt).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
-                </span>
-                <StatusPill status={e.status} />
-              </li>
-            ))}
-        </ul>
       )}
     </div>
   );

@@ -23,7 +23,10 @@ import {
   LayoutGrid,
   Flame,
   ScanFace,
+  Trophy,
+  Award,
 } from 'lucide-react';
+import { getSportBadge } from '@/lib/sport-badges';
 import {
   DashboardHeader,
   StatCard,
@@ -130,29 +133,40 @@ interface StudentDashboard {
 function TodaySchedule({ sessions }: { sessions: DashboardSession[] }) {
   if (sessions.length === 0) return <EmptyRow>No sessions scheduled today.</EmptyRow>;
   return (
-    <ul className="space-y-2">
-      {sessions.map((s) => (
-        <li
-          key={s.sessionId}
-          className="flex items-center justify-between rounded-xl px-3 py-2.5"
-          style={{ backgroundColor: 'var(--overlay-xs)' }}
-        >
-          <div className="flex items-center gap-3">
-            <span className="text-xs font-bold tabular-nums" style={{ color: 'var(--primary)' }}>
-              {fmtTime(s.startsAt)}
-            </span>
-            <span className="text-sm font-medium" style={{ color: 'var(--foreground)' }}>
-              {s.batchName}
-              {s.organizationName && (
-                <span className="ml-1.5 font-normal" style={{ color: 'var(--foreground-subtle)' }}>
-                  · {s.organizationName}
-                </span>
-              )}
-            </span>
-          </div>
-          <StatusPill status={s.status} />
-        </li>
-      ))}
+    <ul className="space-y-2.5">
+      {sessions.map((s) => {
+        const badge = getSportBadge(s.batchName);
+        const BadgeIcon = badge.icon;
+        return (
+          <li
+            key={s.sessionId}
+            className="flex items-center justify-between rounded-2xl border p-3.5 transition-all"
+            style={{ backgroundColor: 'var(--overlay-xs)', borderColor: 'var(--panel-border)' }}
+          >
+            <div className="flex items-center gap-3 min-w-0">
+              <div
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border"
+                style={{ backgroundColor: badge.bgColor, borderColor: badge.borderColor, color: badge.color }}
+              >
+                <BadgeIcon className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-bold" style={{ color: 'var(--foreground)' }}>
+                  {s.batchName}
+                </p>
+                <p className="truncate text-xs" style={{ color: 'var(--foreground-muted)' }}>
+                  {s.organizationName ?? 'Academy'}
+                </p>
+              </div>
+            </div>
+            <div className="shrink-0 text-right">
+              <span className="text-xs font-bold tabular-nums" style={{ color: 'var(--primary)' }}>
+                {fmtTime(s.startsAt)} – {fmtTime(s.endsAt)}
+              </span>
+            </div>
+          </li>
+        );
+      })}
     </ul>
   );
 }
@@ -310,26 +324,59 @@ function CoachView({ orgId }: { orgId: string }) {
 }
 
 function StudentBatchCard({ batch }: { batch: BatchSummary }) {
+  const badge = getSportBadge(batch.batchName);
+  const BadgeIcon = badge.icon;
   return (
     <Link
       href={`/me/batches/${batch.batchId}`}
-      className="glass-panel glass-panel-hover flex items-center gap-4 rounded-2xl border p-4 transition-all duration-200"
+      className="glass-panel glass-panel-hover flex flex-col justify-between rounded-2xl border p-4.5 transition-all duration-200"
       style={{ borderColor: 'var(--panel-border)' }}
     >
-      <div className="flex shrink-0 gap-2">
-        <ProgressRing pct={batch.attendancePct} label="Attend." size={64} tone="primary" />
-        <ProgressRing pct={batch.progress.pct} label="Progress" size={64} tone="accent" />
+      <div>
+        <div className="flex items-start gap-3 mb-3">
+          <div
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border"
+            style={{ backgroundColor: badge.bgColor, borderColor: badge.borderColor, color: badge.color }}
+          >
+            <BadgeIcon className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h4 className="truncate text-sm font-bold" style={{ color: 'var(--foreground)' }}>
+              {batch.batchName}
+            </h4>
+            <p className="truncate text-xs" style={{ color: 'var(--foreground-muted)' }}>
+              {batch.organizationName}
+            </p>
+            <p className="truncate text-xs" style={{ color: 'var(--foreground-subtle)' }}>
+              {batch.coachName ? `Coach ${batch.coachName}` : 'No coach'}
+            </p>
+          </div>
+        </div>
+
+        <div className="my-3 flex items-center justify-between gap-3 rounded-xl p-3" style={{ backgroundColor: 'var(--overlay-xs)' }}>
+          <div className="flex flex-col items-center gap-1">
+            <ProgressRing pct={batch.attendancePct} label="Attend." size={54} tone="primary" />
+          </div>
+          <div className="flex-1 space-y-1.5 pl-2 border-l border-white/10">
+            <div className="flex items-center justify-between text-xs">
+              <span style={{ color: 'var(--foreground-muted)' }}>Progress</span>
+              <span className="font-bold" style={{ color: 'var(--foreground)' }}>{batch.progress.pct !== null ? `${batch.progress.pct}%` : '—'}</span>
+            </div>
+            <div className="h-1.5 w-full overflow-hidden rounded-full" style={{ backgroundColor: 'var(--overlay-md)' }}>
+              <div
+                className="h-full rounded-full transition-all duration-300"
+                style={{ width: `${Math.min(100, Math.max(0, batch.progress.pct ?? 0))}%`, backgroundColor: badge.color }}
+              />
+            </div>
+          </div>
+        </div>
       </div>
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-bold" style={{ color: 'var(--foreground)' }}>
-          {batch.batchName}
-        </p>
-        <p className="truncate text-xs" style={{ color: 'var(--foreground-muted)' }}>
-          {batch.organizationName} · {batch.coachName ? `Coach ${batch.coachName}` : 'No coach assigned'}
-        </p>
-        <p className="mt-1 text-xs" style={{ color: 'var(--foreground-subtle)' }}>
-          {batch.nextSessionAt ? `Next ${fmtTime(batch.nextSessionAt)}` : 'No upcoming session'}
-        </p>
+
+      <div className="pt-2 border-t border-white/5 flex items-center justify-between text-xs" style={{ color: 'var(--foreground-subtle)' }}>
+        <span>Next Session</span>
+        <span className="font-semibold" style={{ color: 'var(--foreground-muted)' }}>
+          {batch.nextSessionAt ? fmtTime(batch.nextSessionAt) : 'No upcoming'}
+        </span>
       </div>
     </Link>
   );
@@ -338,27 +385,44 @@ function StudentBatchCard({ batch }: { batch: BatchSummary }) {
 function AnnouncementsList({ items }: { items: StudentAnnouncement[] }) {
   if (items.length === 0) return <EmptyRow>No announcements yet.</EmptyRow>;
   return (
-    <ul className="space-y-2">
-      {items.map((a) => (
-        <li key={a.id} className="rounded-xl px-3 py-2.5" style={{ backgroundColor: 'var(--overlay-xs)' }}>
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-sm font-semibold" style={{ color: 'var(--foreground)' }}>
-              {a.title}
-            </span>
-            {a.publishedAt && (
-              <span className="shrink-0 text-[10px]" style={{ color: 'var(--foreground-subtle)' }}>
-                {new Date(a.publishedAt).toLocaleDateString()}
-              </span>
-            )}
-          </div>
-          <p className="mt-0.5 line-clamp-2 text-xs" style={{ color: 'var(--foreground-muted)' }}>
-            {a.body}
-          </p>
-          <p className="mt-1 text-[10px] font-semibold uppercase tracking-wide" style={{ color: 'var(--foreground-subtle)' }}>
-            {a.organizationName}
-          </p>
-        </li>
-      ))}
+    <ul className="space-y-2.5">
+      {items.map((a) => {
+        const badge = getSportBadge(a.title);
+        const BadgeIcon = badge.icon;
+        const relativeTime = a.publishedAt
+          ? Math.abs(Date.now() - new Date(a.publishedAt).getTime()) < 86400000
+            ? `${Math.max(1, Math.floor((Date.now() - new Date(a.publishedAt).getTime()) / 3600000))}h ago`
+            : `${Math.floor((Date.now() - new Date(a.publishedAt).getTime()) / 86400000)}d ago`
+          : '';
+        return (
+          <li key={a.id} className="flex items-start gap-3 rounded-2xl border p-3 transition-all" style={{ backgroundColor: 'var(--overlay-xs)', borderColor: 'var(--panel-border)' }}>
+            <div
+              className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border text-xs"
+              style={{ backgroundColor: badge.bgColor, borderColor: badge.borderColor, color: badge.color }}
+            >
+              <BadgeIcon className="h-4 w-4" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center justify-between gap-2">
+                <span className="truncate text-xs font-bold" style={{ color: 'var(--foreground)' }}>
+                  {a.title}
+                </span>
+                {relativeTime && (
+                  <span className="shrink-0 text-[10px] font-medium" style={{ color: 'var(--foreground-subtle)' }}>
+                    {relativeTime}
+                  </span>
+                )}
+              </div>
+              <p className="mt-0.5 line-clamp-1 text-xs" style={{ color: 'var(--foreground-muted)' }}>
+                {a.body}
+              </p>
+              <p className="mt-1 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
+                {a.organizationName}
+              </p>
+            </div>
+          </li>
+        );
+      })}
     </ul>
   );
 }
@@ -388,6 +452,7 @@ function StudentView() {
 
   return (
     <div className="space-y-6">
+      {/* 5 Top Stat Cards */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
         <StatCard
           label="Overall attendance"
@@ -397,7 +462,7 @@ function StudentView() {
           hint={attendanceHint}
           href="/me/attendance"
         />
-        <StatCard label="Current streak" value={`${data.streakDays} day${data.streakDays === 1 ? '' : 's'}`} icon={Flame} tone="accent" href="/me/attendance" />
+        <StatCard label="Current streak" value={`${data.streakDays} day${data.streakDays === 1 ? '' : 's'}`} icon={Flame} tone="accent" hint="Keep it up!" href="/me/attendance" />
         <StatCard label="Active batches" value={data.activeBatchesCount} icon={CalendarClock} tone="primary" hint={batchesHint} href="/me/batches" />
         <StatCard
           label="Upcoming payments"
@@ -417,29 +482,53 @@ function StudentView() {
         />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <SectionCard title="Today's schedule" action={{ label: 'Full schedule', href: '/me/schedule' }}>
-          <TodaySchedule sessions={data.todaysSessions} />
+      {/* Middle Section: Today's Schedule & My Active Batches */}
+      <div className="grid gap-6 lg:grid-cols-12">
+        <div className="lg:col-span-4">
+          <SectionCard title="Today's Schedule" action={{ label: 'View Calendar', href: '/me/schedule' }}>
+            <TodaySchedule sessions={data.todaysSessions} />
+          </SectionCard>
+        </div>
+
+        <div className="lg:col-span-8">
+          <SectionCard title="My Active Batches" action={{ label: 'View All', href: '/me/batches' }}>
+            {activeBatches === null ? (
+              <EmptyRow>Loading…</EmptyRow>
+            ) : activeBatches.length === 0 ? (
+              <EmptyRow>You&apos;re not enrolled in any batches yet.</EmptyRow>
+            ) : (
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {activeBatches.map((b) => (
+                  <StudentBatchCard key={b.batchId} batch={b} />
+                ))}
+              </div>
+            )}
+          </SectionCard>
+        </div>
+      </div>
+
+      {/* Bottom Section: Recent Coach Feedback, Achievements & Announcements */}
+      <div className="grid gap-6 lg:grid-cols-3">
+        <SectionCard title="Recent Coach Feedback">
+          <div className="glass-panel flex flex-col items-center justify-center rounded-2xl border border-dashed p-8 text-center" style={{ borderColor: 'var(--panel-border)' }}>
+            <Award className="mb-2 h-8 w-8 text-amber-400 opacity-80" />
+            <p className="text-sm font-bold" style={{ color: 'var(--foreground)' }}>Coming soon...</p>
+            <p className="mt-1 text-xs" style={{ color: 'var(--foreground-subtle)' }}>Coach feedback and ratings will appear here soon.</p>
+          </div>
         </SectionCard>
 
-        <SectionCard title="Announcements">
+        <SectionCard title="Achievements">
+          <div className="glass-panel flex flex-col items-center justify-center rounded-2xl border border-dashed p-8 text-center" style={{ borderColor: 'var(--panel-border)' }}>
+            <Trophy className="mb-2 h-8 w-8 text-amber-400 opacity-80" />
+            <p className="text-sm font-bold" style={{ color: 'var(--foreground)' }}>Coming soon...</p>
+            <p className="mt-1 text-xs" style={{ color: 'var(--foreground-subtle)' }}>Badges & milestones tracking coming soon.</p>
+          </div>
+        </SectionCard>
+
+        <SectionCard title="Announcements" action={{ label: 'View All', href: '/me/announcements' }}>
           <AnnouncementsList items={data.announcements} />
         </SectionCard>
       </div>
-
-      <SectionCard title="My active batches" action={{ label: 'All batches', href: '/me/batches' }}>
-        {activeBatches === null ? (
-          <EmptyRow>Loading…</EmptyRow>
-        ) : activeBatches.length === 0 ? (
-          <EmptyRow>You&apos;re not enrolled in any batches yet.</EmptyRow>
-        ) : (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {activeBatches.map((b) => (
-              <StudentBatchCard key={b.batchId} batch={b} />
-            ))}
-          </div>
-        )}
-      </SectionCard>
     </div>
   );
 }
@@ -448,6 +537,7 @@ export default function DashboardPage() {
   const [orgId, setOrgId] = useState<string | null | undefined>(undefined);
   const [roles, setRoles] = useState<string[] | null>(null);
   const [view, setView] = useState<'owner' | 'coach' | null>(null);
+  const [userName, setUserName] = useState<string>('');
   // Independent of the active workspace — a student belongs to N unrelated
   // orgs at once and has no "workspace" of their own (see StudentView's
   // backing endpoints), so this checks for student status directly rather
@@ -455,6 +545,11 @@ export default function DashboardPage() {
   const [hasStudentBatches, setHasStudentBatches] = useState<boolean | null>(null);
 
   useEffect(() => {
+    api<{ displayName?: string }>('/api/v1/me')
+      .then((p) => {
+        if (p?.displayName) setUserName(p.displayName);
+      })
+      .catch(() => {});
     api<{ activeOrgId: string | null }>('/api/v1/me/workspace')
       .then((w) => setOrgId(w.activeOrgId))
       .catch(() => setOrgId(null));
@@ -462,6 +557,12 @@ export default function DashboardPage() {
       .then((b) => setHasStudentBatches(b.length > 0))
       .catch(() => setHasStudentBatches(false));
   }, []);
+
+  const greeting = useMemo(() => {
+    const hour = new Date().getHours();
+    const tod = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+    return userName ? `${tod}, ${userName} 👋` : `${tod} 👋`;
+  }, [userName]);
 
   useEffect(() => {
     if (!orgId) return;
@@ -492,7 +593,7 @@ export default function DashboardPage() {
   if (!isMgmt && !isCoach && hasStudentBatches) {
     return (
       <div className="p-6 md:p-8">
-        <DashboardHeader badge="Overview" icon={LayoutGrid} title="Dashboard" subtitle="Your batches and progress at a glance." />
+        <DashboardHeader badge="Overview" icon={LayoutGrid} title={greeting} subtitle="Your batches and progress at a glance." />
         <StudentView />
       </div>
     );
@@ -501,7 +602,7 @@ export default function DashboardPage() {
   if (!orgId || view === null) {
     return (
       <div className="p-8">
-        <DashboardHeader badge="Overview" icon={LayoutGrid} title="Dashboard" subtitle="Select a workspace to see its dashboard." />
+        <DashboardHeader badge="Overview" icon={LayoutGrid} title={greeting} subtitle="Select a workspace to see its dashboard." />
         <Link href="/workspace" className="btn-premium inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold text-white">
           <LayoutGrid className="h-4 w-4" /> Choose a workspace
         </Link>
@@ -517,7 +618,7 @@ export default function DashboardPage() {
       <DashboardHeader
         badge="Overview"
         icon={LayoutGrid}
-        title="Dashboard"
+        title={greeting}
         subtitle={subtitle}
         action={
           isMgmt && isCoach ? (

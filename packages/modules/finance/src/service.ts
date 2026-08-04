@@ -169,6 +169,8 @@ export interface Charge {
   currency: string;
   dueOn: string;
   status: ChargeStatus;
+  organizationName?: string;
+  batchName?: string;
 }
 
 function mapChargeRow(row: {
@@ -183,6 +185,8 @@ function mapChargeRow(row: {
   currency: string;
   due_on: string;
   status: ChargeStatus;
+  organization_name?: string;
+  batch_name?: string;
 }): Charge {
   return {
     id: row.id,
@@ -196,6 +200,8 @@ function mapChargeRow(row: {
     currency: row.currency,
     dueOn: row.due_on,
     status: row.status,
+    organizationName: row.organization_name,
+    batchName: row.batch_name,
   };
 }
 
@@ -208,12 +214,20 @@ const LIST_CHARGES_SQL = `select ${CHARGE_COLUMNS} from charges
      and ($3::uuid is null or enrollment_id = $3)
      and ($4::text is null or status = $4)
    order by due_on desc`;
-const LIST_MY_CHARGES_SQL = `select c.${CHARGE_COLUMNS.split(', ').join(', c.')} from charges c
+const LIST_MY_CHARGES_SQL = `select c.${CHARGE_COLUMNS.split(', ').join(', c.')},
+       o.name as organization_name,
+       (select b.name from batch_enrollments be join batches b on b.id = be.batch_id where be.enrollment_id = e.id and be.status = 'active' limit 1) as batch_name
+   from charges c
    join enrollments e on e.id = c.enrollment_id
+   left join organizations o on o.id = c.organization_id
    where e.student_user_id = current_user_id()
    order by c.due_on desc`;
-const LIST_WARD_CHARGES_SQL = `select c.${CHARGE_COLUMNS.split(', ').join(', c.')} from charges c
+const LIST_WARD_CHARGES_SQL = `select c.${CHARGE_COLUMNS.split(', ').join(', c.')},
+       o.name as organization_name,
+       (select b.name from batch_enrollments be join batches b on b.id = be.batch_id where be.enrollment_id = e.id and be.status = 'active' limit 1) as batch_name
+   from charges c
    join enrollments e on e.id = c.enrollment_id
+   left join organizations o on o.id = c.organization_id
    where e.student_user_id = $1
    order by c.due_on desc`;
 const UPDATE_CHARGE_STATUS_SQL = `update charges set status = $1 where id = $2`;
@@ -316,6 +330,9 @@ export interface Payment {
   verifiedBy: string | null;
   verifiedAt: string | null;
   rejectionReason: string | null;
+  createdAt?: string;
+  organizationName?: string;
+  batchName?: string;
 }
 
 function mapPaymentRow(row: {
@@ -330,6 +347,9 @@ function mapPaymentRow(row: {
   verified_by: string | null;
   verified_at: string | null;
   rejection_reason: string | null;
+  created_at?: string;
+  organization_name?: string;
+  batch_name?: string;
 }): Payment {
   return {
     id: row.id,
@@ -343,10 +363,13 @@ function mapPaymentRow(row: {
     verifiedBy: row.verified_by,
     verifiedAt: row.verified_at,
     rejectionReason: row.rejection_reason,
+    createdAt: row.created_at,
+    organizationName: row.organization_name,
+    batchName: row.batch_name,
   };
 }
 
-const PAYMENT_COLUMNS = `id, organization_id, payer_user_id, method, proof_path, amount_minor, currency, status, verified_by, verified_at, rejection_reason`;
+const PAYMENT_COLUMNS = `id, organization_id, payer_user_id, method, proof_path, amount_minor, currency, status, verified_by, verified_at, rejection_reason, created_at`;
 const INSERT_PAYMENT_SQL = `insert into payments (organization_id, payer_user_id, method, proof_path, amount_minor, currency, status)
    values ($1, $2, $3, $4, $5, $6, $7) returning ${PAYMENT_COLUMNS}`;
 const INSERT_PAYMENT_WITH_CREATED_AT_SQL = `insert into payments (organization_id, payer_user_id, method, proof_path, amount_minor, currency, status, created_at)
@@ -354,7 +377,13 @@ const INSERT_PAYMENT_WITH_CREATED_AT_SQL = `insert into payments (organization_i
 const LIST_PAYMENTS_SQL = `select ${PAYMENT_COLUMNS} from payments
    where organization_id = $1 and ($2::text is null or status = $2) and ($3::uuid is null or payer_user_id = $3)
    order by created_at desc`;
-const LIST_MY_PAYMENTS_SQL = `select ${PAYMENT_COLUMNS} from payments where payer_user_id = current_user_id() order by created_at desc`;
+const LIST_MY_PAYMENTS_SQL = `select p.${PAYMENT_COLUMNS.split(', ').join(', p.')},
+       o.name as organization_name,
+       (select b.name from payment_allocations pa join charges c on c.id = pa.charge_id join enrollments e on e.id = c.enrollment_id join batch_enrollments be on be.enrollment_id = e.id join batches b on b.id = be.batch_id where pa.payment_id = p.id and be.status = 'active' limit 1) as batch_name
+   from payments p
+   left join organizations o on o.id = p.organization_id
+   where p.payer_user_id = current_user_id()
+   order by p.created_at desc`;
 const SELECT_PAYMENT_SQL = `select ${PAYMENT_COLUMNS} from payments where id = $1`;
 const UPDATE_PAYMENT_REJECT_SQL = `update payments set status = 'rejected', verified_by = $1, verified_at = now(), rejection_reason = $2 where id = $3 and status = 'pending_verification'`;
 const UPDATE_PAYMENT_SUCCEED_SQL = `update payments set status = 'succeeded', verified_by = $1, verified_at = now() where id = $2 and status in ('pending_verification', 'initiated')`;

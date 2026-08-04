@@ -15,7 +15,8 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { CalendarClock, Search, UserPlus, Clock } from 'lucide-react';
+import { CalendarClock, Search, UserPlus, Clock, ChevronRight } from 'lucide-react';
+import { getSportBadge } from '@/lib/sport-badges';
 import { ProgressRing, EmptyRow, StatusPill, fmtTime } from '@/components/DashboardKit';
 import { PageHeader } from '@/components/PageHeader';
 
@@ -61,34 +62,64 @@ function scheduleLabel(s: { days: number[]; startTime: string; endTime: string }
 }
 
 function BatchListCard({ batch }: { batch: BatchSummary }) {
+  const badge = getSportBadge(batch.batchName);
+  const BadgeIcon = badge.icon;
+  const daysStr = batch.schedule.days.map((d) => DOW_LABELS[d - 1]).join(', ') || 'Every Sunday';
+  const timeStr = `${batch.schedule.startTime} - ${batch.schedule.endTime}`;
+
   return (
     <Link
       href={`/me/batches/${batch.batchId}`}
-      className="glass-panel glass-panel-hover flex flex-col gap-4 rounded-2xl border p-5 transition-all duration-200 sm:flex-row sm:items-center"
+      className="glass-panel glass-panel-hover flex flex-col gap-4 rounded-2xl border p-5 transition-all duration-200 sm:flex-row sm:items-center justify-between"
       style={{ borderColor: 'var(--panel-border)' }}
     >
-      <div className="flex shrink-0 gap-3">
-        <ProgressRing pct={batch.attendancePct} label="Attend." size={68} tone="primary" />
-        <ProgressRing pct={batch.progress.pct} label="Progress" size={68} tone="accent" />
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <p className="truncate text-base font-bold" style={{ color: 'var(--foreground)' }}>
-            {batch.batchName}
-          </p>
-          {batch.enrollmentStatus === 'left' && <StatusPill status="completed" />}
+      <div className="flex items-center gap-4 min-w-0 flex-1">
+        <div
+          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border"
+          style={{ backgroundColor: badge.bgColor, borderColor: badge.borderColor, color: badge.color }}
+        >
+          <BadgeIcon className="h-6 w-6" />
         </div>
-        <p className="mt-0.5 text-xs" style={{ color: 'var(--foreground-muted)' }}>
-          {batch.organizationName} · {batch.programName ?? 'General'} · {batch.coachName ? `Coach ${batch.coachName}` : 'No coach assigned'}
-        </p>
-        <p className="mt-1 text-xs" style={{ color: 'var(--foreground-subtle)' }}>
-          {scheduleLabel(batch.schedule)}
-        </p>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <h3 className="truncate text-base font-bold" style={{ color: 'var(--foreground)' }}>
+              {batch.batchName}
+            </h3>
+            {batch.enrollmentStatus === 'left' && <StatusPill status="completed" />}
+          </div>
+          <p className="mt-0.5 text-xs font-medium" style={{ color: 'var(--foreground-muted)' }}>
+            {batch.organizationName}
+          </p>
+          <p className="text-xs" style={{ color: 'var(--foreground-subtle)' }}>
+            {batch.coachName ? `Coach ${batch.coachName}` : 'No coach assigned'}
+          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-3 text-xs" style={{ color: 'var(--foreground-muted)' }}>
+            <span className="flex items-center gap-1">
+              <CalendarClock className="h-3.5 w-3.5 text-indigo-400" /> {daysStr}
+            </span>
+            <span className="flex items-center gap-1">
+              <Clock className="h-3.5 w-3.5 text-indigo-400" /> {timeStr}
+            </span>
+          </div>
+        </div>
       </div>
-      <div className="shrink-0 text-right">
-        <p className="text-xs font-semibold" style={{ color: 'var(--foreground-muted)' }}>
-          {batch.nextSessionAt ? `Next ${fmtTime(batch.nextSessionAt)}` : 'No upcoming session'}
-        </p>
+
+      <div className="flex items-center gap-4 shrink-0 justify-between sm:justify-end border-t sm:border-t-0 pt-3 sm:pt-0 border-white/5">
+        <div className="flex items-center gap-3">
+          {batch.attendancePct !== null && (
+            <div className="flex flex-col items-center rounded-xl px-3.5 py-1.5 border border-emerald-500/20 bg-emerald-500/10">
+              <span className="text-sm font-bold text-emerald-400">{batch.attendancePct}%</span>
+              <span className="text-[10px] text-emerald-400 font-medium">Attendance</span>
+            </div>
+          )}
+          {batch.progress.pct !== null && (
+            <div className="flex flex-col items-center rounded-xl px-3.5 py-1.5 border border-indigo-500/20 bg-indigo-500/10">
+              <span className="text-sm font-bold text-indigo-400">{batch.progress.pct}%</span>
+              <span className="text-[10px] text-indigo-400 font-medium">Progress</span>
+            </div>
+          )}
+        </div>
+        <ChevronRight className="h-5 w-5 text-slate-400" />
       </div>
     </Link>
   );
@@ -243,14 +274,18 @@ export default function MyBatchesPage() {
 
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div className="flex gap-1 rounded-xl p-1" style={{ backgroundColor: 'var(--overlay-sm)' }}>
-          {(['all', 'active', 'completed'] as Tab[]).map((t) => (
+          {([
+            { key: 'all', label: `All Batches (${batches?.length ?? 0})` },
+            { key: 'active', label: `Active (${batches?.filter((b) => b.enrollmentStatus === 'active').length ?? 0})` },
+            { key: 'completed', label: `Completed (${batches?.filter((b) => b.enrollmentStatus === 'left').length ?? 0})` },
+          ] as { key: Tab; label: string }[]).map((t) => (
             <button
-              key={t}
-              onClick={() => setTab(t)}
-              className="rounded-lg px-3 py-1.5 text-xs font-bold capitalize transition-all"
-              style={tab === t ? { backgroundColor: 'var(--primary)', color: '#fff' } : { color: 'var(--foreground-muted)' }}
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              className="rounded-lg px-3 py-1.5 text-xs font-bold transition-all"
+              style={tab === t.key ? { backgroundColor: 'var(--primary)', color: '#fff' } : { color: 'var(--foreground-muted)' }}
             >
-              {t}
+              {t.label}
             </button>
           ))}
         </div>
