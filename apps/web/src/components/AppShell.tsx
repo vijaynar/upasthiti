@@ -325,7 +325,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         {/* Active workspace card */}
         {(memberships.length > 0 || isPlatformStaff) && (
           <Link
-            href="/workspace"
+            href={isPlatformStaff ? '/platform/dashboard' : '/workspace'}
             className="mx-2.5 mt-2 flex items-center gap-2 rounded-lg border border-indigo-500/10 bg-indigo-950/20 p-2 hover:border-indigo-500/25 transition-all"
           >
             <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-indigo-500/30 bg-indigo-500/10 text-indigo-400">

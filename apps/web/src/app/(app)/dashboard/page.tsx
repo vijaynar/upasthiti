@@ -8,6 +8,7 @@
 // /people, /scheduling, /progress.
 
 import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   Users,
@@ -552,6 +553,10 @@ export default function DashboardPage() {
   // backing endpoints), so this checks for student status directly rather
   // than waiting on orgId/roles in the active workspace.
   const [hasStudentBatches, setHasStudentBatches] = useState<boolean | null>(null);
+  // Platform staff (super admins) have no org membership of their own — they
+  // belong on /platform, not stuck in the "choose a workspace" fallback below.
+  const [platformRoles, setPlatformRoles] = useState<string[] | null>(null);
+  const router = useRouter();
 
   useEffect(() => {
     api<{ displayName?: string }>('/api/v1/me')
@@ -559,6 +564,9 @@ export default function DashboardPage() {
         if (p?.displayName) setUserName(p.displayName);
       })
       .catch(() => {});
+    api<{ roles: string[] }>('/api/v1/me/platform-roles')
+      .then((r) => setPlatformRoles(r?.roles ?? []))
+      .catch(() => setPlatformRoles([]));
     api<{ activeOrgId: string | null }>('/api/v1/me/workspace')
       .then((w) => setOrgId(w.activeOrgId))
       .catch(() => setOrgId(null));
@@ -593,8 +601,18 @@ export default function DashboardPage() {
     setView(isMgmt ? 'owner' : isCoach ? 'coach' : null);
   }, [roles, isMgmt, isCoach]);
 
-  const stillResolving = orgId === undefined || hasStudentBatches === null || (orgId ? roles === null : false);
-  if (stillResolving) return <DashboardLoading />;
+  const isPlatformStaff = (platformRoles?.length ?? 0) > 0;
+
+  useEffect(() => {
+    if (isPlatformStaff && !orgId) router.replace('/platform/dashboard');
+  }, [isPlatformStaff, orgId, router]);
+
+  const stillResolving =
+    orgId === undefined ||
+    hasStudentBatches === null ||
+    platformRoles === null ||
+    (orgId ? roles === null : false);
+  if (stillResolving || (isPlatformStaff && !orgId)) return <DashboardLoading />;
 
   // Staff role in the active workspace wins (they're mid-task in that org);
   // otherwise, if the caller is a student anywhere, that's an org-agnostic

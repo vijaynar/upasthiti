@@ -11,18 +11,33 @@ import Link from 'next/link';
 import { Building2, Check, LogOut, Plus, Trash2 } from 'lucide-react';
 import { useWorkspace } from '@/lib/workspace';
 
+async function api<T>(url: string): Promise<T> {
+  const res = await fetch(url, { headers: { 'Content-Type': 'application/json' } });
+  const body = await res.json();
+  if (!res.ok) throw new Error(body.error?.message ?? 'Something went wrong.');
+  return body.data as T;
+}
+
 export default function WorkspacePage() {
   const { loading, memberships, activeOrg, switchWorkspace, refreshMemberships } = useWorkspace();
   const [switching, setSwitching] = useState<string | null>(null);
   const [removing, setRemoving] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Platform staff have no org membership of their own — an empty list means
+  // "belongs on /platform", not "stuck with nothing to pick" like a student.
+  const [platformRoles, setPlatformRoles] = useState<string[] | null>(null);
   const router = useRouter();
 
   useEffect(() => {
-    if (!loading && memberships.length === 0) {
-      router.replace('/dashboard');
-    }
-  }, [loading, memberships, router]);
+    api<{ roles: string[] }>('/api/v1/me/platform-roles')
+      .then((r) => setPlatformRoles(r?.roles ?? []))
+      .catch(() => setPlatformRoles([]));
+  }, []);
+
+  useEffect(() => {
+    if (loading || platformRoles === null || memberships.length > 0) return;
+    router.replace((platformRoles.length > 0) ? '/platform/dashboard' : '/dashboard');
+  }, [loading, memberships, platformRoles, router]);
 
 
   async function handleSwitch(organizationId: string) {
