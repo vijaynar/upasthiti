@@ -11,6 +11,12 @@
 -- after each table's policies. Column-level grants are used wherever a
 -- WITH CHECK can't itself lock down every sensitive column.
 
+-- ── jobs ──────────────────────────────────────────────────────────
+-- Zero policies, by design: only apps/worker (service_role, which bypasses
+-- RLS) touches this table. Enabling RLS with no policy default-denies the
+-- anon/authenticated API path entirely.
+alter table jobs enable row level security;
+
 -- ── users ─────────────────────────────────────────────────────────
 alter table users enable row level security;
 
