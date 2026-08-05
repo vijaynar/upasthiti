@@ -7,3 +7,9 @@
 // (marketplace academy discovery, academy onboarding, nav links) — org-type
 // 'academy' specifically. Individual-coach flows are unaffected either way.
 export const ACADEMY_FEATURE_FLAG_KEY = 'EnableAcademyOperation';
+
+// Global Settings > Feature Flags key that hides the "Add another workspace"
+// action on the workspace switcher for independent-coach accounts. On by
+// default, matching the previous hardcoded orgType === 'independent_coach'
+// check it replaced.
+export const DISABLE_ADD_WORKSPACE_FOR_INDEPENDENT_COACH_FLAG_KEY = 'DisableAddWorkspace_ForIndependentCoach';

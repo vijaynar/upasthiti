@@ -10,6 +10,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Building2, Check, LogOut, Plus, Trash2 } from 'lucide-react';
 import { useWorkspace } from '@/lib/workspace';
+import { useAddWorkspaceDisabledForIndependentCoach } from '@/lib/useFeatureFlags';
 
 async function api<T>(url: string): Promise<T> {
   const res = await fetch(url, { headers: { 'Content-Type': 'application/json' } });
@@ -20,6 +21,7 @@ async function api<T>(url: string): Promise<T> {
 
 export default function WorkspacePage() {
   const { loading, memberships, activeOrg, switchWorkspace, refreshMemberships } = useWorkspace();
+  const addWorkspaceDisabledForIndependentCoach = useAddWorkspaceDisabledForIndependentCoach();
   const [switching, setSwitching] = useState<string | null>(null);
   const [removing, setRemoving] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -172,7 +174,7 @@ export default function WorkspacePage() {
           </ul>
         )}
 
-        {activeOrg?.orgType === 'independent_coach' ? (
+        {activeOrg?.orgType === 'independent_coach' && addWorkspaceDisabledForIndependentCoach ? (
           <span
             aria-disabled="true"
             className="flex cursor-not-allowed items-center justify-center gap-2 rounded-lg border border-dashed border-white/10 px-4 py-2.5 text-sm font-medium text-slate-500"

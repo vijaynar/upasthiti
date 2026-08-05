@@ -11,7 +11,7 @@
 // behavior" default.
 
 import { useEffect, useState } from 'react';
-import { ACADEMY_FEATURE_FLAG_KEY } from './featureFlags';
+import { ACADEMY_FEATURE_FLAG_KEY, DISABLE_ADD_WORKSPACE_FOR_INDEPENDENT_COACH_FLAG_KEY } from './featureFlags';
 
 export function useFeatureFlag(key: string, defaultValue = true): boolean {
   const [enabled, setEnabled] = useState(defaultValue);
@@ -35,4 +35,8 @@ export function useFeatureFlag(key: string, defaultValue = true): boolean {
 
 export function useAcademyOperationEnabled(): boolean {
   return useFeatureFlag(ACADEMY_FEATURE_FLAG_KEY, true);
+}
+
+export function useAddWorkspaceDisabledForIndependentCoach(): boolean {
+  return useFeatureFlag(DISABLE_ADD_WORKSPACE_FOR_INDEPENDENT_COACH_FLAG_KEY, true);
 }
