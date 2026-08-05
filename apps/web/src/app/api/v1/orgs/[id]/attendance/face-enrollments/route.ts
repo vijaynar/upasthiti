@@ -2,6 +2,7 @@
 // Face samples are per-student (enrollmentId) or per-staff (membershipId),
 // not per-batch — Doc 07 §8 + §21.2.
 import type { NextRequest } from 'next/server';
+import { db } from '@abhyas/platform';
 import { enrollFace, listFaceEnrollments, FACE_EMBEDDING_DIMENSIONS } from '@abhyas/module-attendance';
 import { getSessionFromRequest, jsonData, jsonError, isRlsDenied } from '@/lib/v2-session';
 
@@ -30,14 +31,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const qualityScore = typeof body?.qualityScore === 'number' ? body.qualityScore : undefined;
   const sourcePath = typeof body?.sourcePath === 'string' ? body.sourcePath : undefined;
 
-  if (!consentId) return jsonError('invalid_request', 'consentId is required.', 400);
+  if (!consentId) {
+    // SkipConsentID (migration 0016) — on by default, so consentId is
+    // optional out of the box. An org can turn this off to require it again.
+    const consentSkippable = await db.isOrgFeatureEnabled(id, 'SkipConsentID');
+    if (!consentSkippable) return jsonError('invalid_request', 'consentId is required.', 400);
+  }
   if (Boolean(enrollmentId) === Boolean(membershipId)) return jsonError('invalid_request', 'exactly one of enrollmentId or membershipId is required.', 400);
   if (!Array.isArray(embedding) || embedding.length !== FACE_EMBEDDING_DIMENSIONS || embedding.some((v) => typeof v !== 'number' || !Number.isFinite(v))) {
     return jsonError('invalid_request', `embedding must be an array of ${FACE_EMBEDDING_DIMENSIONS} finite numbers.`, 400);
   }
 
   try {
-    const enrollment = await enrollFace(session, { organizationId: id, enrollmentId, membershipId, consentId, embedding, qualityScore, sourcePath });
+    const enrollment = await enrollFace(session, { organizationId: id, enrollmentId, membershipId, consentId: consentId || undefined, embedding, qualityScore, sourcePath });
     return jsonData(enrollment, 201);
   } catch (err) {
     if (isRlsDenied(err)) return jsonError('forbidden', 'You do not have permission to enroll a face here.', 403);

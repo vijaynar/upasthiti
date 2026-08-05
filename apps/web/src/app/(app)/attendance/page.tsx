@@ -218,13 +218,17 @@ export default function AttendancePage() {
   }
 
   async function submitEnrollment(embedding: number[]) {
-    if (!orgId || !enrollEnrollmentId || !enrollConsentId.trim()) return;
+    if (!orgId || !enrollEnrollmentId) return;
     setEnrollBusy(true);
     setError(null);
     try {
       await api(`/api/v1/orgs/${orgId}/attendance/face-enrollments`, {
         method: 'POST',
-        body: JSON.stringify({ enrollmentId: enrollEnrollmentId, consentId: enrollConsentId.trim(), embedding }),
+        body: JSON.stringify({
+          enrollmentId: enrollEnrollmentId,
+          ...(enrollConsentId.trim() ? { consentId: enrollConsentId.trim() } : {}),
+          embedding,
+        }),
       });
       setNotice('Face enrolled.');
       setEnrollOpen(false);
@@ -399,7 +403,7 @@ export default function AttendancePage() {
           </div>
           <p className="mb-3 text-xs text-slate-400">
             A guardian must first grant biometric consent (on their Family page) and share the consent ID with you — enrollment requires an active{' '}
-            <code className="text-slate-300">biometric_face</code> consent for the same student, enforced by the database.
+            <code className="text-slate-300">biometric_face</code> consent for the same student, enforced by the database — unless this org has turned off the SkipConsentID setting.
           </p>
           {enrollOpen && (
             <div className="space-y-3 rounded-lg border border-white/10 bg-white/5 p-3">
@@ -415,15 +419,15 @@ export default function AttendancePage() {
                 <input
                   value={enrollConsentId}
                   onChange={(e) => setEnrollConsentId(e.target.value)}
-                  placeholder="consent ID from guardian"
+                  placeholder="consent ID from guardian (if required)"
                   className="glass-input w-64 rounded-lg px-3 py-1.5 text-sm"
                 />
               </div>
-              {enrollEnrollmentId && enrollConsentId.trim() ? (
+              {enrollEnrollmentId ? (
                 <FaceScanner onCapture={submitEnrollment} busy={enrollBusy} />
               ) : (
                 <p className="flex items-center gap-1.5 text-xs text-slate-400">
-                  <Camera className="h-3.5 w-3.5 text-indigo-400" /> Pick a student and enter a consent ID to enable the camera.
+                  <Camera className="h-3.5 w-3.5 text-indigo-400" /> Pick a student to enable the camera.
                 </p>
               )}
             </div>

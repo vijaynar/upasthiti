@@ -49,7 +49,7 @@ export interface FaceEnrollment {
   organizationId: string;
   enrollmentId: string | null;
   membershipId: string | null;
-  consentId: string;
+  consentId: string | null;
   qualityScore: number | null;
   sourcePath: string | null;
   createdAt: string;
@@ -60,7 +60,7 @@ function mapFaceEnrollmentRow(row: {
   organization_id: string;
   enrollment_id: string | null;
   membership_id: string | null;
-  consent_id: string;
+  consent_id: string | null;
   quality_score: number | null;
   source_path: string | null;
   created_at: string;
@@ -93,7 +93,10 @@ export interface CreateFaceEnrollmentInput {
   organizationId: string;
   enrollmentId?: string;
   membershipId?: string;
-  consentId: string;
+  // Optional when the SkipConsentID feature flag (migration 0016) is on for
+  // this org (the default) — the consent check is skipped entirely.
+  // Required if an org has turned that flag off.
+  consentId?: string;
   embedding: number[];
   qualityScore?: number;
   sourcePath?: string;
@@ -101,8 +104,9 @@ export interface CreateFaceEnrollmentInput {
 
 // RLS-gated (face_enrollments_insert_staff, migration 0010) — requires
 // attendance.face.enroll at the subject's branch scope. The consent check
-// (subject must hold an active biometric_face consent) is DB-enforced by
-// face_enrollments_enforce_consent, not re-checked here.
+// (subject must hold an active biometric_face consent, skipped when
+// SkipConsentID is on) is DB-enforced by face_enrollments_enforce_consent,
+// not re-checked here.
 export async function enrollFace(session: SessionContext, input: CreateFaceEnrollmentInput): Promise<FaceEnrollment> {
   if (input.embedding.length !== FACE_EMBEDDING_DIMENSIONS) {
     throw new Error(`embedding must have exactly ${FACE_EMBEDDING_DIMENSIONS} dimensions, got ${input.embedding.length}`);
@@ -121,7 +125,7 @@ export async function enrollFace(session: SessionContext, input: CreateFaceEnrol
         input.organizationId,
         input.enrollmentId ?? null,
         input.membershipId ?? null,
-        input.consentId,
+        input.consentId ?? null,
         toVectorLiteral(input.embedding),
         input.qualityScore ?? null,
         input.sourcePath ?? null,

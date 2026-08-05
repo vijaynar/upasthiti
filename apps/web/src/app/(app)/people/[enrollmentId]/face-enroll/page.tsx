@@ -52,7 +52,7 @@ export default function FaceEnrollPage() {
   }, [orgId, enrollmentId]);
 
   async function register() {
-    if (!orgId || !captured || !consentId.trim()) return;
+    if (!orgId || !captured) return;
     setBusy(true);
     setSubmitError(null);
     try {
@@ -60,7 +60,7 @@ export default function FaceEnrollPage() {
         method: 'POST',
         body: JSON.stringify({
           enrollmentId,
-          consentId: consentId.trim(),
+          ...(consentId.trim() ? { consentId: consentId.trim() } : {}),
           embedding: captured.embedding,
           qualityScore: captured.qualityScore,
         }),
@@ -147,7 +147,7 @@ export default function FaceEnrollPage() {
                   <RefreshCw className="h-3.5 w-3.5" /> Retake Photo
                 </button>
                 <button
-                  disabled={!consentId.trim() || busy}
+                  disabled={busy}
                   onClick={register}
                   className="btn-premium flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold disabled:opacity-50"
                 >
@@ -232,8 +232,9 @@ function ConsentInfoTooltip() {
       </button>
       {open && (
         <div className="glass-panel absolute left-0 top-full z-20 mt-1.5 w-72 rounded-xl border border-white/10 p-3 text-[11px] leading-relaxed text-slate-400 shadow-2xl">
-          Required regardless of age. A guardian grants it once from Family → &quot;Grant biometric consent&quot;; a student 18 or older can instead
-          grant their own. Either way, share the resulting ID with you — staff can&apos;t create it directly.
+          Not required by default (SkipConsentID) — orgs that turn that setting off require it regardless of age. A guardian grants it once from Family →
+          &quot;Grant biometric consent&quot;; a student 18 or older can instead grant their own. Either way, share the resulting ID with you — staff
+          can&apos;t create it directly.
         </div>
       )}
     </div>
