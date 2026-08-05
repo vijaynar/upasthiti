@@ -51,7 +51,8 @@ export function ActionMenu({ items }: { items: ActionMenuItem[] }) {
       {open && (
         <div
           onClick={(e) => e.stopPropagation()}
-          className="glass-panel absolute right-0 top-full z-30 mt-1 w-52 overflow-hidden rounded-xl border border-white/10 py-1.5 shadow-2xl"
+          className="absolute right-0 top-full z-30 mt-1 w-52 overflow-hidden rounded-xl border py-1.5 shadow-2xl"
+          style={{ backgroundColor: 'var(--background)', borderColor: 'var(--panel-border)' }}
         >
           {items.map((item) => (
             <button

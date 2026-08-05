@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
       { platform: 'web', ip: req.headers.get('x-forwarded-for') ?? undefined }
     );
     const destination = (await isPlatformStaff(result.userId))
-      ? '/platform'
+      ? '/platform/dashboard'
       : result.isNewUser ? '/onboarding' : '/workspace';
     const response = NextResponse.redirect(new URL(destination, req.url));
     applyPendingCookies(response, pending);

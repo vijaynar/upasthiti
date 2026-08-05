@@ -149,7 +149,7 @@ export function StudentDrawer({
               key={t}
               onClick={() => setTab(t)}
               className={`border-b-2 px-3 py-2.5 capitalize transition ${
-                tab === t ? 'border-indigo-500 text-indigo-300' : 'border-transparent hover:text-slate-200'
+                tab === t ? 'border-indigo-500 text-indigo-300' : 'drawer-tab-inactive border-transparent hover:text-slate-200'
               }`}
             >
               {t}

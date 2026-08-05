@@ -295,6 +295,14 @@
 /* hover:text-white → hover:text-slate-900 in light mode */
 [data-mode="light"] .hover\:text-white:hover { color: #0f172a !important; }
 
+/* Plain (non-Tailwind-escaped) class names for hover-color fixes — Tailwind
+   v4's dev-mode Turbopack pipeline silently drops hand-written rules whose
+   selector reuses an escaped Tailwind utility+variant name (verified: even
+   the pre-existing .hover\:text-white:hover / .hover\:text-indigo-300:hover
+   rules above and below don't make it into the compiled CSS in dev mode),
+   so fixes needing a hover-state hex value use a plain class instead. */
+[data-mode="light"] .drawer-tab-inactive:hover { color: #1e293b !important; }
+
 /* Scrollbar */
 [data-mode="light"] ::-webkit-scrollbar-track { background: rgba(0,0,0,0.04); }
 
